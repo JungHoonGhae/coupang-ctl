@@ -17,6 +17,7 @@ doppler run -p cli-mcp-lab -c dev_coupang -- <command>
 ```
 
 See [HANDOFF.md](HANDOFF.md) for validated findings and the proposed architecture.
+Executable feasibility probes are preserved under [`research/probes`](research/probes); see [`research/README.md`](research/README.md) for setup and limitations.
 
 ## Safety boundary
 
@@ -24,4 +25,3 @@ See [HANDOFF.md](HANDOFF.md) for validated findings and the proposed architectur
 - Never automate final payment or purchase confirmation.
 - Do not log cookies, passwords, OTPs, addresses, order IDs, or raw order payloads.
 - Treat private web endpoints as unstable and subject to Coupang's terms and technical controls.
-
