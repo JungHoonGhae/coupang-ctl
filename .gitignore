@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.db
+cookies.json
+storage-state.json
+playwright-report/
+test-results/
+.DS_Store
+
