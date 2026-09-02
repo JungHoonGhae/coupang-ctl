@@ -1,10 +1,29 @@
 # coupangctl
 
-Consumer-focused Coupang CLI and natural-language MCP shopping data layer.
+내 쿠팡 주문을 내 컴퓨터에 동기화하고, CLI와 AI로 검색·분석하는 로컬 우선 오픈소스 도구입니다.
 
-The project aims to expose a user's own Coupang shopping data to local tools and AI agents without relying on DOM-driven browser automation for routine operations.
+![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Status: early access](https://img.shields.io/badge/status-early%20access-f59e0b)
 
-## Support via Coupang Partners
+> [!IMPORTANT]
+> `coupangctl`은 쿠팡의 공식 제품이 아닙니다. 내 계정의 데이터를 내가 요청한 범위에서 읽고 정리하며, 주문 확정과 결제는 지원하지 않습니다.
+
+<p align="center">
+  <img src="internal/recap/assets/type-roster.webp" width="760" alt="합성 데이터용 쇼핑 유형 캐릭터 16종">
+</p>
+<p align="center"><sub>구매 리듬과 장바구니 행동을 설명하는 16가지 쇼핑 유형 · 공개 가능한 합성 시각 예시</sub></p>
+
+## 한눈에 보기
+
+- **내 주문 기록** — 전체 주문을 중단 후 이어받을 수 있게 동기화하고 SQLite에 정규화합니다.
+- **내 소비 분석** — 월별 지출, 취소·반품, 구매 시간대, 배송 소요, 반복 구매, 카테고리를 계산합니다.
+- **공유용 리캡** — 근거와 표본을 함께 보여주는 독립형 HTML 리캡과 16가지 쇼핑 유형을 만듭니다.
+- **자연어 상품 탐색** — AI가 자연어 조건을 타입이 있는 검색·상세 조회로 바꿉니다.
+- **CLI와 MCP** — 같은 typed core를 터미널과 MCP 클라이언트에서 함께 사용합니다.
+- **구매 직전까지만** — 장바구니 추가는 명시적으로 확인한 한 상품만 가능하고, 주문·결제는 경계 밖입니다.
+
+## 쿠팡 파트너스 고지
 
 [쿠팡 홈 열기](https://link.coupang.com/a/gIEGRL0z7c)
 
@@ -13,276 +32,220 @@ The project aims to expose a user's own Coupang shopping data to local tools and
 상품 가격과 혜택은 쿠팡의 최종 화면에서 확인해야 합니다. 프로젝트 운영자의
 본인 구매는 수익 인정 대상이 아닙니다.
 
-## Status
+## 3분 빠른 시작
 
-The first usable Go product slice is implemented: native browser login with an
-isolated profile, headless-first read-only verification and order sync, a
-normalized SQLite ledger, local analytics and export/import commands, and an
-MCP stdio adapter over the same typed services. A headed read-only fallback is
-available for environments where the protected page rejects headless access.
-The analytics surface includes cancellation and return rates, purchase
-hour/weekday/month distributions, basket and repeat-purchase behavior, top
-observed brands, and shipment-duration trends with average, median, and p90
-values. A deterministic four-axis shopping type and achievements can be
-rendered as a public-safe standalone HTML recap. The v4 recap shows each
-axis's denominator and threshold, yearly delivery bars, 24-hour and zero-filled
-monthly purchase charts, repeat and basket evidence, and a 16-character
-embedded vector roster. Experimental category enrichment reads Coupang's own
-product-page breadcrumb JSON-LD, preserves the
-complete category path, and reports coverage instead of guessing categories
-from product names.
-
-Natural-language product discovery is now an experimental product slice. An AI
-can translate “후기 좋은 10만 원 아래 맥북 허브, 광고 제외” into the typed
-`products_search` request, inspect a selected candidate's public images,
-description, current price, delivery, observed coupon/card benefits, rating,
-and sanitized reviews with `product_inspect`, then add the exact vendor item to
-the cart only after an explicit confirmation. Missing benefits remain missing;
-the adapter reports field coverage instead of inventing them. Checkout,
-ordering, and payment remain outside the product boundary.
-
-Search keeps Coupang's source-native rankings distinct. `coupang_ranking`
-reproduces “쿠팡 랭킹순”, `sales` reproduces “판매량순”, and `latest` and
-price orders use their corresponding source controls. A query gives a
-product-type ranking; a real numeric `category_id` gives a category ranking.
-Rating and review-count orders are local sorts over observed card fields and
-are never labeled as sales. Each response states its scope and provenance.
-Repeated options from the same product page are collapsed by default because
-their review total may be page-wide; callers can explicitly request every
-observed variant.
-
-When official Coupang Partners credentials are configured, product search and
-inspection keep the canonical Coupang URL and add a separate `affiliate_url`.
-The typed response distinguishes `applied`, `partial`, `unavailable`,
-`unconfigured`, `not_applicable`, and explicitly `disabled` states. It also carries a definite
-commission disclosure and a reminder to verify the current price and promotion
-on Coupang. The link itself does not add a separate affiliate fee to the buyer,
-but it is not a promise that every entry path has the same promotion. The
-operator's own purchases are marked ineligible.
-
-Private local product insights are a separate response surface. They identify
-products by `vendor_item_id`, falling back to `product_id`, and expose leaders
-by retained units, distinct orders, and recorded paid amount, plus paid-unit
-extremes and the product composition of the highest and lowest positive-spend
-days. Product names and exact dates never enter the default shareable insights
-or recap.
-
-Authenticated account benefits are also available as an experimental typed
-surface. It reports current WOW membership state and fee, Coupang-reported
-benefit usage, registered payment-method brands, expected WOW Card rewards,
-and monthly reward transactions. It does not infer historical membership fees,
-charged card annual fees, the payment method used for each order, or
-lump-sum/installment usage when those source fields have not been observed.
-
-`auth status` deliberately distinguishes profile presence from a verified
-authenticated session. It never treats stored browser state as proof that the
-session is still valid.
-
-TypeScript is retained only for protocol research and is not a runtime
-dependency of the distributed product.
-
-## Build and run
-
-Go 1.26 or newer is required for development.
+현재는 소스 빌드를 기준으로 합니다. Go 1.26 이상과 설치된 Chrome 계열 브라우저가 필요합니다.
 
 ```bash
-go build ./cmd/coupangctl
-./coupangctl version
-./coupangctl capabilities
-./coupangctl doctor
-./coupangctl auth login                    # QR is the default
-./coupangctl auth login --link             # one ephemeral phone app link + approval number
-./coupangctl auth login --phone            # manual SMS fallback
-./coupangctl auth login --qr-output /secure/path/login-qr.png
-./coupangctl auth resend
-./coupangctl auth verify
-./coupangctl auth status
-./coupangctl account benefits --cash-pages 50
-./coupangctl orders sync
-./coupangctl orders list --limit 20
-./coupangctl orders spend --from 2026-01-01
-./coupangctl orders stats --from 2026-01-01
-./coupangctl orders insights
-./coupangctl orders products
-./coupangctl orders categories --max-products 25
-./coupangctl orders recap --output /secure/path/shopping-recap.html
-./coupangctl orders recap --include-products --output /secure/path/private-shopping-recap.html
-./coupangctl orders reorder --limit 20
-./coupangctl orders export
-./coupangctl products search --query '후기 좋은 10만원 아래 맥북 허브' --max-price 100000 --min-rating 4.5 --exclude-sponsored
-./coupangctl products search --query '게이밍 데스크탑 16GB 512GB' --min-memory-gb 16 --min-storage-gb 512 --exclude-used --sort sales
-./coupangctl products search --category-id ID --sort coupang_ranking
-./coupangctl products search --category-id ID --sort sales
-./coupangctl products inspect --product-id ID --item-id ID --vendor-item-id ID
-./coupangctl products inspect --product-id ID --no-affiliate
-./coupangctl products cart-add --product-id ID --vendor-item-id ID --quantity 1 --confirm-add-to-cart
-./coupangctl mcp
+git clone https://github.com/JungHoonGhae/coupang-ctl.git
+cd coupang-ctl
+go build -o ./bin/coupangctl ./cmd/coupangctl
+
+./bin/coupangctl doctor
+./bin/coupangctl auth login
+./bin/coupangctl orders sync
+./bin/coupangctl orders recap --output ./shopping-recap.html
 ```
 
-Commands emit documented JSON objects. MCP uses local stdio and currently
-provides `auth_status`, `account_benefits`, local order queries, `orders_insights`, private
-`orders_product_insights`, normalized export, order sync, `products_search`,
-`product_inspect`, and explicitly confirmed `cart_add`. `orders recap`
-is a CLI presentation adapter over the same typed insights. It creates a new
-`0600` HTML file and never overwrites an existing target.
+`auth login`은 QR 로그인을 기본으로 엽니다. 휴대폰에서 승인하면 세션을 전용 브라우저 프로필에 연결하고, 이후 읽기는 headless 우선으로 실행합니다. 모든 CLI 명령은 문서화된 JSON 객체를 출력합니다.
 
-`orders products` is marked `private_local` because it contains real product
-names and exact purchase dates. Its product spend uses only identified item
-lines with zero canceled and returned quantity. Retained-unit counts subtract
-observed canceled and returned quantities. The response reports both product
-ID coverage and spend-eligible item-line coverage. Daily headline spend uses
-the non-fully-canceled order total, so it can differ from the visible sum of
-item paid amounts because of fees, discounts, missing product identity, and the
-five-product display limit.
+> [!CAUTION]
+> 생성된 세션과 주문 DB는 개인 데이터입니다. 공유용 리캡은 기본적으로 상품명과 정확한 날짜를 제외하지만, `--include-products`로 만든 HTML은 파일 자체에 실제 상품·금액·날짜가 들어 있으므로 공유하면 안 됩니다.
 
-`orders spend` preserves its gross ledger totals for compatibility and adds a
-`commerce` breakdown: `product_purchases`, explicit `membership_fees`, and
-`unclassified`. Product behavior, streak, time, delivery, basket, repeat,
-brand, and private product-spend metrics exclude explicit membership lines.
-An unclassified legacy order remains visible instead of being silently called
-a product purchase.
+## 무엇을 할 수 있나요?
 
-`account benefits` is `private_local`. It may show the user's requested card
-brand/type, dates, and aggregates, while account identifiers and raw
-transaction descriptions are discarded. Its `order_payments` field currently
-returns `status: "unavailable"`: registered cards are not evidence of actual
-order funding, and no adopted source yet exposes installment months. The
-credit-card sales-slip surface is being researched; only an explicit field
-will enable lump-sum/installment statistics.
+| 영역 | 상태 | 할 수 있는 일 |
+| --- | --- | --- |
+| 로그인·세션 | 사용 가능 | QR, 일회성 앱 링크, 수동 SMS 로그인과 세션 검증 |
+| 주문 기록 | 사용 가능 | 전체 이력 동기화, 이어받기, 목록·내보내기·가져오기 |
+| 소비 분석 | 사용 가능 | 지출, 멤버십 비용 분리, 취소·반품, 시간대, 배송 추세 |
+| 쇼핑 유형·리캡 | 사용 가능 | 근거가 보이는 4축 유형, 배지, 공개형·비공개형 HTML |
+| 상품별 인사이트 | 사용 가능 | 구매 횟수·수량·기록된 결제액·최고/최저 지출일 |
+| 상품 검색·상세 | 실험적 | 가격, 배송, 이미지, 혜택, 평점, 정제된 후기, 정렬 의미 보존 |
+| WOW·카드 혜택 | 실험적 | 현재 멤버십, 쿠팡이 표시한 혜택, 등록 카드 브랜드, 월별 적립 |
+| 카테고리 | 실험적 | 상품 페이지의 실제 breadcrumb 경로와 집계 커버리지 |
+| 장바구니 | 실험적 | 정확한 `vendor_item_id`와 명시적 확인이 있을 때 한 번 추가 |
+| 영수증 일괄 처리 | 조사 완료 | 현금·카드·거래명세서 계약 고정 후 구현 예정 |
+| 주문·결제 | 지원 안 함 | 자동 주문, 결제, 구매 확정은 구현하지 않음 |
 
-The default recap remains `public_safe`. `--include-products` is an explicit
-privacy opt-in and changes the result visibility to `private_products`. That
-HTML contains product names, amounts, and exact dates even while the UI blurs
-them before a click, so the file itself must not be shared. Its share button
-still copies only the public-safe type text.
-Browser login opens an installed Chrome-family browser headed with a dedicated
-`coupangctl` profile. QR login is the default and starts from the protected
-order URL so the login return context is preserved; it selects the QR tab and
-returns `verified` only after the protected order page loads. `--phone` keeps
-the manual SMS/CAPTCHA fallback; the CLI never includes those values in JSON,
-logs, or the persisted session.
-On macOS, `auth resend`
-can press an already-visible send/resend control through the operating system's
-accessibility API. It reports that the control was requested, not that an SMS
-was delivered.
+현재 구현 상태와 다음 순서는 [`ROADMAP.md`](ROADMAP.md)와 `coupangctl capabilities`에서 확인할 수 있습니다.
 
-`--qr-output PATH` is intended for a headed renderer that is not directly
-visible, such as Chrome running under Xvfb on a Linux server. It automatically
-opens the QR tab and writes an enlarged crop of only the QR region to a new
-`0600` PNG. The file
-exists only while the command waits for phone approval and is removed on
-success, expiry, timeout, or cancellation. The path is never included in JSON
-output. The caller must provide an unused path in an already-secure directory.
-Current live testing found that true Chrome headless mode receives HTTP 403 at
-the protected entry page, so `--qr-output` deliberately uses a headed renderer
-and does not claim a headless-login bypass.
+## 주문 분석과 리캡
 
-`--link` is an explicit alternative presentation adapter modeled after the
-simple phone handoff used by native investment CLIs. Chrome decodes the visible
-QR locally, validates an allowlisted Coupang login URL and its two-digit
-approval number, and writes them once to stderr while the same headed browser
-waits for approval. The one-time URL never enters JSON, a file created by
-`coupangctl`, the session store, fixtures, or an error message. Because stderr
-can be redirected by the caller, do not send `--link` output to logs. Treat it
-as short-lived authentication material and do not share it. This does not
-remove the human approval step.
+```bash
+coupangctl orders list --limit 20
+coupangctl orders spend --from 2026-01-01
+coupangctl orders stats --from 2026-01-01
+coupangctl orders insights
+coupangctl orders products
+coupangctl orders categories --max-products 25
+coupangctl orders reorder --limit 20
+coupangctl orders recap --output ./shopping-recap.html
+```
 
-After successful login, `coupangctl` captures only Coupang session cookies into
-a private, atomic `0600` `session.json`. Subsequent verification and sync inject
-that state into a short-lived Chrome process, refresh it after successful
-authenticated reads, and never emit it. Routine pagination uses the structured
-`/ssr/api/myorders/model` JSON route used by the order UI rather than rendered
-order cards. If a headless protected read is denied on an interactive machine,
-the adapter can retry that read once in headed Chrome; `--headed` remains an
-explicit override.
+분석값은 세 가지 출처를 구분합니다.
 
-`orders sync --max-pages` is a per-run work budget, not a history cutoff. The
-cursor is checkpointed after every page, so another invocation continues where
-the previous one stopped. The 1000-page validation ceiling limits one process
-run and does not discard older pages.
+- **관찰값**: 쿠팡 화면이나 구조화 응답에서 직접 읽은 값
+- **계산값**: 관찰값을 명시적인 규칙으로 합산·분류한 값
+- **추론값**: 원천에 없는 정보를 휴리스틱으로 추정한 값
 
-`orders categories` is a bounded, resumable enrichment pass over products
-already present in the local ledger. The source does not expose fixed fields
-named “large/middle/small category”; it exposes a variable-length
-`BreadcrumbList` of real `/np/categories/<id>` links. The cache therefore keeps
-each source position, ID, and label. Aggregate insights currently group by the
-most-specific breadcrumb node and identify that rule as `breadcrumb_leaf`.
-Unknown products stay unknown and are included in the reported coverage
-denominator.
+공개형 리캡은 기간, 표본 수, 분모, 제외 규칙을 함께 보여줍니다. 카테고리는 상품명으로 억지 매핑하지 않고 쿠팡 상품 페이지의 가변 길이 `BreadcrumbList`만 사용하며, 확인하지 못한 상품은 `unknown`으로 남깁니다.
 
-State locations:
+`orders spend`는 전체 원장 합계와 함께 `product_purchases`, `membership_fees`, `unclassified`를 분리합니다. 명시적인 멤버십 결제를 상품 구매나 연속 구매 기록에 섞지 않습니다.
+
+## 자연어로 상품 찾기
+
+CLI는 관찰 가능한 조건을 그대로 받습니다.
+
+```bash
+coupangctl products search \
+  --query '후기 좋은 10만원 아래 맥북 허브' \
+  --max-price 100000 \
+  --min-rating 4.5 \
+  --exclude-sponsored
+
+coupangctl products search \
+  --query '게이밍 데스크탑 16GB 512GB' \
+  --min-memory-gb 16 \
+  --min-storage-gb 512 \
+  --exclude-used \
+  --sort sales
+```
+
+MCP를 쓰면 AI가 “후기 좋은 10만 원 아래 맥북 허브, 광고 제외” 같은 요청을 `products_search`의 typed filter로 바꿉니다. 선택한 후보는 `product_inspect`로 가격, 배송, 이미지, 상세 내용, 관찰된 쿠폰·카드 혜택, 평점과 정제된 후기를 확인할 수 있습니다.
+
+정렬 의미는 섞지 않습니다.
+
+- `coupang_ranking`: 쿠팡 랭킹순
+- `sales`: 판매량순
+- `latest`: 최신순
+- `price_asc`, `price_desc`: 가격순
+- 평점·후기 수: 현재 관찰한 카드 집합의 로컬 정렬
+
+상품 페이지 단위 후기 수를 옵션별 판매량처럼 표현하지 않습니다. 상품 가격과 프로모션은 바뀔 수 있으므로 최종 쿠팡 화면에서 다시 확인해야 합니다.
+
+### 장바구니 추가
+
+```bash
+coupangctl products cart-add \
+  --product-id ID \
+  --vendor-item-id ID \
+  --quantity 1 \
+  --confirm-add-to-cart
+```
+
+검색에서 관찰한 정확한 `vendor_item_id`와 `--confirm-add-to-cart`가 모두 필요합니다. 결과를 검증하지 못하면 자동 재시도하지 않으며, 구매·주문·결제 버튼으로 이동하지 않습니다.
+
+## MCP 연결
+
+표준 stdio MCP 설정은 다음과 같습니다. `command`에는 빌드한 바이너리의 절대경로를 권장합니다.
+
+```json
+{
+  "mcpServers": {
+    "coupangctl": {
+      "command": "/absolute/path/to/coupangctl",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+대표 도구:
+
+- `auth_status`, `account_benefits`
+- `orders_sync`, `orders_list`, `orders_spend`, `orders_stats`
+- `orders_insights`, `orders_product_insights`, `orders_reorder_candidates`
+- `orders_export`, `orders_enrich_categories`
+- `products_search`, `product_inspect`, `cart_add`
+
+읽기 도구와 변경 도구는 MCP annotation과 입력 타입에서 구분됩니다. `cart_add`만 되돌릴 수 있는 외부 변경이며 별도 확인값을 요구합니다.
+
+## 로그인 방식
+
+| 방식 | 명령 | 용도 |
+| --- | --- | --- |
+| QR | `coupangctl auth login` | 기본값. 실제 브라우저에서 QR을 열고 휴대폰으로 승인 |
+| 앱 링크 | `coupangctl auth login --link` | QR에서 읽은 일회성 링크와 두 자리 승인번호를 stderr에 한 번 표시 |
+| SMS | `coupangctl auth login --phone` | CAPTCHA와 OTP가 필요한 수동 대안 |
+| 원격 화면 | `coupangctl auth login --qr-output /secure/path/qr.png` | Xvfb 같은 headed renderer에서 QR 부분만 임시 PNG로 전달 |
+
+로그인은 headed 브라우저에서만 진행합니다. 실측상 보호된 로그인 진입점은 진짜 headless Chrome을 거부할 수 있습니다. 로그인 뒤의 검증과 읽기는 headless 우선이며, 환경이 거부할 때만 설치된 브라우저의 headed 읽기로 한 번 재시도할 수 있습니다.
+
+`--link` 출력은 짧게 살아 있는 인증 정보이므로 로그로 리디렉션하지 마세요. OTP, 쿠키, QR 링크는 JSON·세션 파일·테스트 fixture·오류 메시지에 넣지 않습니다.
+
+## 데이터 저장과 개인정보
+
+상태 경로:
 
 - macOS: `~/Library/Application Support/coupangctl`
-- Linux: `$XDG_STATE_HOME/coupangctl` or `~/.local/state/coupangctl`
+- Linux: `$XDG_STATE_HOME/coupangctl` 또는 `~/.local/state/coupangctl`
 - Windows: `%LOCALAPPDATA%\\coupangctl`
 
-For isolated testing, set `COUPANGCTL_STATE_DIR` to an absolute directory. Set
-`COUPANGCTL_BROWSER_PATH` only when browser auto-discovery is insufficient.
+테스트 격리는 `COUPANGCTL_STATE_DIR`에 절대경로를 지정합니다. 브라우저 자동 탐색이 실패할 때만 `COUPANGCTL_BROWSER_PATH`를 사용합니다.
 
-## Architecture
+| 데이터 | 처리 원칙 |
+| --- | --- |
+| 쿠키·세션 | 전용 상태 디렉터리의 비공개 파일에 원자적으로 저장하고 출력하지 않음 |
+| OTP·비밀번호·QR 링크 | 저장·로그·구조화 출력 금지 |
+| 주문 원본 응답 | 저장·fixture·문서 포함 금지 |
+| 정규화 주문 DB | 내 컴퓨터에 저장, 내보내기는 명시적 명령으로만 수행 |
+| 공개형 리캡 | 상품명과 정확한 날짜를 제외한 `public_safe` |
+| 상품 포함 리캡 | 실제 상품·금액·날짜가 있는 `private_products` |
+| 후기 | 리뷰어 식별자는 버리고 전화번호·이메일 패턴을 가림 |
+
+역공학한 읽기 엔드포인트는 불안정할 수 있습니다. 응답 형식은 좁은 adapter 뒤에 두고, 실패를 우회 성공으로 표현하지 않습니다. 테스트와 문서는 합성 fixture와 가린 네트워크 메타데이터만 사용합니다.
+
+## 구조
 
 ```text
 cmd/coupangctl
-  -> CLI adapter -----\
-                       -> typed services -> native browser adapter
-  -> MCP stdio adapter/                 -> SQLite repository
+  ├─ CLI adapter ─────┐
+  │                   ├─ typed services ─┬─ native browser adapters
+  └─ MCP stdio adapter┘                  └─ SQLite repository
 ```
 
-Private or reverse-engineered response formats stay behind narrow adapters.
-CLI and MCP do not own separate browser implementations, and production code
-does not import Playwright, Orca, or an agent-specific runtime.
+typed core, CLI adapter, MCP adapter를 분리합니다. CLI와 MCP가 각자 브라우저 로직을 갖지 않으며, 운영 코드에는 Playwright·Orca·특정 에이전트 런타임 의존성이 없습니다. 비공개·역공학 응답은 좁은 adapter에 격리하므로, 나중에 공식 API가 생겨도 core와 두 인터페이스를 유지할 수 있습니다.
 
-Unlike tools that replay copied cookies through a generic HTTP client,
-`coupangctl` restores its private session only into a real installed browser and
-performs authenticated requests in that same-origin browser context. The
-session store and reverse-engineered routes stay behind narrow adapters, so an
-official API can replace them without changing the typed core, SQLite
-repository, CLI, or MCP tools.
+TypeScript 코드는 프로토콜 조사용 probe에만 남아 있고 배포 바이너리의 런타임 의존성이 아닙니다.
 
-Public product search and inspection are headless-first and do not require an
-authenticated profile for some sampled products, but Coupang can reject a
-particular headless layout. On an interactive machine the read adapter can
-retry once in a headed installed browser; this is an availability fallback,
-not a stealth bypass. Search currently uses a bounded, narrow server-rendered
-card adapter because no dedicated search JSON response was observed. Product
-inspection prefers JSON-LD and the page's structured read endpoints, with
-bounded DOM fallbacks for selected-option evidence, detail images, and benefit
-text.
-Reviewer identity fields are never extracted, obvious phone/email patterns in
-review content are redacted, and only `coupangcdn.com` image URLs are returned.
-
-`cart_add` is the sole supported commerce mutation. It requires the exact
-`vendor_item_id` returned by search plus `confirmed=true` (or the CLI's
-`--confirm-add-to-cart`). If the button press cannot be verified, the result is
-`attempted=true, verified=false` and tells agents not to retry automatically.
-It never navigates a purchase or payment control.
-
-## Credential setup
-
-Development credentials live in Doppler and must never be committed:
+## 개발
 
 ```bash
-doppler run -p cli-mcp-lab -c dev_coupang -- <command>
+go test ./...
+go vet ./...
+npm run typecheck
+go build ./cmd/coupangctl
 ```
 
-The affiliate adapter reads only these names:
-`COUPANG_PARTNERS_ACCESS_KEY`, `COUPANG_PARTNERS_SECRET_KEY`, and optional
-`COUPANG_PARTNERS_SUB_ID`. Set `COUPANGCTL_AFFILIATE_DISABLED=true` for a
-process-wide opt-out, or pass `--no-affiliate` / `disable_affiliate=true` per
-request. Never put key values in the repository, command examples, fixtures,
-logs, or structured output.
+새 지표는 typed response, provenance, 분모, 표본 수, 누락 동작, 합성 테스트, 리캡 문구가 모두 맞을 때만 완료로 봅니다. 자세한 원칙은 [`PRODUCT_PRINCIPLES.md`](PRODUCT_PRINCIPLES.md)를 참고하세요.
 
-See [ROADMAP.md](ROADMAP.md) for priorities and implementation status, and
-[HANDOFF.md](HANDOFF.md) for validated findings and architecture.
-The four axes, thresholds, and all sixteen character mappings are documented in
-[TYPE_SYSTEM.md](TYPE_SYSTEM.md).
-The redacted private-route inventory is in
-[`research/endpoint-catalog.md`](research/endpoint-catalog.md).
-Executable feasibility probes are preserved under [`research/probes`](research/probes); see [`research/README.md`](research/README.md) for setup and limitations.
+## 파트너스 링크 비활성화
 
-## Safety boundary
+공식 쿠팡 파트너스 API 키가 설정되면 원본 쿠팡 URL과 별도로 `affiliate_url`을 반환할 수 있습니다. 사용자에게 제휴 링크를 강제하지 않습니다.
 
-- Read-only research and personal-data export first; reversible cart addition requires explicit confirmation.
-- Never automate final payment or purchase confirmation.
-- Do not log cookies, passwords, OTPs, addresses, order IDs, or raw order payloads.
-- Treat private web endpoints as unstable and subject to Coupang's terms and technical controls.
+```bash
+export COUPANGCTL_AFFILIATE_DISABLED=true
+coupangctl products inspect --product-id ID --no-affiliate
+```
+
+개발용 키는 Doppler의 `cli-mcp-lab/dev_coupang` 설정에서만 관리합니다. 저장소에는 `COUPANG_PARTNERS_ACCESS_KEY`, `COUPANG_PARTNERS_SECRET_KEY`, 선택적인 `COUPANG_PARTNERS_SUB_ID`라는 이름만 문서화하며 값은 넣지 않습니다.
+
+## 문서
+
+- [`ROADMAP.md`](ROADMAP.md) — 기능 우선순위와 구현 상태
+- [`HANDOFF.md`](HANDOFF.md) — 검증된 동작과 아키텍처 결정
+- [`TYPE_SYSTEM.md`](TYPE_SYSTEM.md) — 네 가지 행동 축과 16개 유형
+- [`PRODUCT_PRINCIPLES.md`](PRODUCT_PRINCIPLES.md) — 증거·개인정보·완료 기준
+- [`research/endpoint-catalog.md`](research/endpoint-catalog.md) — 가린 비공개 route 목록
+- [`research/README_BENCHMARKS.md`](research/README_BENCHMARKS.md) — 인기 CLI·MCP 저장소를 참고한 README 설계 근거
+
+## 기여
+
+[이슈](https://github.com/JungHoonGhae/coupang-ctl/issues)와 Pull Request를 환영합니다. 버그를 재현할 때는 실제 주문 응답, 쿠키, OTP, 전화번호, 계정 식별자를 첨부하지 말고 합성 데이터나 가린 메타데이터를 사용해 주세요. PR을 보내기 전에는 위의 개발 명령 네 가지를 모두 통과시켜 주세요.
+
+## 라이선스
+
+[MIT](LICENSE)
+
+`coupangctl`은 쿠팡의 공식 제품이 아니며, 쿠팡 및 관련 상표는 각 권리자에게 귀속됩니다.
