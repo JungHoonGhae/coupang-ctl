@@ -4,6 +4,15 @@ Consumer-focused Coupang CLI and natural-language MCP shopping data layer.
 
 The project aims to expose a user's own Coupang shopping data to local tools and AI agents without relying on DOM-driven browser automation for routine operations.
 
+## Support via Coupang Partners
+
+[쿠팡 홈 열기](https://link.coupang.com/a/gIEGRL0z7c)
+
+이 링크를 통해 구매하면 쿠팡 파트너스 활동의 일환으로 일정액의 수수료를
+제공받습니다. 제휴 링크 자체로 구매자에게 별도 수수료가 부과되지는 않으며,
+상품 가격과 혜택은 쿠팡의 최종 화면에서 확인해야 합니다. 프로젝트 운영자의
+본인 구매는 수익 인정 대상이 아닙니다.
+
 ## Status
 
 The first usable Go product slice is implemented: native browser login with an
