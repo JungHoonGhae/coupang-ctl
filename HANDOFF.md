@@ -1,6 +1,6 @@
 # coupangctl research handoff
 
-Last validated: 2026-09-01 (Asia/Seoul)
+Last validated: 2026-09-02 (Asia/Seoul)
 
 ## Product thesis
 
@@ -8,57 +8,231 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 
 ## Confirmed
 
+### Product implementation
+
+- The distributed product is now a Go 1.26 module; TypeScript remains limited
+  to development probes.
+- `coupangctl version`, `doctor`, authentication, resumable order sync, local
+  order queries, spending summaries, cancellation/return statistics,
+  purchase/delivery trends, reorder candidates, normalized
+  export/import, explicit purge, and the local stdio MCP server are implemented.
+- CLI and MCP share the same typed authentication and order services. MCP
+  exposes authentication status, sync, list, spend, reorder-candidate, and
+  normalized-export tools. Destructive purge is intentionally CLI-only.
+- `account benefits` and MCP `account_benefits` expose an experimental
+  `private_local` account snapshot: current membership state/fee, source-
+  reported benefit aggregates, registered payment-method brand/type/issuer,
+  and expected plus monthly observed WOW Card reward aggregates. Account
+  identifiers and raw cash transaction text are discarded.
+- Gross spend remains backward compatible while a typed `commerce` breakdown
+  separates product-purchase orders, explicit membership-fee orders, and
+  unclassified legacy rows. Product behavior/statistics exclude explicit
+  membership lines throughout time, delivery, brand, repeat, basket, and
+  private product-spend queries.
+- QR is now the default login mode. It enters through the protected order URL,
+  preserving the return context needed by the order host; `--phone` remains a
+  manual fallback.
+- The manual `--phone` fallback launches an installed Chrome-family browser
+  headed. Read-only verification and sync restore the private Coupang session
+  into a short-lived dedicated Chrome profile with an ephemeral loopback CDP
+  endpoint.
+- `auth login --qr-output PATH` provides an optional server/Xvfb presentation
+  adapter. It uses a headed browser, selects only the QR tab, creates a private
+  `0600` screenshot, waits for approval, verifies return to the order page, and
+  removes the screenshot on every terminal path. No QR value enters CLI JSON.
+- `auth login --link` is an explicit ephemeral presentation adapter. The
+  headed Chrome page decodes its visible QR with `BarcodeDetector`, validates
+  the allowlisted Coupang app/login URL plus the two-digit approval number, and
+  writes both once to stderr. Neither value enters JSON, files created by the
+  product, persisted sessions, fixtures, structured logs, or error messages;
+  callers must not redirect this explicit output into logs. A fresh-profile
+  live check decoded and validated both fields before cancellation.
+- Default QR login uses the same narrow headed adapter without writing a PNG;
+  it automatically selects the QR tab in the visible browser and returns
+  `verified` only after the exact protected order page finishes loading.
+- Headless verification and sync have an explicit `--headed` read-only fallback
+  when the protected document returns an access-denied response.
+- Authentication state is captured after human-approved login into a private,
+  atomic `0600` session file. A later process restores it into installed Chrome
+  and rotates it only after a successful authenticated read; cookie values are
+  never printed or passed through CLI/MCP outputs.
+- The initial order document bootstraps the authenticated origin. Pagination
+  then uses the UI's structured `GET /ssr/api/myorders/model` route with bounded
+  `requestYear`, `pageIndex`, and `size` parameters. This fixed the year-boundary
+  loop caused by treating UI `periodYear` as the model parameter.
+- Order responses are normalized into SQLite and checkpointed per page. Sync is
+  idempotent and resumable; only a complete from-start history walk reconciles
+  stale normalized rows.
+- Current normalization retains precise purchase/delivery timestamps,
+  cancellation and return quantities, receipt eligibility, brand metadata, and
+  gross order totals. Analytics expose purchase time/day/month distributions,
+  return/cancellation rates, and shipment-duration average/median/p90 by year.
+- `shopping_profile_v4` uses four denominator-visible observed-behavior axes:
+  purchase-day concentration against a same-sample uniform null, literal
+  day/night order majority, repeat-choice majority, and single-product basket
+  majority. Each axis carries its sample, observation window, threshold basis,
+  and provenance. Insufficient data produces `?` instead of a guessed type.
+- The standalone recap now embeds a 16-character vector roster and shows its
+  evidence: month-precision analysis window, axis receipts, yearly delivery
+  bars, 24-hour order distribution, zero-filled monthly history, repeat and
+  basket denominators, and source-native category coverage.
+- `orders products` and MCP `orders_product_insights` expose a separate
+  `private_local` product-level response: leaders by retained units, distinct
+  orders, and eligible item paid amount; highest and lowest derived paid-unit
+  amount; calendar-month average spend; and highest/lowest positive-spend day
+  with up to five observed product lines. Product identity uses vendor-item ID
+  then product ID and never name similarity. The response exposes ID and spend
+  coverage and contains no stable product IDs.
+- `orders recap --include-products` renders those real names, exact dates, and
+  amounts only after an explicit privacy opt-in. The default recap stays
+  `public_safe`; the opted-in result is `private_products`, keeps names blurred
+  until clicked, and warns that the HTML itself must not be shared.
+- Product category enrichment is implemented as a bounded, resumable command.
+  It reads the product page's JSON-LD breadcrumb, stores every observed path
+  node, groups aggregates by the leaf node, and leaves inaccessible products
+  explicitly unavailable rather than inferring from names.
+- The first full bounded category pass reached zero pending product references.
+  Both source-native breadcrumbs and explicit unavailable outcomes occurred in
+  live use. The adapter remains experimental until path stability is checked
+  over time and on more than one account.
+- QR image output is cropped to the QR region and enlarged; full login-page
+  screenshots are no longer written.
+- macOS can request an already-visible OTP send/resend control via the native
+  accessibility tree. This optional helper uses semantic controls rather than
+  screen coordinates and never reads, accepts, or stores the OTP.
+- The CGO-free SQLite and MCP dependency set cross-builds for macOS, Windows,
+  and Linux on both arm64 and amd64.
+
 ### Authentication
 
 - A dedicated Chrome session can bootstrap authentication.
+- Coupang exposes a desktop QR login. Redacted headed-browser research observed
+  `POST /login/qrcode/create.pang` and `/login/qrcode/query.pang`; the create
+  response contains QR link/code, verification-code, status, and creation-time
+  fields. Values were not logged or persisted.
+- A generic QR login successfully authenticated the main Coupang site but did
+  not authenticate a later direct order-host visit. Entering login through the
+  protected order URL is therefore a required session/return-context invariant,
+  not a cosmetic redirect.
+- Fresh true-headless Chrome received HTTP 403 at the protected order entry,
+  while a headed Chrome renderer reached the login page and created a QR. Linux
+  server login therefore currently requires a headed display such as Xvfb;
+  routine verification and sync remain headless-first.
+- Native headed Chrome with a manual click successfully sent a phone OTP; a
+  Playwright-driven click on the same flow received `403` from
+  `/login/v2/pincode/send`. Production login should therefore launch the system
+  browser and leave challenge interaction to the user.
 - Email/password login triggered CAPTCHA and was not bypassed.
 - Phone-number login with a human-provided OTP succeeded.
 - OTPs were used ephemerally and were not persisted.
+- Orca/computer-use is a research aid, not a runtime requirement. Machines with
+  no headed renderer should consume normalized exports rather than transferring
+  cookies or automating CAPTCHA/OTP; Xvfb can supply the headed renderer used by
+  the QR-output adapter.
 - Doppler project/config: `cli-mcp-lab/dev_coupang`.
 - Secret names: `COUPANG_EMAIL`, `COUPANG_PASSWORD`, `COUPANG_PHONE`.
 
 ### Public and product surfaces
 
 - Search results are server-rendered and can be extracted without scrolling.
+- Optional Coupang Partners deeplinks are implemented behind the official
+  HMAC-signed API adapter. Canonical URLs are never replaced; `affiliate_url`
+  is separate, failures preserve canonical output, disclosure is definite,
+  buyer price verification and self-purchase ineligibility are explicit, and
+  CLI/MCP callers can opt out per request or process-wide. Business signup is
+  complete; final activity-channel approval and live API-key validation remain
+  pending, so the capability is experimental.
+- Typed product search supports an ordinary query or a numeric source-native
+  category ID. Verified source controls are `scoreDesc` (쿠팡 랭킹순),
+  `saleCountDesc` (판매량순), `latestAsc`, `salePriceAsc`, and
+  `salePriceDesc`. Rating/review-count orders are local observed-field sorts.
+  Responses preserve the selected scope, provenance, and original page
+  position; 판매량순 does not claim an unavailable absolute sales count.
+- Listing options are collapsed by product ID by default. Search-card reviews
+  can be product-page-wide, so they are labeled `product_page_observed` and are
+  not attributed to a particular CPU/GPU/storage option. Exact vendor-item
+  identities remain available for inspection and explicit cart addition.
+- Computer memory, storage, CPU, GPU, OS, and explicit used/refurbished/display
+  condition markers can be normalized from the observed option title. The
+  evidence source remains `observed_product_title`; no missing part is guessed.
 - `https://www.coupang.com/next-api/review` returns structured review data when replayed with a valid anonymous web session.
 - Product detail pages expose JSON endpoints for review summaries, paged reviews, quantity/price/delivery, promotions, inquiries, related products, recommendations, banners, and brand data.
 - `https://reco.coupang.com/recommend/widget` exposes rich product metadata including identifiers, images, prices, discounts, delivery badges, rating counts, and rating averages.
 
-### Orders
+### Orders and receipts
 
 - Order list URL: `https://mc.coupang.com/ssr/desktop/order/list`.
-- The response contains an approximately 147 KB `__NEXT_DATA__` JSON document.
-- Validated location: `props.pageProps.domains.desktopOrder`.
+- The bootstrap response contains `__NEXT_DATA__` at
+  `props.pageProps.domains.desktopOrder`.
+- Pagination uses `GET /ssr/api/myorders/model`; the response is a direct JSON
+  model with `orderList`, `hasNext`, `nextYear`, and `nextPageIndex`.
 - First response contained five order groups and structured pagination.
 - Pagination fields: `hasPrev`, `prevYear`, `prevPageIndex`, `hasNext`, `nextYear`, `nextPageIndex`.
 - Order data includes order date/ID, totals, product and vendor-item IDs, names, quantities, list/discounted prices, images, shipment status, carrier and invoice information, estimated/promised/delivered dates, seller metadata, cancellation/return/exchange state, review eligibility, reorder eligibility, fees, and brand information.
-- Routine extraction does not require DOM selectors; parse `__NEXT_DATA__` directly.
+- Routine extraction does not require DOM selectors; parse the structured model
+  directly.
+- The receipt page exposes structured cash, credit-card, vendor, and form
+  domains, plus paged download-history state. A read-only cash request-status
+  route is confirmed. Receipt list/download contracts remain researched rather
+  than supported; see `research/endpoint-catalog.md`.
+- The credit-card receipt summary exposes selected-card, date range, amount,
+  and count shapes, but no installment-month field is verified. The typed
+  account response therefore reports order-payment statistics as unavailable
+  rather than treating registered cards as actual usage or guessing
+  lump-sum/installment splits.
 
 ## Important limitation
 
-Pure Node HTTP replay of the order-list document returned `403` with minimal headers and `406` even after replaying captured browser headers. Review JSON replay succeeded, but strict browser-process-free order retrieval has not yet been proven.
+Pure Node HTTP replay of the order-list document returned `403` with minimal headers and `406` even after replaying captured browser headers. Review JSON replay succeeded, but strict browser-process-free order retrieval has not been proven. The product restores its private Coupang session into a real installed Chrome process and performs the model fetch in the authenticated same-origin page.
 
 The pragmatic first architecture is:
 
-1. Use a minimal Chromium session only for authentication and protected order-document retrieval.
-2. Parse embedded JSON directly; do not click, scroll, or scrape rendered order cards.
+1. Use installed Chrome for authentication and protected structured retrieval.
+2. Parse the order-model JSON directly; do not click, scroll, or scrape rendered order cards during routine sync.
 3. Normalize results into local SQLite.
-4. Run all analysis, search, comparison, export, CLI, and MCP operations locally without browser interaction.
-5. Investigate the server-side order API used to populate Next.js SSR as the next protocol-research target.
+4. Run normalization, analysis, comparison, export, CLI, and MCP orchestration
+   locally; isolate live product and order retrieval inside the installed-browser
+   source adapters.
+5. Keep newly discovered APIs in the redacted endpoint catalog and promote them
+   only after read/write classification and synthetic contract tests.
 
-## Proposed first milestones
+## Authentication architecture decision
 
-1. `coupangctl auth` — isolated profile, phone OTP, session status, logout.
-2. `coupangctl orders sync --all` — year/page traversal with checkpointing and redacted logs.
-3. SQLite schema for orders, shipments, products, prices, sellers, and sync state.
-4. `coupangctl orders list`, `spend`, `reorder`, and JSON/CSV export.
-5. Product/review client with ad labelling, price normalization, and comparison.
-6. MCP server layered over the same typed core rather than a separate browser implementation.
+The inspected `tossinvest-cli` is useful prior art, but its authentication
+implementation should not be copied directly. Toss exposes a QR and phone-app
+approval flow, after which its authenticated web session can be imported into a
+typed HTTP client with a coherent browser user agent. Even there, a person must
+perform the second-factor approval.
+
+Coupang's observed phone flow and protected order document have different
+constraints: OTP sending is coupled to genuine browser interaction, and direct
+HTTP replay of the protected document was denied. The product therefore keeps
+the session inside a dedicated Chrome profile instead of copying cookies or
+storage state. The user-visible goal remains similar: human participation only
+for the authentication challenge, with a browser-owned implementation that is
+headless-first for routine reads. An official read-only API, sandbox, or
+developer allowlist can replace this source adapter later without changing the
+rest of the product.
+
+## Roadmap
+
+See `ROADMAP.md` or run `coupangctl capabilities`. P0 order-history and local
+analytics, explainable shopping types, achievements, and a public-safe local
+HTML recap, private local product receipts, and experimental membership-benefit
+snapshots are implemented. Product-type/category rankings and computer-title
+spec normalization are experimental; category-label discovery and
+selected-option coverage across layouts are the next search tasks.
+Source-native purchase-category enrichment is also experimental while its
+stability is validated. Credit-card receipt and installment evidence is the
+next P1 account adapter; current product price history follows after those
+contracts stabilize.
 
 ## Security and compliance
 
 - Never commit credentials or session cookies.
-- Prefer OS keychain or an encrypted local session store for runtime cookies; Doppler is for development bootstrap only.
+- The current session file is private mode `0600` and atomically replaced. OS
+  keychain/envelope encryption remains a hardening item; Doppler is for
+  development bootstrap only.
 - Redact PII and stable identifiers from logs and fixtures.
 - Use synthetic fixtures in tests.
 - No checkout, purchase, payment, cancellation, return, or account-setting mutation without an explicit separately designed confirmation boundary.
@@ -67,4 +241,3 @@ The pragmatic first architecture is:
 ## Prior-art observation
 
 The inspected `coupang-browser-mcp` project used Playwright CDP and DOM/embedded-data extraction. At the time of research it had no GitHub stars or forks and its order tooling parsed rendered markup. `coupangctl` should differentiate through durable local data, protocol-first extraction, broad history, and useful consumer analytics.
-

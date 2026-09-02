@@ -1,0 +1,91 @@
+package auth
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
+)
+
+type Browser interface {
+	Inspect(context.Context) (BrowserStatus, error)
+	Login(context.Context, core.LoginRequest) error
+	Verify(context.Context) error
+}
+
+func (s *Service) Verify(ctx context.Context) (core.AuthStatus, error) {
+	status, err := s.browser.Inspect(ctx)
+	if err != nil {
+		return core.AuthStatus{}, err
+	}
+	if err := s.browser.Verify(ctx); err != nil {
+		return core.AuthStatus{}, err
+	}
+	return core.AuthStatus{
+		State:          core.AuthVerified,
+		Browser:        status.Name,
+		ProfilePresent: true,
+		CheckedAt:      s.now().UTC(),
+		NextAction:     "the read-only browser session is available",
+	}, nil
+}
+
+type BrowserStatus struct {
+	Name           string
+	ProfilePresent bool
+}
+
+type Service struct {
+	browser Browser
+	now     func() time.Time
+}
+
+func NewService(browser Browser) *Service {
+	return &Service{browser: browser, now: time.Now}
+}
+
+func (s *Service) Status(ctx context.Context) (core.AuthStatus, error) {
+	status, err := s.browser.Inspect(ctx)
+	if err != nil {
+		return core.AuthStatus{}, err
+	}
+
+	result := core.AuthStatus{
+		State:          core.AuthNotConfigured,
+		Browser:        status.Name,
+		ProfilePresent: status.ProfilePresent,
+		CheckedAt:      s.now().UTC(),
+		NextAction:     "run `coupangctl auth login` on an interactive desktop",
+	}
+	if status.ProfilePresent {
+		if err := s.browser.Verify(ctx); err != nil {
+			if errors.Is(err, core.ErrAuthenticationRequired) {
+				result.State = core.AuthUnverified
+				result.NextAction = "run `coupangctl auth login` to renew the expired session"
+				return result, nil
+			}
+			return core.AuthStatus{}, err
+		}
+		result.State = core.AuthVerified
+		result.NextAction = "the read-only browser session is available"
+	}
+	return result, nil
+}
+
+func (s *Service) Login(ctx context.Context, request core.LoginRequest) (core.LoginResult, error) {
+	if err := request.Validate(); err != nil {
+		return core.LoginResult{}, err
+	}
+	if err := s.browser.Login(ctx, request); err != nil {
+		return core.LoginResult{}, err
+	}
+	result := core.LoginResult{
+		State:      core.AuthUnverified,
+		Mode:       request.Mode,
+		NextAction: "run `coupangctl auth verify` to check the protected read-only session",
+	}
+	result.State = core.AuthVerified
+	result.NextAction = "the protected read-only browser session is available"
+	return result, nil
+}

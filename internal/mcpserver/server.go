@@ -1,0 +1,263 @@
+package mcpserver
+
+import (
+	"context"
+	"errors"
+
+	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+const authStatusTool = "auth_status"
+
+type StatusProvider interface {
+	Status(context.Context) (core.AuthStatus, error)
+}
+
+type OrderProvider interface {
+	Sync(context.Context, core.SyncRequest) (core.SyncResult, error)
+	EnrichCategories(context.Context, core.CategoryEnrichmentRequest) (core.CategoryEnrichmentResult, error)
+	List(context.Context, core.OrderFilter) ([]core.Order, error)
+	Spend(context.Context, core.OrderFilter) (core.SpendSummary, error)
+	Stats(context.Context, core.OrderFilter) (core.OrderStats, error)
+	Insights(context.Context, core.OrderFilter) (core.ShoppingInsights, error)
+	ProductInsights(context.Context, core.OrderFilter) (core.ProductInsights, error)
+	ReorderCandidates(context.Context, core.OrderFilter) ([]core.ReorderCandidate, error)
+	Export(context.Context, core.OrderFilter) (core.OrderExport, error)
+}
+
+type ProductProvider interface {
+	Search(context.Context, core.ProductSearchRequest) (core.ProductSearchResult, error)
+	Inspect(context.Context, core.ProductInspectRequest) (core.ProductInspection, error)
+	AddToCart(context.Context, core.CartAddRequest) (core.CartAddResult, error)
+}
+
+type AccountProvider interface {
+	Snapshot(context.Context, core.AccountBenefitsRequest) (core.AccountBenefitsSnapshot, error)
+}
+
+func New(provider StatusProvider, version string) *mcp.Server {
+	return newServer(provider, nil, nil, nil, version)
+}
+
+func NewWithOrders(authProvider StatusProvider, orderProvider OrderProvider, version string) *mcp.Server {
+	return newServer(authProvider, orderProvider, nil, nil, version)
+}
+
+func NewWithFeatures(authProvider StatusProvider, orderProvider OrderProvider, productProvider ProductProvider, version string) *mcp.Server {
+	return newServer(authProvider, orderProvider, productProvider, nil, version)
+}
+
+func NewWithAllFeatures(authProvider StatusProvider, orderProvider OrderProvider, productProvider ProductProvider, accountProvider AccountProvider, version string) *mcp.Server {
+	return newServer(authProvider, orderProvider, productProvider, accountProvider, version)
+}
+
+func newServer(provider StatusProvider, orders OrderProvider, products ProductProvider, account AccountProvider, version string) *mcp.Server {
+	server := mcp.NewServer(&mcp.Implementation{
+		Name:    "coupangctl",
+		Version: version,
+	}, nil)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        authStatusTool,
+		Description: "Inspect whether coupangctl has a dedicated local browser profile. This does not expose cookies or credentials.",
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint: true,
+		},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, core.AuthStatus, error) {
+		status, err := provider.Status(ctx)
+		if err != nil {
+			return nil, core.AuthStatus{}, errors.New("browser_unavailable: cannot inspect the dedicated browser profile")
+		}
+		return nil, status, nil
+	})
+	if orders != nil {
+		addOrderTools(server, orders)
+	}
+	if products != nil {
+		addProductTools(server, products)
+	}
+	if account != nil {
+		addAccountTools(server, account)
+	}
+
+	return server
+}
+
+func Run(ctx context.Context, provider StatusProvider, version string) error {
+	return New(provider, version).Run(ctx, &mcp.StdioTransport{})
+}
+
+func RunWithOrders(ctx context.Context, authProvider StatusProvider, orderProvider OrderProvider, version string) error {
+	return NewWithOrders(authProvider, orderProvider, version).Run(ctx, &mcp.StdioTransport{})
+}
+
+func RunWithFeatures(ctx context.Context, authProvider StatusProvider, orderProvider OrderProvider, productProvider ProductProvider, version string) error {
+	return NewWithFeatures(authProvider, orderProvider, productProvider, version).Run(ctx, &mcp.StdioTransport{})
+}
+
+func RunWithAllFeatures(ctx context.Context, authProvider StatusProvider, orderProvider OrderProvider, productProvider ProductProvider, accountProvider AccountProvider, version string) error {
+	return NewWithAllFeatures(authProvider, orderProvider, productProvider, accountProvider, version).Run(ctx, &mcp.StdioTransport{})
+}
+
+func addAccountTools(server *mcp.Server, provider AccountProvider) {
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "account_benefits",
+		Description: "Read the authenticated user's current WOW membership state, Coupang-reported benefit savings, registered payment-method brands, expected WOW Card rewards, and monthly observed WOW Card cash rewards. Order-payment and lump-sum/installment statistics explicitly remain unavailable until transaction evidence is adopted. Account identifiers and raw transaction descriptions are discarded. This never changes membership, payment, or card state.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPointer(true)},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.AccountBenefitsRequest) (*mcp.CallToolResult, core.AccountBenefitsSnapshot, error) {
+		result, err := provider.Snapshot(ctx, input)
+		if err != nil {
+			return nil, core.AccountBenefitsSnapshot{}, errors.New("coupangctl could not read account benefit data")
+		}
+		return nil, result, nil
+	})
+}
+
+func addProductTools(server *mcp.Server, provider ProductProvider) {
+	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPointer(true)}
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "products_search",
+		Description: "Search Coupang from natural language or a source-native category ID. Supports distinct Coupang ranking, sales, latest, price, rating, and review sorts; computer memory/storage and explicit used-item filters; and listing-level diversity by default. When Coupang Partners credentials are configured, each canonical URL may also have a separate affiliate_url plus a definite commission disclosure; set disable_affiliate=true to opt out. Search position is evidence of the selected Coupang result order, not absolute unit sales. Never invent an unobserved product field.",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.ProductSearchRequest) (*mcp.CallToolResult, core.ProductSearchResult, error) {
+		result, err := provider.Search(ctx, input)
+		if err != nil {
+			return nil, core.ProductSearchResult{}, safeProductToolError(err)
+		}
+		return nil, result, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "product_inspect",
+		Description: "Inspect one products_search candidate: public details, gallery and detail images, current price, delivery, coupons or card benefits when observed, aggregate ratings, and sanitized reviews. When configured, affiliate_url remains separate from the canonical URL and carries the same commission disclosure; set disable_affiliate=true to opt out. This never adds to cart or purchases.",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.ProductInspectRequest) (*mcp.CallToolResult, core.ProductInspection, error) {
+		result, err := provider.Inspect(ctx, input)
+		if err != nil {
+			return nil, core.ProductInspection{}, safeProductToolError(err)
+		}
+		return nil, result, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "cart_add",
+		Description: "Add one exact products_search candidate to the user's Coupang cart. Call only after the user explicitly asks to add that item and set confirmed=true. This changes external cart state but never purchases, orders, or pays. Never retry automatically when verification is inconclusive.",
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: false, OpenWorldHint: boolPointer(true),
+		},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.CartAddRequest) (*mcp.CallToolResult, core.CartAddResult, error) {
+		result, err := provider.AddToCart(ctx, input)
+		if err != nil {
+			return nil, core.CartAddResult{}, safeProductToolError(err)
+		}
+		return nil, result, nil
+	})
+}
+
+func addOrderTools(server *mcp.Server, provider OrderProvider) {
+	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPointer(false)}
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "orders_list", Description: "List normalized local orders using bounded date and result filters.", Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.OrderFilter) (*mcp.CallToolResult, core.OrderList, error) {
+		orders, err := provider.List(ctx, input)
+		if err != nil {
+			return nil, core.OrderList{}, safeToolError(err)
+		}
+		return nil, core.OrderList{Orders: orders}, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "orders_spend", Description: "Summarize gross normalized order totals for an optional date range.", Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.OrderFilter) (*mcp.CallToolResult, core.SpendSummary, error) {
+		result, err := provider.Spend(ctx, input)
+		if err != nil {
+			return nil, core.SpendSummary{}, safeToolError(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "orders_stats", Description: "Summarize normalized cancellation and return rates for an optional date range.", Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.OrderFilter) (*mcp.CallToolResult, core.OrderStats, error) {
+		result, err := provider.Stats(ctx, input)
+		if err != nil {
+			return nil, core.OrderStats{}, safeToolError(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "orders_insights", Description: "Return privacy-conscious, shareable shopping-pattern aggregates for an optional date range.", Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.OrderFilter) (*mcp.CallToolResult, core.ShoppingInsights, error) {
+		result, err := provider.Insights(ctx, input)
+		if err != nil {
+			return nil, core.ShoppingInsights{}, safeToolError(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "orders_product_insights", Description: "Return private local product-name, paid-amount, and exact spend-day aggregates for an optional date range.", Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.OrderFilter) (*mcp.CallToolResult, core.ProductInsights, error) {
+		result, err := provider.ProductInsights(ctx, input)
+		if err != nil {
+			return nil, core.ProductInsights{}, safeToolError(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "orders_reorder_candidates", Description: "List locally derived repeat-purchase candidates without placing an order.", Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.OrderFilter) (*mcp.CallToolResult, core.ReorderList, error) {
+		candidates, err := provider.ReorderCandidates(ctx, input)
+		if err != nil {
+			return nil, core.ReorderList{}, safeToolError(err)
+		}
+		return nil, core.ReorderList{Candidates: candidates}, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "orders_export", Description: "Export bounded normalized local order data. Browser state and raw payloads are never included.", Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.OrderFilter) (*mcp.CallToolResult, core.OrderExport, error) {
+		result, err := provider.Export(ctx, input)
+		if err != nil {
+			return nil, core.OrderExport{}, safeToolError(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "orders_enrich_categories", Description: "Cache source-native Coupang product breadcrumb categories for uncached local products.",
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: true, OpenWorldHint: boolPointer(true),
+		},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.CategoryEnrichmentRequest) (*mcp.CallToolResult, core.CategoryEnrichmentResult, error) {
+		result, err := provider.EnrichCategories(ctx, input)
+		if err != nil {
+			return nil, core.CategoryEnrichmentResult{}, safeToolError(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "orders_sync", Description: "Refresh the normalized local ledger from the authenticated dedicated browser profile.",
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: true, OpenWorldHint: boolPointer(true),
+		},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.SyncRequest) (*mcp.CallToolResult, core.SyncResult, error) {
+		result, err := provider.Sync(ctx, input)
+		if err != nil {
+			return nil, core.SyncResult{}, safeToolError(err)
+		}
+		return nil, result, nil
+	})
+}
+
+func boolPointer(value bool) *bool { return &value }
+
+func safeToolError(error) error {
+	return errors.New("coupangctl could not complete the requested order operation")
+}
+
+func safeProductToolError(error) error {
+	return errors.New("coupangctl could not complete the requested product operation")
+}

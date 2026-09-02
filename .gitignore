@@ -11,4 +11,8 @@ storage-state.json
 playwright-report/
 test-results/
 .DS_Store
-
+/coupangctl
+/coupangctl.exe
+coverage.out
+login-qr*.png
+coupangctl-qr*.png

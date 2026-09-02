@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>나의 쇼핑 기록 리캡</title>
+  <style>
+    @font-face { font-family: "RecapDoodle"; src: url("{{.FontData}}") format("truetype"); font-display: swap; }
+    :root {
+      --paper: #f5f0e4; --paper-2: #fffdf7; --ink: #171717; --muted: #706d66;
+      --line: rgba(23, 23, 23, 0.22); --accent: #2457ff; --accent-soft: #dfe6ff;
+      --shadow: 5px 6px 0 #171717;
+      --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      --doodle: "RecapDoodle", "Apple SD Gothic Neo", sans-serif;
+    }
+    :root[data-theme="dark"] {
+      --paper: #161616; --paper-2: #22211f; --ink: #f7f1e5; --muted: #aaa69d;
+      --line: rgba(247, 241, 229, 0.24); --accent: #7f9cff; --accent-soft: #293359; --shadow: 5px 6px 0 #060606;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; color: var(--ink); font-family: var(--sans); line-height: 1.55;
+      background: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px), var(--paper);
+      background-size: 34px 34px;
+    }
+    button { color: inherit; font: inherit; }
+    .shell { width: min(1120px, calc(100% - 28px)); margin: 14px auto 72px; }
+    .sheet { position: relative; overflow: hidden; margin: 0 0 20px; padding: clamp(24px, 5vw, 64px); background: var(--paper-2); border: 2px solid var(--ink); box-shadow: var(--shadow); }
+    .sheet::after { content: ""; position: absolute; inset: 12px; border: 1px solid var(--line); pointer-events: none; }
+    .sheet > * { position: relative; z-index: 1; }
+    .utility { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { font-family: var(--doodle); font-size: 25px; letter-spacing: -0.02em; }
+    .brand b { color: var(--accent); }
+    .tiny-button, .action-button, .reveal-button { appearance: none; border: 1.5px solid var(--ink); background: var(--paper-2); padding: 9px 14px; cursor: pointer; box-shadow: 2px 3px 0 var(--ink); font-weight: 800; }
+    .tiny-button:hover, .action-button:hover, .reveal-button:hover { transform: translateY(-2px); }
+    .kicker { margin: 0 0 7px; color: var(--accent); font-weight: 900; letter-spacing: 0.08em; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1, h2, h3 { text-wrap: balance; }
+    .section-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, 0.52fr); gap: 24px; align-items: end; margin-bottom: 36px; }
+    .section-title { margin: 0; font-family: var(--doodle); font-size: clamp(40px, 7vw, 72px); line-height: 0.92; letter-spacing: -0.04em; }
+    .lead { margin: 0; color: var(--muted); font-size: 16px; }
+    .scribble { font-family: var(--doodle); color: var(--accent); font-size: 25px; transform: rotate(-2deg); }
+    .hero { min-height: min(790px, calc(100vh - 28px)); display: grid; grid-template-rows: auto 1fr auto; }
+    .hero-grid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr); gap: 32px; align-items: center; }
+    .period { display: inline-flex; gap: 8px; align-items: center; margin: 0 0 18px; padding: 6px 11px; border: 1px solid var(--ink); font-size: 13px; font-weight: 800; }
+    .type-code { margin: 0; font-family: var(--doodle); font-size: clamp(86px, 17vw, 180px); line-height: 0.72; letter-spacing: -0.08em; color: var(--accent); }
+    .type-name { max-width: 700px; margin: 18px 0 20px; font-family: var(--doodle); font-size: clamp(44px, 6vw, 76px); line-height: 0.92; letter-spacing: -0.055em; white-space: nowrap; }
+    .hero-note { max-width: 590px; font-size: clamp(18px, 2.5vw, 25px); font-weight: 800; }
+    .avatar-wrap { position: relative; min-height: 430px; display: grid; place-items: center; }
+    .avatar-wrap::before { content: "들켰다"; position: absolute; right: 1%; top: 7%; z-index: 2; padding: 5px 14px 2px; background: var(--accent); color: white; border: 2px solid var(--ink); font-family: var(--doodle); font-size: 28px; transform: rotate(5deg); }
+    .avatar { position: relative; width: min(390px, 90%); aspect-ratio: 1; overflow: hidden; border-radius: 48% 52% 45% 55%; background: var(--paper); border: 2px solid var(--ink); transform: rotate(2deg); }
+    .avatar img { position: absolute; left: calc(var(--char-col) * -100%); top: calc(var(--char-row) * -100%); width: 400%; height: 400%; max-width: none; }
+    :root[data-theme="dark"] .avatar img { filter: invert(0.91) contrast(1.1); }
+    .hero-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .letter-pill { padding: 7px 12px; border: 1.5px solid var(--ink); background: var(--paper); font-weight: 900; }
+    .receipt { display: grid; grid-template-columns: repeat(4, 1fr); border: 2px solid var(--ink); border-bottom: 0; background: var(--paper); }
+    .receipt-item { min-width: 0; padding: 18px; border-right: 1px dashed var(--ink); border-bottom: 2px solid var(--ink); }
+    .receipt-item:nth-child(4n) { border-right: 0; }
+    .receipt-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; font-weight: 800; }
+    .receipt-value { display: block; font-size: clamp(18px, 2vw, 25px); font-weight: 950; white-space: nowrap; }
+    .receipt-note { margin: 18px 0 0; color: var(--muted); font-size: 13px; }
+    .axes { display: grid; gap: 32px; }
+    .axis-row { display: grid; grid-template-columns: minmax(190px, 0.33fr) 1fr; gap: 28px; align-items: center; }
+    .axis-letter { display: flex; align-items: baseline; gap: 12px; }
+    .axis-letter strong { font-family: var(--doodle); font-size: 80px; line-height: 0.8; color: var(--accent); }
+    .axis-letter span { font-family: var(--doodle); font-size: 28px; }
+    .axis-copy { margin: 0 0 13px; font-weight: 800; }
+    .track-labels { display: flex; justify-content: space-between; margin-bottom: 7px; font-size: 13px; font-weight: 900; }
+    .axis-track { position: relative; height: 21px; background: var(--paper); border: 2px solid var(--ink); }
+    .axis-track::after { content: ""; position: absolute; inset: 0 auto 0 0; width: calc(var(--position) * 1%); background: var(--accent-soft); border-right: 1px solid var(--accent); }
+    .axis-threshold { position: absolute; z-index: 2; top: -7px; bottom: -7px; left: calc(var(--threshold) * 1%); width: 2px; background: var(--ink); }
+    .axis-dot { position: absolute; z-index: 3; left: calc(var(--position) * 1%); top: 50%; width: 17px; height: 17px; border-radius: 50%; background: var(--accent); border: 2px solid var(--ink); transform: translate(-50%, -50%); }
+    .axis-proof { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+    .chart-frame { border-left: 2px solid var(--ink); border-bottom: 2px solid var(--ink); min-height: 270px; padding: 16px 12px 0 20px; }
+    .delivery-bars { height: 280px; display: flex; align-items: end; gap: clamp(8px, 3vw, 32px); }
+    .delivery-bar { flex: 1; min-width: 0; display: grid; grid-template-rows: 1fr auto; align-items: end; height: 100%; text-align: center; }
+    .delivery-column { position: relative; width: min(70px, 75%); height: calc(var(--height) * 1%); min-height: 12px; justify-self: center; background: var(--accent); border: 2px solid var(--ink); }
+    .delivery-column span { position: absolute; left: 50%; top: -30px; transform: translateX(-50%); white-space: nowrap; font-weight: 950; }
+    .delivery-label { padding-top: 8px; font-size: 13px; }
+    .chart-summary { display: inline-block; margin: 24px 0 0; padding: 7px 11px; border: 1.5px solid var(--ink); font-family: var(--doodle); font-size: 24px; transform: rotate(-1deg); }
+    .speed-strip { display: grid; grid-template-columns: repeat(2, 1fr); margin-top: 26px; border: 2px solid var(--ink); }
+    .speed-stat { padding: 20px; }
+    .speed-stat + .speed-stat { border-left: 2px solid var(--ink); }
+    .speed-stat strong { display: block; font-family: var(--doodle); font-size: 48px; line-height: 1; color: var(--accent); }
+    .category-head { display: flex; justify-content: space-between; gap: 18px; align-items: start; margin-bottom: 28px; }
+    .category-bars { display: grid; gap: 17px; }
+    .category-row { display: grid; grid-template-columns: minmax(120px, 0.34fr) 1fr auto; gap: 13px; align-items: center; }
+    .category-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 900; filter: blur(6px); user-select: none; transition: filter 160ms ease; }
+    .categories-visible .category-name { filter: blur(0); user-select: auto; }
+    .category-track { height: 28px; background: var(--paper); border: 1.5px solid var(--ink); }
+    .category-fill { width: calc(var(--width) * 1%); height: 100%; background: var(--accent); border-right: 1.5px solid var(--ink); }
+    .category-count { min-width: 56px; text-align: right; font-weight: 900; }
+    .coverage { margin-top: 25px; padding: 13px 16px; border: 1.5px dashed var(--ink); font-size: 13px; }
+    .clock-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 0.35fr); gap: 34px; align-items: center; }
+    .hours { display: grid; grid-template-columns: repeat(24, 1fr); align-items: end; gap: 3px; height: 220px; border-bottom: 2px solid var(--ink); }
+    .hour { position: relative; height: calc(var(--height) * 1%); min-height: 2px; background: var(--accent); }
+    .hour::after { content: attr(data-hour); position: absolute; left: 50%; bottom: -25px; transform: translateX(-50%); color: var(--muted); font-size: 10px; }
+    .hour:not(:nth-child(4n + 1))::after { display: none; }
+    .clock-callout { padding: 26px; border: 2px solid var(--ink); background: var(--paper); transform: rotate(1deg); }
+    .clock-callout strong { display: block; font-family: var(--doodle); font-size: 63px; line-height: 0.95; color: var(--accent); }
+    .month-chart { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(8px, 1fr); align-items: end; gap: 2px; min-height: 190px; padding-top: 25px; border-bottom: 2px solid var(--ink); overflow: hidden; }
+    .month { position: relative; height: calc(var(--height) * 1%); min-height: 2px; background: var(--ink); }
+    .month[data-marker]:not([data-marker=""])::after { content: attr(data-marker); position: absolute; left: 0; top: -23px; font-size: 10px; color: var(--muted); }
+    .month[data-marker]:not([data-marker=""]) { background: var(--accent); }
+    .streak { margin-top: 26px; font-family: var(--doodle); font-size: clamp(42px, 8vw, 82px); line-height: 1; }
+    .streak b { color: var(--accent); }
+    .choice-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+    .metric-poster { min-height: 270px; padding: 25px; border: 2px solid var(--ink); background: var(--paper); display: flex; flex-direction: column; justify-content: space-between; }
+    .metric-poster:nth-child(2) { transform: rotate(0.7deg); }
+    .metric-poster strong { display: block; font-family: var(--doodle); font-size: clamp(62px, 10vw, 110px); line-height: 0.8; color: var(--accent); }
+    .metric-poster h3 { margin: 12px 0 4px; font-family: var(--doodle); font-size: 35px; }
+    .metric-poster p { margin-bottom: 0; color: var(--muted); }
+    .metric-proof { margin-top: 22px; padding-top: 12px; border-top: 1px dashed var(--ink); font-size: 12px; }
+    .private-warning { margin: 0 0 26px; padding: 13px 16px; border: 2px solid var(--ink); background: var(--accent-soft); font-weight: 900; }
+    .product-summary { display: grid; grid-template-columns: repeat(3, 1fr); margin-bottom: 24px; border: 2px solid var(--ink); }
+    .product-summary > div { padding: 18px; }
+    .product-summary > div + div { border-left: 1px dashed var(--ink); }
+    .product-summary span { display: block; color: var(--muted); font-size: 12px; font-weight: 900; }
+    .product-summary strong { display: block; margin-top: 5px; font-family: var(--doodle); font-size: clamp(31px, 5vw, 49px); line-height: 1; }
+    .product-leaders { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .product-card { min-width: 0; padding: 20px; border: 2px solid var(--ink); background: var(--paper); }
+    .product-card:nth-child(2) { transform: rotate(-0.6deg); }
+    .product-card .product-rank { display: block; margin-bottom: 13px; color: var(--accent); font-size: 12px; font-weight: 950; letter-spacing: 0.05em; }
+    .product-card h3 { min-height: 2.6em; margin-bottom: 12px; font-family: var(--doodle); font-size: 29px; line-height: 1.02; word-break: keep-all; }
+    .product-card strong { font-family: var(--doodle); font-size: 37px; color: var(--accent); }
+    .private-value { filter: blur(7px); user-select: none; transition: filter 160ms ease; }
+    .products-visible .private-value { filter: none; user-select: auto; }
+    .price-extremes, .spend-days { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 22px; }
+    .price-note, .spend-day { padding: 22px; border: 2px solid var(--ink); }
+    .price-note span, .spend-day > span { color: var(--muted); font-size: 12px; font-weight: 900; }
+    .price-note h3, .spend-day h3 { margin: 8px 0 2px; font-family: var(--doodle); font-size: 31px; line-height: 1.05; }
+    .price-note strong, .spend-day strong { display: block; font-family: var(--doodle); font-size: clamp(39px, 7vw, 67px); line-height: 0.95; color: var(--accent); }
+    .day-products { margin: 18px 0 0; padding: 0; list-style: none; border-top: 1px dashed var(--ink); }
+    .day-products li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 9px 0; border-bottom: 1px dashed var(--line); }
+    .day-products b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .product-method { margin: 24px 0 0; color: var(--muted); font-size: 12px; }
+    .badges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .badge { min-height: 190px; padding: 22px; border: 2px solid var(--ink); background: var(--paper); box-shadow: 3px 4px 0 var(--ink); }
+    .badge:nth-child(2n) { transform: rotate(0.7deg); }
+    .badge::before { content: "✓"; display: grid; place-items: center; width: 39px; height: 39px; margin-bottom: 20px; border: 2px solid var(--ink); border-radius: 50%; color: var(--accent); font-size: 24px; font-weight: 950; }
+    .badge h3 { margin-bottom: 7px; font-family: var(--doodle); font-size: 31px; }
+    .badge p { margin: 0; color: var(--muted); }
+    .share-sheet { text-align: center; }
+    .share-code { margin: 0; font-family: var(--doodle); font-size: clamp(90px, 22vw, 210px); line-height: 0.8; color: var(--accent); }
+    .share-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 28px; }
+    .action-button { min-width: 145px; padding: 13px 18px; }
+    .action-button.primary { color: white; background: var(--accent); }
+    .toast { min-height: 28px; margin: 14px 0 0; font-weight: 900; }
+    details { margin-top: 30px; text-align: left; border-top: 2px solid var(--ink); padding-top: 18px; }
+    summary { cursor: pointer; font-family: var(--doodle); font-size: 26px; font-weight: 900; }
+    .method-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 18px; }
+    .method-grid h3 { margin-bottom: 5px; font-size: 14px; }
+    .method-grid p { margin: 0; color: var(--muted); font-size: 13px; }
+    .fineprint { margin: 24px 0 0; font-size: 12px; color: var(--muted); }
+    .empty { min-height: 75vh; display: grid; place-items: center; text-align: center; }
+    .empty h1 { font-family: var(--doodle); font-size: clamp(58px, 12vw, 108px); line-height: 0.9; }
+    .reveal { opacity: 0; transform: translateY(18px); transition: opacity 420ms ease, transform 420ms ease; }
+    .reveal.is-visible { opacity: 1; transform: none; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --paper: #161616; --paper-2: #22211f; --ink: #f7f1e5; --muted: #aaa69d; --line: rgba(247, 241, 229, 0.24); --accent: #7f9cff; --accent-soft: #293359; --shadow: 5px 6px 0 #060606; }
+      :root:not([data-theme="light"]) .avatar img { filter: invert(0.91) contrast(1.1); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+      .reveal { opacity: 1; transform: none; }
+    }
+    @media (max-width: 800px) {
+      .sheet { padding: 28px 22px; }
+      .hero-grid, .section-head, .clock-grid { grid-template-columns: 1fr; }
+      .hero-grid { gap: 0; }
+      .type-name { white-space: normal; word-break: keep-all; }
+      .avatar-wrap { min-height: 340px; }
+      .avatar { width: 310px; }
+      .receipt { grid-template-columns: repeat(2, 1fr); }
+      .receipt-item:nth-child(2n) { border-right: 0; }
+      .receipt-item:nth-child(odd) { border-right: 1px dashed var(--ink); }
+      .axis-row { grid-template-columns: 1fr; gap: 10px; }
+      .axis-letter strong { font-size: 62px; }
+      .category-row { grid-template-columns: minmax(92px, 0.4fr) 1fr auto; }
+      .badges { grid-template-columns: repeat(2, 1fr); }
+      .product-leaders { grid-template-columns: 1fr; }
+      .method-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+      .shell { width: calc(100% - 16px); margin-top: 8px; }
+      .sheet { margin-bottom: 12px; box-shadow: 3px 4px 0 var(--ink); }
+      .brand { font-size: 20px; }
+      .tiny-button { padding: 7px 10px; font-size: 12px; }
+      .hero { min-height: 720px; }
+      .avatar-wrap { min-height: 285px; }
+      .avatar { width: 255px; }
+      .receipt { grid-template-columns: 1fr; }
+      .receipt-item, .receipt-item:nth-child(odd) { border-right: 0; }
+      .delivery-bars { height: 230px; gap: 7px; }
+      .delivery-column span { font-size: 10px; }
+      .speed-strip, .choice-grid, .product-summary, .price-extremes, .spend-days { grid-template-columns: 1fr; }
+      .product-summary > div + div { border-left: 0; border-top: 1px dashed var(--ink); }
+      .speed-stat + .speed-stat { border-left: 0; border-top: 2px solid var(--ink); }
+      .category-head { display: block; }
+      .reveal-button { margin-top: 14px; }
+      .category-row { grid-template-columns: 86px 1fr auto; gap: 8px; }
+      .hours { height: 160px; gap: 2px; }
+      .badges { grid-template-columns: 1fr; }
+      .action-button { width: 100%; }
+    }
+    @media print {
+      :root { --shadow: none; }
+      body { background: white; }
+      .shell { width: 100%; margin: 0; }
+      .sheet { break-inside: avoid; box-shadow: none; margin: 0 0 8px; }
+      .tiny-button, .share-actions, .reveal-button, .toast { display: none; }
+      .category-name, .private-value { filter: none; }
+      .reveal { opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    {{if .Summary.Profile.Ready}}
+    <section class="sheet hero" aria-labelledby="recap-title">
+      <div class="utility"><span class="brand">coupang<b>ctl</b> shopping recap</span><button class="tiny-button" type="button" data-theme-toggle>종이 색 바꾸기</button></div>
+      <div class="hero-grid">
+        <div>
+          <p class="period">실제 기록 {{monthRange .Summary.FirstOrderDate .Summary.LastOrderDate}}</p>
+          <p class="kicker">나의 쇼핑 기록 네 글자</p>
+          <p class="type-code">{{.Summary.Profile.Code}}</p>
+          <h1 class="type-name" id="recap-title">{{typeTitle .Summary.Profile.Code}}</h1>
+          <p class="hero-note">{{comma .Summary.OrderCount}}건의 주문이 남긴 습관을 네 글자로 접었습니다. 성격검사는 아니고, 영수증이 좀 수다스러웠습니다.</p>
+        </div>
+        <div class="avatar-wrap"><div class="avatar" style="--char-col: {{characterColumn .Summary.Profile.Code}}; --char-row: {{characterRow .Summary.Profile.Code}};"><img src="{{.RosterData}}" alt="{{typeTitle .Summary.Profile.Code}} 낙서 캐릭터" width="1254" height="1254"></div></div>
+      </div>
+      <div class="hero-foot" aria-label="쇼핑 기록 유형 네 글자">{{range .Summary.Profile.Axes}}<span class="letter-pill">{{.SelectedCode}} {{axisLabel .SelectedCode}}</span>{{end}}</div>
+    </section>
+
+    <section class="sheet reveal" aria-labelledby="receipt-title">
+      <div class="section-head"><div><p class="kicker">SHOW THE RECEIPTS</p><h2 class="section-title" id="receipt-title">진짜 내 데이터 맞음</h2></div><p class="lead">쿠팡 주문 화면이 불러온 구조화 응답을 내 기기에서 정규화했습니다. {{if .Products}}이 파일은 상품명과 정확한 날짜를 포함한 비공개 버전입니다.{{else}}상품명이나 정확한 날짜는 이 공개용 리캡에 넣지 않았습니다.{{end}}</p></div>
+      <div class="receipt">
+        <div class="receipt-item"><span class="receipt-label">분석 기간</span><span class="receipt-value">{{monthRange .Summary.FirstOrderDate .Summary.LastOrderDate}}</span></div>
+        <div class="receipt-item"><span class="receipt-label">확인한 주문</span><span class="receipt-value">{{comma .Summary.OrderCount}}건</span></div>
+        <div class="receipt-item"><span class="receipt-label">구매가 있던 날</span><span class="receipt-value">{{comma .Summary.DistinctOrderDays}}일</span></div>
+        <div class="receipt-item"><span class="receipt-label">배송시간 표본</span><span class="receipt-value">{{comma .Summary.Samples.DeliveryEvents}}건</span></div>
+      </div>
+      <p class="receipt-note">규칙: 완전 취소 주문은 구매 행동에서 제외합니다. 배송시간은 구매 시각과 배송 완료 시각이 모두 있는 기록만 씁니다. 유형은 다른 사용자와 비교하지 않습니다.</p>
+    </section>
+
+    <section class="sheet reveal" aria-labelledby="axes-title">
+      <div class="section-head"><div><p class="kicker">4 OBSERVED AXES</p><h2 class="section-title" id="axes-title">네 글자 해부하기</h2></div><p class="lead">심리 진단 대신 실제 행동 비율을 썼습니다. 점은 내 기록, 세로선은 선택 기준입니다.</p></div>
+      <div class="axes">
+        {{range .Summary.Profile.Axes}}
+        <article class="axis-row">
+          <div class="axis-letter"><strong>{{.SelectedCode}}</strong><span>{{axisLabel .SelectedCode}}</span></div>
+          <div>
+            <p class="axis-copy">{{axisMeaning .ID .SelectedCode}}</p>
+            <div class="track-labels"><span>{{axisLow .ID}} {{axisLabel (axisLow .ID)}}</span><span>{{axisHigh .ID}} {{axisLabel (axisHigh .ID)}}</span></div>
+            <div class="axis-track" style="--position: {{axisPosition .}}; --threshold: {{axisThreshold .}};" role="img" aria-label="점수 {{pct .Score}}퍼센트, 기준 {{pct .Threshold}}퍼센트"><span class="axis-threshold"></span><span class="axis-dot"></span></div>
+            <p class="axis-proof">{{axisReceipt .}}</p>
+          </div>
+        </article>
+        {{end}}
+      </div>
+    </section>
+
+    {{if .Summary.DeliveryByYear}}
+    <section class="sheet reveal" aria-labelledby="delivery-title">
+      <div class="section-head"><div><p class="kicker">DELIVERY SPEED</p><h2 class="section-title" id="delivery-title">로켓, 해마다 어땠나</h2></div><p class="lead">각 막대는 그해 배송 완료 기록의 평균 소요시간입니다. 막대 위 숫자는 평균, 아래 괄호는 표본 수입니다.</p></div>
+      <div class="chart-frame"><div class="delivery-bars">
+        {{range .Summary.DeliveryByYear}}<div class="delivery-bar"><div class="delivery-column" style="--height: {{deliveryHeight $.Summary.DeliveryByYear .AverageHours}};"><span>{{printf "%.1f" .AverageHours}}h</span></div><div class="delivery-label"><b>{{.Period}}</b><br>중앙 {{printf "%.1f" .MedianHours}}h<br>({{.ShipmentCount}}건)</div></div>{{end}}
+      </div></div>
+      <p class="chart-summary">{{deliverySummary .Summary.DeliveryTrend}}</p>
+      <div class="speed-strip"><div class="speed-stat"><strong>{{pct .Summary.DeliveredWithin24HoursRate}}%</strong><span>24시간 안에 도착</span></div><div class="speed-stat"><strong>{{pct .Summary.DeliveredWithin48HoursRate}}%</strong><span>48시간 안에 도착</span></div></div>
+    </section>
+    {{end}}
+
+    {{$categories := visibleCategories .Summary.Categories}}
+    {{if $categories}}
+    <section class="sheet reveal" aria-labelledby="category-title" data-categories>
+      <div class="category-head"><div><p class="kicker">SOURCE-NATIVE CATEGORIES</p><h2 class="section-title" id="category-title">뭘 제일 많이 샀나</h2></div><button class="reveal-button" type="button" data-category-toggle aria-pressed="false">카테고리 이름 보기</button></div>
+      <p class="lead" style="margin-bottom: 30px;">임의로 묶지 않았습니다. 각 상품 페이지의 실제 카테고리 경로에서 마지막 분류를 사용했습니다.</p>
+      <div class="category-bars">{{range $categories}}<div class="category-row"><span class="category-name">{{categoryLabel .Key}}</span><div class="category-track"><div class="category-fill" style="--width: {{categoryWidth $.Summary.Categories .UnitCount}};"></div></div><span class="category-count">{{comma .UnitCount}}개</span></div>{{end}}</div>
+      <p class="coverage">카테고리 확인 {{comma .Summary.Categories.ClassifiedItemLines}} / {{comma .Summary.Categories.TotalItemLines}}개 품목 줄, 커버리지 {{pct .Summary.Categories.ClassifiedItemLineRate}}%. 확인하지 못한 상품은 억지로 분류하지 않았습니다.</p>
+    </section>
+    {{end}}
+
+    <section class="sheet reveal" aria-labelledby="clock-title">
+      <div class="section-head"><div><p class="kicker">24-HOUR CART</p><h2 class="section-title" id="clock-title">장바구니가 깨는 시간</h2></div><p class="lead">한국시간 기준 주문 시각 분포입니다. 상품을 본 시간이 아니라 주문이 기록된 시간입니다.</p></div>
+      <div class="clock-grid">
+        {{$hours := hourSeries .Summary.PurchaseHours}}
+        <div class="hours" aria-label="24시간 주문 분포">{{range $hours}}<span class="hour" style="--height: {{hourHeight $hours .Count}};" data-hour="{{.Key}}" title="{{.Key}}시 {{.Count}}건"></span>{{end}}</div>
+        <aside class="clock-callout"><span class="scribble">최애 주문 시각</span><strong>{{clock .Summary.PeakPurchaseHourKST.Key}}</strong><p>{{weekday .Summary.PeakPurchaseWeekday.Key}}에 가장 자주 주문했고, 하루 최다 콤보는 {{.Summary.MaxOrdersInOneDay}}건입니다.</p></aside>
+      </div>
+    </section>
+
+    <section class="sheet reveal" aria-labelledby="months-title">
+      <div class="section-head"><div><p class="kicker">MONTH BY MONTH</p><h2 class="section-title" id="months-title">구매 달력 심전도</h2></div><p class="lead">첫 주문월부터 최근 주문월까지, 주문이 없던 달도 0으로 남겼습니다. 파란 막대는 각 해의 1월입니다.</p></div>
+      {{$months := monthSeries .Summary}}
+      <div class="month-chart" aria-label="월별 주문 수">{{range $months}}<span class="month" style="--height: {{monthHeight $months .OrderCount}};" data-marker="{{monthMarker .Month}}" title="{{.Month}} {{.OrderCount}}건"></span>{{end}}</div>
+      <p class="streak">최장 연속 구매 <b>{{.Summary.LongestActiveMonthStreak}}개월</b></p>
+    </section>
+
+    <section class="sheet reveal" aria-labelledby="choice-title">
+      <div class="section-head"><div><p class="kicker">CHOICE + BASKET</p><h2 class="section-title" id="choice-title">또 샀나, 같이 샀나</h2></div><p class="lead">가격 대신 선택 횟수와 상품 구성으로 봅니다. 비싼 한 번이 점수를 덮지 않도록 했습니다.</p></div>
+      <div class="choice-grid">
+        <article class="metric-poster"><div><strong>{{pct .Summary.RepeatPurchases.RepeatChoiceRate}}%</strong><h3>반복 선택률</h3><p>식별 가능한 선택 중, 전에 골랐던 상품을 다시 고른 비율입니다.</p></div><div class="metric-proof">반복 {{comma .Summary.RepeatPurchases.RepeatChoiceCount}} / 선택 {{comma .Summary.RepeatPurchases.PurchaseOccasionCount}}건, 상품 ID 커버리지 {{pct .Summary.RepeatPurchases.ProductIDCoverage}}%</div></article>
+        <article class="metric-poster"><div><strong>{{pct .Summary.Basket.SingleProductOrderRate}}%</strong><h3>한 상품 주문률</h3><p>상품 구성을 모두 확인한 주문 중, 서로 다른 상품이 하나뿐인 비율입니다.</p></div><div class="metric-proof">한 상품 {{comma .Summary.Basket.SingleProductOrderCount}} / 구성 확인 {{comma .Summary.Basket.CompositionOrderCount}}건, 주문당 평균 {{printf "%.1f" .Summary.Basket.AverageDistinctProducts}}종</div></article>
+      </div>
+    </section>
+
+    {{if .Summary.Profile.Badges}}
+    <section class="sheet reveal" aria-labelledby="badges-title">
+      <div class="section-head"><div><p class="kicker">UNLOCKED</p><h2 class="section-title" id="badges-title">영수증이 준 뱃지</h2></div><p class="lead">남과 비교한 순위가 아니라, 내 기록 안에서 조건을 충족한 작은 업적입니다.</p></div>
+      <div class="badges">{{range .Summary.Profile.Badges}}<article class="badge"><h3>{{badgeLabel .}}</h3><p>{{badgeDescription .}}</p></article>{{end}}</div>
+    </section>
+    {{end}}
+
+    <section class="sheet share-sheet reveal" aria-labelledby="share-title">
+      <p class="kicker">{{if .Products}}SHARE TEXT ONLY{{else}}SAFE TO SHARE{{end}}</p><p class="share-code">{{.Summary.Profile.Code}}</p><h2 class="section-title" id="share-title">내 영수증은 {{typeTitle .Summary.Profile.Code}}</h2>
+      <p class="lead" style="margin-top: 18px;">{{if .Products}}이 HTML 파일 자체는 공유하지 마세요. 아래 버튼으로 복사되는 문구에는 금액, 상품명, 정확한 주문일이 들어가지 않습니다.{{else}}공유 문구에는 금액, 상품명, 정확한 주문일, 취소와 반품 정보가 들어가지 않습니다.{{end}}</p>
+      <div class="share-actions"><button class="action-button primary" type="button" data-share>친구에게 던지기</button><button class="action-button" type="button" data-copy>문구만 복사</button><button class="action-button" type="button" data-print>PDF로 보관</button></div>
+      <div class="toast" role="status" aria-live="polite" data-toast></div>
+      <details>
+        <summary>분석 방법과 한계 보기</summary>
+        <div class="method-grid">
+          <div><h3>데이터 출처</h3><p>쿠팡 주문 화면이 개인 브라우저 세션에서 불러오는 구조화 응답입니다. 공식 공개 API라고 주장하지 않습니다.</p></div>
+          <div><h3>유형 규칙</h3><p>구매 리듬, 주문 시각, 반복 선택, 주문당 상품 구성을 결정 규칙으로 씁니다. 규칙 버전은 {{.Summary.Profile.RuleVersion}}입니다.</p></div>
+          <div><h3>카테고리</h3><p>상품 페이지 JSON-LD BreadcrumbList의 마지막 노드를 씁니다. 접근할 수 없거나 경로가 없는 상품은 미분류로 남깁니다.</p></div>
+          <div><h3>제외와 결측</h3><p>완전 취소 주문은 행동 분석에서 제외합니다. 시각, 상품 ID, 배송 완료 시각이 필요한 지표는 값이 있는 표본만 계산합니다.</p></div>
+        </div>
+        <p class="fineprint">이 결과는 관찰된 쇼핑 기록을 재미있게 요약한 것이며 심리검사, 신용평가, 소비 조언이 아닙니다. coupangctl은 쿠팡과 독립된 개인 데이터 도구입니다.</p>
+      </details>
+    </section>
+    {{else}}
+    <section class="sheet empty"><div><p class="kicker">NOT ENOUGH RECEIPTS YET</p><h1>조금 더 쇼핑 기록이 필요해요</h1><p>네 축을 정직하게 고를 만큼 기간, 주문 시각, 상품 식별 정보, 장바구니 구성이 아직 충분하지 않습니다.</p></div></section>
+    {{end}}
+
+    {{with .Products}}
+    <section class="sheet reveal" aria-labelledby="products-title" data-products>
+      <div class="category-head"><div><p class="kicker">PRIVATE PRODUCT RECEIPTS</p><h2 class="section-title" id="products-title">이번엔 상품들이 입을 엽니다</h2></div><button class="reveal-button" type="button" data-product-toggle aria-pressed="false">상품명 보기</button></div>
+      <p class="private-warning">주의: 이 장에는 실제 상품명, 결제금액, 정확한 구매일이 들어 있습니다. 캡처나 HTML 파일을 그대로 공유하지 마세요.</p>
+      <div class="product-summary">
+        <div><span>전액 취소 제외 누적</span><strong>{{comma .TotalSpendAmount}}원</strong></div>
+        <div><span>달력 월 기준</span><strong>월평균 {{comma .AverageMonthlySpendAmount}}원</strong></div>
+        <div><span>상품 ID 확인</span><strong>{{pct .ProductIDCoverage}}%</strong></div>
+      </div>
+      <div class="product-leaders">
+        <article class="product-card"><span class="product-rank">MOST UNITS</span><h3 class="private-value">{{.TopByUnits.Name}}</h3><strong>{{comma .TopByUnits.UnitCount}}개</strong><p>{{comma .TopByUnits.PurchaseCount}}번 주문, 확인된 상품 지출 {{comma .TopByUnits.TotalPaidAmount}}원</p></article>
+        <article class="product-card"><span class="product-rank">MOST ORDERS</span><h3 class="private-value">{{.TopByOrders.Name}}</h3><strong>{{comma .TopByOrders.PurchaseCount}}번</strong><p>총 {{comma .TopByOrders.UnitCount}}개, 마지막 구매 <span class="private-value">{{.TopByOrders.LastPurchased}}</span></p></article>
+        <article class="product-card"><span class="product-rank">MOST MONEY</span><h3 class="private-value">{{.TopBySpend.Name}}</h3><strong>{{comma .TopBySpend.TotalPaidAmount}}원</strong><p>{{comma .TopBySpend.PurchaseCount}}번 주문에서 합산한 확인 가능 지출</p></article>
+      </div>
+      <div class="price-extremes">
+        <article class="price-note"><span>한 개당 실결제 최고 기록</span><h3 class="private-value">{{.HighestPaidUnit.Name}}</h3><strong>{{comma .HighestPaidUnit.PaidUnitAmount}}원</strong><p class="private-value">{{.HighestPaidUnit.Date}}, {{comma .HighestPaidUnit.Quantity}}개 묶음의 상품 결제금액 기준</p></article>
+        <article class="price-note"><span>한 개당 실결제 최저 기록</span><h3 class="private-value">{{.LowestPaidUnit.Name}}</h3><strong>{{comma .LowestPaidUnit.PaidUnitAmount}}원</strong><p class="private-value">{{.LowestPaidUnit.Date}}, {{comma .LowestPaidUnit.Quantity}}개 묶음의 상품 결제금액 기준</p></article>
+      </div>
+      <div class="spend-days">
+        <article class="spend-day"><span>하루 지출 최고</span><h3 class="private-value">{{.HighestSpendDay.Date}}</h3><strong>{{comma .HighestSpendDay.TotalAmount}}원</strong><p>{{comma .HighestSpendDay.OrderCount}}건 주문, {{comma .HighestSpendDay.ProductCount}}종</p><ul class="day-products">{{range .HighestSpendDay.Products}}<li><b class="private-value">{{.Name}}</b><span>{{comma .UnitCount}}개 · {{comma .PaidAmount}}원</span></li>{{end}}</ul></article>
+        <article class="spend-day"><span>구매한 날 중 하루 지출 최저</span><h3 class="private-value">{{.LowestSpendDay.Date}}</h3><strong>{{comma .LowestSpendDay.TotalAmount}}원</strong><p>{{comma .LowestSpendDay.OrderCount}}건 주문, {{comma .LowestSpendDay.ProductCount}}종</p><ul class="day-products">{{range .LowestSpendDay.Products}}<li><b class="private-value">{{.Name}}</b><span>{{comma .UnitCount}}개 · {{comma .PaidAmount}}원</span></li>{{end}}</ul></article>
+      </div>
+      <p class="product-method">상품 묶음은 vendor item ID를 우선하고 없으면 product ID를 사용합니다. 이름 유사도 매칭은 하지 않습니다. 수량은 취소·반품 수량을 차감했고, 상품별 지출과 한 개당 금액은 취소·반품 수량이 0인 식별 가능 품목 줄만 사용했습니다. 하루의 큰 숫자는 주문 총액이고 아래 상품 숫자는 품목 결제액이라 배송비, 할인, 품목 집계 범위에 따라 합계가 다를 수 있습니다. 지출 가능 표본 {{comma .SpendEligibleItemLineCount}} / 유지 품목 줄 {{comma .RetainedItemLineCount}}개, {{pct .SpendEligibleItemLineRate}}%. 날짜별 상품은 지출액 순 최대 {{.Definitions.DayProductLimit}}개만 표시합니다.</p>
+    </section>
+    {{end}}
+  </main>
+
+  <script id="share-copy" type="text/plain">{{.ShareText}}</script>
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const toast = document.querySelector('[data-toast]');
+      const shareText = document.querySelector('#share-copy')?.textContent?.trim() || '';
+      const say = (message) => { if (!toast) return; toast.textContent = message; window.setTimeout(() => { toast.textContent = ''; }, 2200); };
+      document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const darkNow = root.dataset.theme === 'dark' || (!root.dataset.theme && systemDark);
+        root.dataset.theme = darkNow ? 'light' : 'dark';
+      });
+      document.querySelector('[data-category-toggle]')?.addEventListener('click', (event) => {
+        const section = event.currentTarget.closest('[data-categories]');
+        const visible = section.classList.toggle('categories-visible');
+        event.currentTarget.setAttribute('aria-pressed', String(visible));
+        event.currentTarget.textContent = visible ? '카테고리 이름 가리기' : '카테고리 이름 보기';
+      });
+      document.querySelector('[data-product-toggle]')?.addEventListener('click', (event) => {
+        const section = event.currentTarget.closest('[data-products]');
+        const visible = section.classList.toggle('products-visible');
+        event.currentTarget.setAttribute('aria-pressed', String(visible));
+        event.currentTarget.textContent = visible ? '상품명 가리기' : '상품명 보기';
+      });
+      const copy = async () => {
+        try { await navigator.clipboard.writeText(shareText); }
+        catch {
+          const field = document.createElement('textarea'); field.value = shareText; field.style.position = 'fixed'; field.style.opacity = '0';
+          document.body.appendChild(field); field.select(); document.execCommand('copy'); field.remove();
+        }
+        say('공유 문구를 복사했어요.');
+      };
+      document.querySelector('[data-copy]')?.addEventListener('click', copy);
+      document.querySelector('[data-share]')?.addEventListener('click', async () => {
+        if (navigator.share) {
+          try { await navigator.share({ title: document.title, text: shareText }); return; }
+          catch (error) { if (error?.name === 'AbortError') return; }
+        }
+        await copy();
+      });
+      document.querySelector('[data-print]')?.addEventListener('click', () => window.print());
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) {
+        document.querySelectorAll('.reveal').forEach((element) => element.classList.add('is-visible')); return;
+      }
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => { if (!entry.isIntersecting) return; entry.target.classList.add('is-visible'); observer.unobserve(entry.target); });
+      }, { threshold: 0.1 });
+      document.querySelectorAll('.reveal').forEach((element) => observer.observe(element));
+    })();
+  </script>
+</body>
+</html>
