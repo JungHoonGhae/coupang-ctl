@@ -9,10 +9,10 @@ import (
 	"os"
 	"sort"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/browser"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
-	coupangorders "github.com/JungHoonGhae/oss-coupangctl/internal/coupang/orders"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/platform"
+	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	coupangorders "github.com/JungHoonGhae/coupang-ctl/internal/coupang/orders"
+	"github.com/JungHoonGhae/coupang-ctl/internal/platform"
 )
 
 func main() {

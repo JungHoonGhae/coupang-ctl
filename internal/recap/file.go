@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
 
 func WriteNewFile(path string, summary core.ShoppingInsights) (core.RecapWriteResult, error) {

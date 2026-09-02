@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/browser"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/platform"
+	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/platform"
 )
 
 type step struct {

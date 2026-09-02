@@ -19,9 +19,9 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/browser/sessionbridge"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
-	sessionstate "github.com/JungHoonGhae/oss-coupangctl/internal/session"
+	"github.com/JungHoonGhae/coupang-ctl/internal/browser/sessionbridge"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	sessionstate "github.com/JungHoonGhae/coupang-ctl/internal/session"
 )
 
 const (

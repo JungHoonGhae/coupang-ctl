@@ -10,11 +10,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/auth"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/browser"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
-	productworkflow "github.com/JungHoonGhae/oss-coupangctl/internal/products"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/store"
+	"github.com/JungHoonGhae/coupang-ctl/internal/auth"
+	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	productworkflow "github.com/JungHoonGhae/coupang-ctl/internal/products"
+	"github.com/JungHoonGhae/coupang-ctl/internal/store"
 )
 
 type loginModeBrowser struct {

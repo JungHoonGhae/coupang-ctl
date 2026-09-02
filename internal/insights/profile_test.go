@@ -3,8 +3,8 @@ package insights_test
 import (
 	"testing"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/insights"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/insights"
 )
 
 func TestBuildShoppingProfileProducesDeterministicFourAxisTypeAndBadges(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
 
 const qrApprovalTimeout = 3 * time.Minute

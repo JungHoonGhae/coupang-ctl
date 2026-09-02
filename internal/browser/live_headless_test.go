@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/browser"
-	coupangorders "github.com/JungHoonGhae/oss-coupangctl/internal/coupang/orders"
+	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
+	coupangorders "github.com/JungHoonGhae/coupang-ctl/internal/coupang/orders"
 )
 
 func TestLiveHeadlessDedicatedProfile(t *testing.T) {

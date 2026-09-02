@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/insights"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/recap"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/insights"
+	"github.com/JungHoonGhae/coupang-ctl/internal/recap"
 )
 
 func TestRenderCreatesStandalonePublicSafeRecap(t *testing.T) {

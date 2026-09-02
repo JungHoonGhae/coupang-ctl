@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
 
 func (s *SQLite) PendingCategoryProducts(ctx context.Context, limit int) ([]core.ProductReference, error) {

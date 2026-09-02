@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
 
 var ErrUnsupported = errors.New("login assistance is unsupported on this platform")

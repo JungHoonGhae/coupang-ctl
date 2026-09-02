@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/coupang/categories"
-	coupangorders "github.com/JungHoonGhae/oss-coupangctl/internal/coupang/orders"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/insights"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/store"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/coupang/categories"
+	coupangorders "github.com/JungHoonGhae/coupang-ctl/internal/coupang/orders"
+	"github.com/JungHoonGhae/coupang-ctl/internal/insights"
+	"github.com/JungHoonGhae/coupang-ctl/internal/store"
 )
 
 const (

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/insights"
+	"github.com/JungHoonGhae/coupang-ctl/internal/insights"
 )
 
 func TestPurchaseTimingClumpinessSeparatesEvenAndClusteredEvents(t *testing.T) {

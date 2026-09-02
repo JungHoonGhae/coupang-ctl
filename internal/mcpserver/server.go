@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/orders"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/store"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/orders"
+	"github.com/JungHoonGhae/coupang-ctl/internal/store"
 )
 
 type fixtureSource struct {

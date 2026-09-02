@@ -13,8 +13,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/auth"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/auth"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
 
 const loginURL = "https://login.coupang.com/login/login.pang"

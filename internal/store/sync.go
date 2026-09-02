@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
 
 func (s *SQLite) LoadSyncCursor(ctx context.Context) (*core.OrderCursor, error) {

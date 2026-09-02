@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/browser/sessionbridge"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/session"
+	"github.com/JungHoonGhae/coupang-ctl/internal/browser/sessionbridge"
+	"github.com/JungHoonGhae/coupang-ctl/internal/session"
 )
 
 type memoryStore struct {

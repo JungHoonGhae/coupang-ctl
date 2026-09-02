@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
 
 //go:embed assets/type-roster-v2.svg

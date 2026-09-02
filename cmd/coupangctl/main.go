@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/cli"
+	"github.com/JungHoonGhae/coupang-ctl/internal/cli"
 )
 
 var version = "dev"

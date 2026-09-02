@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
-	"github.com/JungHoonGhae/oss-coupangctl/internal/coupang/categories"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/coupang/categories"
 )
 
 func TestParseProductCategoryKeepsOnlySourceNativeCategoryBreadcrumbs(t *testing.T) {

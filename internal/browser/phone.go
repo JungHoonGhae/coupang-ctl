@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
 
 const phoneLoginTimeout = 10 * time.Minute

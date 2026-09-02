@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
-	coupangorders "github.com/JungHoonGhae/oss-coupangctl/internal/coupang/orders"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	coupangorders "github.com/JungHoonGhae/coupang-ctl/internal/coupang/orders"
 )
 
 func TestParseOrderDocumentNormalizesEmbeddedData(t *testing.T) {

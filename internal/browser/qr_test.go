@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
 
 type qrCaptureProtocol struct {

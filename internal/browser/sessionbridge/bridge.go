@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/session"
+	"github.com/JungHoonGhae/coupang-ctl/internal/session"
 )
 
 type Protocol interface {

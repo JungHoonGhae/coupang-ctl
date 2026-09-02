@@ -3,8 +3,8 @@ package account_test
 import (
 	"testing"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
-	coupangaccount "github.com/JungHoonGhae/oss-coupangctl/internal/coupang/account"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	coupangaccount "github.com/JungHoonGhae/coupang-ctl/internal/coupang/account"
 )
 
 func TestParseSnapshotDocumentNormalizesMembershipBenefitsAndCardRewards(t *testing.T) {

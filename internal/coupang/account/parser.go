@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JungHoonGhae/oss-coupangctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
 
 var ErrAccountBenefitsDataMissing = errors.New("structured account benefits data missing")
