@@ -43,7 +43,10 @@ func TestCurrentBrowserStatusChecksEndpointWithoutAttachingOrCreatingATab(t *tes
 	if err := os.WriteFile(filepath.Join(userDataDir, devToolsActivePortFilename), []byte(strconv.Itoa(port)+"\n/devtools/browser/synthetic-token\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	executable := syntheticExecutable(t, "exit 0\n")
+	executable := filepath.Join(t.TempDir(), "synthetic-browser")
+	if err := os.WriteFile(executable, []byte("synthetic browser fixture"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	native := NewNativeCurrentBrowser()
 	native.getenv = func(name string) string {
 		switch name {

@@ -34,7 +34,7 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Test native profile lock and browser identity safety
-        run: go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity)' -count=1
+        run: go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser)' -count=1
 
   release:
     name: Build, verify, and publish release

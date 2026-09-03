@@ -98,7 +98,7 @@ jobs:
         shell: pwsh
         run: |
           go test ./internal/browserbridge -run '^TestWindows' -count=1
-          go test ./internal/browser -run '^(TestOrdinaryBrowserNativeHostPing|TestDedicatedProfileLock|TestProfileIdentity)' -count=1
+          go test ./internal/browser -run '^(TestOrdinaryBrowserNativeHostPing|TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser)' -count=1
 
   macos-browser-profile:
     name: macOS browser profile contracts
@@ -115,4 +115,4 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Test native profile lock and browser identity safety
-        run: go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity)' -count=1
+        run: go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser)' -count=1

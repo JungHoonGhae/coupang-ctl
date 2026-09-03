@@ -51,7 +51,7 @@ func CurrentCapabilities() CapabilityReport {
 			ID: "current_browser_connection", Priority: "P0", Status: CapabilityExperimental,
 			UserValue:    "extension-free order sync through a running Chrome browser after Chrome's own explicit remote-debugging opt-in and connection approval",
 			Interface:    []string{"cli", "mcp"},
-			Implemented:  []string{"passive current-browser status CLI command and current_browser_status MCP tool without debugger attachment or endpoint disclosure", "explicit --current-browser CLI mode and orders_sync_current_browser MCP tool", "private DevToolsActivePort validation with loopback-only endpoint verification", "one allowlisted product-created tab per read", "disconnect without closing Chrome or copying browser session state"},
+			Implemented:  []string{"passive current-browser status CLI command and current_browser_status MCP tool without debugger attachment or endpoint disclosure", "native Linux, macOS, and Windows status contracts that gate tagged releases", "explicit --current-browser CLI mode and orders_sync_current_browser MCP tool", "private DevToolsActivePort validation with loopback-only endpoint verification", "one allowlisted product-created tab per read", "disconnect without closing Chrome or copying browser session state"},
 			NextWork:     "validate Chrome 144+ approval and repeated order-sync behavior on clean desktop profiles across macOS, Windows, and Linux",
 			NextStepKind: CapabilityNextLiveValidation, LastVerified: "2026-09-03",
 		},
