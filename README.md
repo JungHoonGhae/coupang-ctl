@@ -304,10 +304,12 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 | 원격 화면 | `coupangctl auth login --qr-output /secure/path/qr.png` | Xvfb 같은 headed renderer에서 QR 부분만 임시 PNG로 전달 |
 
 로그인은 headed 브라우저에서만 진행합니다. 실측상 보호된 로그인 진입점은 진짜
-headless Chrome을 거부할 수 있습니다. 로그인 뒤의 검증과 읽기는 headless
-우선이며, 환경이 거부할 때만 설치된 브라우저의 headed 읽기로 한 번 재시도할 수
-있습니다. 로그인 상태는 브라우저 소유 전용 프로필에만 남으며 별도 쿠키·세션
-파일로 복사하지 않습니다.
+headless Chrome을 거부할 수 있습니다. `auth status`와 기본 `auth verify`는 상태
+확인만으로 창이 갑자기 열리지 않도록 headless에서만 검사합니다. 실제 데이터
+읽기는 headless 우선이며, 환경이 거부할 때만 설치된 브라우저의 headed 읽기로 한
+번 재시도할 수 있습니다. 눈에 보이는 검증이 필요할 때는 사용자가 명시적으로
+`auth verify --headed`를 실행합니다. 로그인 상태는 브라우저 소유 전용 프로필에만
+남으며 별도 쿠키·세션 파일로 복사하지 않습니다.
 
 Chrome 144 이상에서는 실행 중인 현재 Chrome을 확장 없이 사용하는 실험적 고급
 경로도 있습니다. 먼저 `chrome://inspect/#remote-debugging`에서 원격 디버깅을

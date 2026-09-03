@@ -134,7 +134,7 @@ func NewNativeCurrentBrowser() *Native {
 }
 
 func (n *Native) Verify(ctx context.Context) error {
-	_, err := n.Fetch(ctx, nil)
+	_, err := n.fetch(ctx, nil, false)
 	closeErr := n.Close()
 	if err != nil {
 		return err
@@ -143,6 +143,10 @@ func (n *Native) Verify(ctx context.Context) error {
 }
 
 func (n *Native) Fetch(ctx context.Context, cursor *core.OrderCursor) ([]byte, error) {
+	return n.fetch(ctx, cursor, true)
+}
+
+func (n *Native) fetch(ctx context.Context, cursor *core.OrderCursor, allowHeadedFallback bool) ([]byte, error) {
 	if err := n.requireExistingProfile(); err != nil {
 		return nil, err
 	}
@@ -161,7 +165,7 @@ func (n *Native) Fetch(ctx context.Context, cursor *core.OrderCursor) ([]byte, e
 	}
 	targetURL := orderDocumentURL(cursor)
 	document, err := n.readOrderDocument(ctx, targetURL)
-	if !errors.Is(err, ErrBrowserAccessDenied) || n.headedSessionFactory == nil || n.allowHeadedFallback == nil || !n.allowHeadedFallback() {
+	if !allowHeadedFallback || !errors.Is(err, ErrBrowserAccessDenied) || n.headedSessionFactory == nil || n.allowHeadedFallback == nil || !n.allowHeadedFallback() {
 		return document, err
 	}
 	_ = n.session.Close()

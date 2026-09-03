@@ -507,6 +507,10 @@ Clean-profile Linux/Windows validation and Web Store review remain.
 - Browser authentication state stays in the dedicated Chrome profile and is
   never exported as a product session file. Doppler is for development
   bootstrap only.
+- Passive `auth status` and default `auth verify` checks are headless-only and
+  never open a visible fallback. `auth verify --headed` is the explicit
+  interactive verification path; routine data reads remain headless-first with
+  their bounded headed fallback.
 - Redact PII and stable identifiers from logs and fixtures.
 - Use synthetic fixtures in tests.
 - No checkout, purchase, payment, cancellation, return, or account-setting mutation without an explicit separately designed confirmation boundary.

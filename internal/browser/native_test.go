@@ -207,6 +207,40 @@ func TestFetchAutomaticallyFallsBackToHeadedAndReusesIt(t *testing.T) {
 	}
 }
 
+func TestVerifyNeverOpensHeadedFallbackUnlessExplicitlyConfigured(t *testing.T) {
+	executable := syntheticExecutable(t, "exit 0\n")
+	profile := filepath.Join(t.TempDir(), "browser-profile")
+	if err := os.MkdirAll(profile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	headless := &fakeDocumentSession{err: ErrBrowserAccessDenied}
+	native := NewNative(profile)
+	native.getenv = func(name string) string {
+		if name == "COUPANGCTL_BROWSER_PATH" {
+			return executable
+		}
+		return ""
+	}
+	native.allowHeadedFallback = func() bool { return true }
+	native.waitBeforeAccessRetry = func(context.Context) error { return nil }
+	native.sessionFactory = func(context.Context, string, string) (documentSession, error) {
+		return headless, nil
+	}
+	fallbackCalls := 0
+	native.headedSessionFactory = func(context.Context, string, string) (documentSession, error) {
+		fallbackCalls++
+		return &fakeDocumentSession{document: []byte(`{"props":{}}`)}, nil
+	}
+
+	err := native.Verify(context.Background())
+	if !errors.Is(err, ErrBrowserAccessDenied) {
+		t.Fatalf("verify error = %v, want %v", err, ErrBrowserAccessDenied)
+	}
+	if fallbackCalls != 0 {
+		t.Fatalf("verify opened headed fallback %d time(s)", fallbackCalls)
+	}
+}
+
 func TestFetchRetriesTransientAccessDenialInSameSession(t *testing.T) {
 	executable := syntheticExecutable(t, "exit 0\n")
 	profile := filepath.Join(t.TempDir(), "browser-profile")
