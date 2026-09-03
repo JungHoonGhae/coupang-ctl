@@ -303,6 +303,32 @@ func TestSyncResultReportsConfiguredAcquisitionSourceAndProvenance(t *testing.T)
 	}
 }
 
+func TestSyncStatusReportsLatestCompletedAcquisitionEvidence(t *testing.T) {
+	ctx := context.Background()
+	ledger, err := store.Open(ctx, filepath.Join(t.TempDir(), "coupangctl.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	source := &fixtureSource{documents: map[string][]byte{
+		"initial": syntheticPage("synthetic-status", "2026-09-03", 4200, false),
+	}}
+	workflow := orders.NewWithSyncSource(ledger, source, core.SyncSourceCurrentBrowser)
+	if _, err := workflow.Sync(ctx, core.SyncRequest{MaxPages: 1}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := workflow.SyncStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SchemaVersion != core.SyncStatusSchemaVersion || got.State != core.SyncRunCompleted || got.Source != core.SyncSourceCurrentBrowser || got.Provenance != "observed_source_native_structured_order_document" {
+		t.Fatalf("unexpected latest sync status: %#v", got)
+	}
+	if !got.HistoryComplete || got.PagesProcessed != 1 || got.OrdersSeen != 1 || got.StartedAt == "" || got.CompletedAt == "" {
+		t.Fatalf("incomplete latest sync evidence: %#v", got)
+	}
+}
+
 func TestSyncStopsAtPageBudgetAndContinuesLater(t *testing.T) {
 	ctx := context.Background()
 	ledger, err := store.Open(ctx, filepath.Join(t.TempDir(), "coupangctl.sqlite3"))

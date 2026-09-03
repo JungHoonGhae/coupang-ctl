@@ -73,8 +73,8 @@ func TestOpenMigratesMetadataOnlySchema(t *testing.T) {
 	}
 	defer store.Close()
 
-	assertCount(t, store.db, "SELECT COUNT(*) FROM schema_migrations", 12)
-	assertCount(t, store.db, "SELECT COUNT(*) FROM pragma_table_info('sync_runs')", 8)
+	assertCount(t, store.db, "SELECT COUNT(*) FROM schema_migrations", 13)
+	assertCount(t, store.db, "SELECT COUNT(*) FROM pragma_table_info('sync_runs')", 10)
 	assertCount(t, store.db, "SELECT COUNT(*) FROM pragma_table_info('product_category_observations')", 5)
 }
 
@@ -93,7 +93,49 @@ func TestOpenIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer second.Close()
-	assertCount(t, second.db, "SELECT COUNT(*) FROM schema_migrations", 12)
+	assertCount(t, second.db, "SELECT COUNT(*) FROM schema_migrations", 13)
+}
+
+func TestOpenLabelsLegacySyncAcquisitionWithoutGuessing(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "legacy.sqlite3")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE sync_runs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		started_at TEXT NOT NULL,
+		completed_at TEXT,
+		status TEXT NOT NULL,
+		pages_processed INTEGER NOT NULL DEFAULT 0,
+		records_upserted INTEGER NOT NULL DEFAULT 0,
+		error_code TEXT,
+		history_complete INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO sync_runs(
+		started_at, completed_at, status, pages_processed, records_upserted, history_complete
+	) VALUES ('2026-09-01T00:00:00Z', '2026-09-01T00:01:00Z', 'completed', 3, 12, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	ledger, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	status, err := ledger.LatestSyncStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Source != core.SyncSourceUnknownLegacy || status.Provenance != "unavailable_legacy" || status.State != core.SyncRunCompleted || !status.HistoryComplete {
+		t.Fatalf("legacy sync evidence was guessed or lost: %#v", status)
+	}
 }
 
 func TestOpenSecuresDatabaseAndSidecarFiles(t *testing.T) {

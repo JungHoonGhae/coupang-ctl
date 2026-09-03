@@ -600,7 +600,12 @@ const (
 	SyncSourceDedicatedBrowser SyncSource = "dedicated_browser_profile"
 	SyncSourceCurrentBrowser   SyncSource = "current_browser_connection"
 	SyncSourceOrdinaryBrowser  SyncSource = "ordinary_browser_selected_tab"
+	SyncSourceUnknownLegacy    SyncSource = "unknown_legacy"
 )
+
+func (s SyncSource) ValidForAcquisition() bool {
+	return s == SyncSourceDedicatedBrowser || s == SyncSourceCurrentBrowser || s == SyncSourceOrdinaryBrowser
+}
 
 type SyncResult struct {
 	SchemaVersion  int          `json:"schema_version"`
@@ -612,6 +617,32 @@ type SyncResult struct {
 	ItemsSeen      int          `json:"items_seen"`
 	OrdersRemoved  int          `json:"orders_removed,omitempty"`
 	Next           *OrderCursor `json:"next,omitempty"`
+}
+
+const SyncStatusSchemaVersion = 1
+
+type SyncRunState string
+
+const (
+	SyncRunNeverRun  SyncRunState = "never_run"
+	SyncRunRunning   SyncRunState = "running"
+	SyncRunCompleted SyncRunState = "completed"
+	SyncRunFailed    SyncRunState = "failed"
+)
+
+type SyncStatus struct {
+	SchemaVersion   int          `json:"schema_version"`
+	Visibility      string       `json:"visibility"`
+	State           SyncRunState `json:"state"`
+	Source          SyncSource   `json:"source,omitempty"`
+	Provenance      string       `json:"provenance,omitempty"`
+	StartedAt       string       `json:"started_at,omitempty"`
+	CompletedAt     string       `json:"completed_at,omitempty"`
+	PagesProcessed  int          `json:"pages_processed"`
+	OrdersSeen      int          `json:"orders_seen"`
+	HistoryComplete bool         `json:"history_complete"`
+	ErrorCode       string       `json:"error_code,omitempty"`
+	Limitations     []string     `json:"limitations"`
 }
 
 type OrderList struct {

@@ -101,6 +101,18 @@ func (fixedOrderProvider) Sync(context.Context, core.SyncRequest) (core.SyncResu
 	return core.SyncResult{Complete: true}, nil
 }
 
+func (fixedOrderProvider) SyncStatus(context.Context) (core.SyncStatus, error) {
+	return core.SyncStatus{
+		SchemaVersion:   core.SyncStatusSchemaVersion,
+		Visibility:      "private_local",
+		State:           core.SyncRunCompleted,
+		Source:          core.SyncSourceDedicatedBrowser,
+		Provenance:      core.SyncProvenanceObservedStructuredOrderDocument,
+		HistoryComplete: true,
+		Limitations:     []string{"synthetic latest-attempt limitation"},
+	}, nil
+}
+
 func (provider *capturingOrdinaryOrderProvider) Sync(_ context.Context, request core.SyncRequest) (core.SyncResult, error) {
 	provider.request = request
 	return core.SyncResult{Complete: true, PagesProcessed: 2}, nil
@@ -196,6 +208,39 @@ func TestOrdersSpendToolUsesSharedTypedWorkflow(t *testing.T) {
 	}
 	if got.TotalAmount != 42000 || got.OrderCount != 2 {
 		t.Fatalf("unexpected spend result: %#v", got)
+	}
+}
+
+func TestOrdersSyncStatusToolReturnsLatestLocalAcquisitionEvidence(t *testing.T) {
+	ctx := context.Background()
+	server := NewWithOrders(fixedStatusProvider{}, fixedOrderProvider{}, "v0.1.0-test")
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: "orders_sync_status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("tool returned an error: %#v", result.Content)
+	}
+	encoded, _ := json.Marshal(result.StructuredContent)
+	var got core.SyncStatus
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.State != core.SyncRunCompleted || got.Source != core.SyncSourceDedicatedBrowser || !got.HistoryComplete || got.Provenance != core.SyncProvenanceObservedStructuredOrderDocument {
+		t.Fatalf("unexpected sync status: %#v", got)
 	}
 }
 

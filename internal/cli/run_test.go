@@ -17,6 +17,7 @@ import (
 	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
 	"github.com/JungHoonGhae/coupang-ctl/internal/browserbridge"
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	orderworkflow "github.com/JungHoonGhae/coupang-ctl/internal/orders"
 	"github.com/JungHoonGhae/coupang-ctl/internal/platform"
 	productworkflow "github.com/JungHoonGhae/coupang-ctl/internal/products"
 	receiptworkflow "github.com/JungHoonGhae/coupang-ctl/internal/receipts"
@@ -462,6 +463,26 @@ func TestOrdersListReturnsDocumentedObjectShape(t *testing.T) {
 	}
 	if len(got.Orders) != 1 || got.Orders[0].TotalAmount != 1200 {
 		t.Fatalf("unexpected orders response: %#v", got)
+	}
+}
+
+func TestOrdersSyncStatusReturnsNeverRunAsTypedJSON(t *testing.T) {
+	ctx := context.Background()
+	ledger, err := store.Open(ctx, filepath.Join(t.TempDir(), "coupangctl.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	var output bytes.Buffer
+	if err := runOrders(ctx, []string{"sync-status"}, &output, orderworkflow.New(ledger, nil)); err != nil {
+		t.Fatal(err)
+	}
+	var got core.SyncStatus
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.SchemaVersion != core.SyncStatusSchemaVersion || got.State != core.SyncRunNeverRun || got.Source != "" || got.Visibility != "private_local" || len(got.Limitations) == 0 {
+		t.Fatalf("unexpected never-run sync status: %#v", got)
 	}
 }
 

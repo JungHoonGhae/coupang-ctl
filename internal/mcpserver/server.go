@@ -16,6 +16,7 @@ type StatusProvider interface {
 
 type OrderProvider interface {
 	Sync(context.Context, core.SyncRequest) (core.SyncResult, error)
+	SyncStatus(context.Context) (core.SyncStatus, error)
 	EnrichCategories(context.Context, core.CategoryEnrichmentRequest) (core.CategoryEnrichmentResult, error)
 	CategoryCatalog(context.Context, core.CategoryCatalogRequest) (core.CategoryCatalog, error)
 	CategoryStability(context.Context) (core.CategoryStabilityReport, error)
@@ -340,6 +341,15 @@ func addProductTools(server *mcp.Server, provider ProductProvider) {
 
 func addOrderTools(server *mcp.Server, provider OrderProvider) {
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPointer(false)}
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "orders_sync_status", Description: "Read the latest local order-sync attempt, acquisition source, observed provenance, page/order counts, and complete-history evidence without contacting Coupang or opening a browser.", Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, core.SyncStatus, error) {
+		status, err := provider.SyncStatus(ctx)
+		if err != nil {
+			return nil, core.SyncStatus{}, safeToolError(err)
+		}
+		return nil, status, nil
+	})
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "orders_list", Description: "List normalized local orders using bounded date and result filters.", Annotations: readOnly,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.OrderFilter) (*mcp.CallToolResult, core.OrderList, error) {

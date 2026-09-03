@@ -67,7 +67,7 @@ func CurrentCapabilities() CapabilityReport {
 			ID: "full_order_history", Priority: "P0", Status: CapabilityAvailable,
 			UserValue:    "complete normalized order history with resumable synchronization",
 			Interface:    []string{"cli", "mcp"},
-			Implemented:  []string{"bounded cursor pagination", "resumable SQLite checkpoints", "complete-history reconciliation without duplicate orders", "schema-versioned sync source and observed provenance selected by the acquisition workflow"},
+			Implemented:  []string{"bounded cursor pagination", "resumable SQLite checkpoints", "complete-history reconciliation without duplicate orders", "schema-versioned sync source and observed provenance selected by the acquisition workflow", "browserless CLI and MCP latest-sync audit with timestamps, counts, failure code, and complete-history evidence", "explicit unknown_legacy provenance for pre-migration sync runs"},
 			NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-02",
 		},
 		{

@@ -95,6 +95,16 @@ SQLite를 별도 체크로 반환합니다. 첫 로그인 전이나 headless 접
 `observed_source_native_structured_order_document`입니다. 호출자가 이 값을
 입력해서 수집 출처를 가장할 수는 없습니다.
 
+```bash
+coupangctl orders sync-status
+```
+
+이 명령과 MCP `orders_sync_status`는 네트워크나 브라우저를 사용하지 않고 마지막
+로컬 동기화 시도만 읽습니다. 시작·완료 시각, 상태, source, provenance,
+처리한 페이지·주문 수, 전체 이력 완성 여부와 안정적인 오류 코드를 반환합니다.
+수집 증거 저장 기능 이전의 실행은 출처를 추측하지 않고 `unknown_legacy`로
+표시합니다.
+
 ## 주문 분석과 리캡
 
 ```bash
@@ -302,7 +312,7 @@ MCP 서버는 장시간 백그라운드에서 실행되는 프로세스이므로
 대표 도구:
 
 - `auth_status`, `current_browser_status`, `account_benefits`
-- `orders_sync`, `orders_sync_current_browser`, `orders_sync_ordinary_browser`, `orders_list`, `orders_spend`, `orders_stats`
+- `orders_sync`, `orders_sync_status`, `orders_sync_current_browser`, `orders_sync_ordinary_browser`, `orders_list`, `orders_spend`, `orders_stats`
 - `orders_insights`, `orders_product_insights`, `orders_category_catalog`, `orders_category_stability`, `orders_reorder_candidates`
 - `orders_export`, `orders_enrich_categories`
 - `products_search`, `product_inspect`, `cart_add`

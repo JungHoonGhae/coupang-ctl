@@ -75,7 +75,7 @@ coupangctl orders sync --max-pages 1 --ordinary-browser
 
 MCP 도구는 `orders_sync_ordinary_browser`이며 입력과 응답은 기존
 `orders_sync`와 같은 `SyncRequest`/`SyncResult` typed core 계약을 사용합니다.
-성공·부분 실패 결과의 `source`는 `ordinary_browser_selected_tab`,
+성공·페이지 예산 내 부분 완료 결과의 `source`는 `ordinary_browser_selected_tab`,
 `provenance`는 `observed_source_native_structured_order_document`로 표시됩니다.
 호출하기 전에 AI는 사용자가 로그인된 쿠팡 주문목록 탭을 선택하도록 안내해야
 합니다. 사용자는 확장 팝업에서 읽을 필드와 로컬 전송 범위를 확인한 뒤

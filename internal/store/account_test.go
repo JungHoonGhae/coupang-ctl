@@ -25,7 +25,7 @@ func TestMembershipCostsUsesOnlyExplicitMembershipOnlyOrders(t *testing.T) {
 	if _, err := ledger.UpsertOrderPage(ctx, core.OrderPage{Orders: orders}); err != nil {
 		t.Fatal(err)
 	}
-	runID, err := ledger.BeginSync(ctx)
+	runID, err := ledger.BeginSync(ctx, core.SyncSourceDedicatedBrowser, core.SyncProvenanceObservedStructuredOrderDocument)
 	if err != nil {
 		t.Fatal(err)
 	}

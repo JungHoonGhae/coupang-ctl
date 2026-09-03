@@ -282,6 +282,21 @@ func (s *SQLite) migrate(ctx context.Context) error {
 		VALUES (12, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`); err != nil {
 		return fmt.Errorf("record product category observation migration: %w", err)
 	}
+	for _, column := range []struct {
+		name       string
+		definition string
+	}{
+		{"sync_source", "TEXT NOT NULL DEFAULT 'unknown_legacy'"},
+		{"sync_provenance", "TEXT NOT NULL DEFAULT 'unavailable_legacy'"},
+	} {
+		if err := s.ensureColumn(ctx, "sync_runs", column.name, column.definition); err != nil {
+			return err
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+		VALUES (13, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`); err != nil {
+		return fmt.Errorf("record sync acquisition evidence migration: %w", err)
+	}
 	return nil
 }
 

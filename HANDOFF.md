@@ -29,6 +29,10 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   workflow rather than supplied by the caller: `dedicated_browser_profile`,
   `current_browser_connection`, or `ordinary_browser_selected_tab`, plus the
   observed structured-order-document provenance.
+- `orders sync-status` and MCP `orders_sync_status` read the latest local sync
+  audit without a browser: timestamps, run state, source, provenance, counts,
+  stable error code, and complete-history evidence. Migration 13 adds only the
+  source/provenance columns; older runs remain explicitly `unknown_legacy`.
 - `doctor` performs the same non-visible background proof as `auth status` and
   reports browser installation, `background_session`, and SQLite independently.
   A present browser no longer makes a blocked or expired session look ready.

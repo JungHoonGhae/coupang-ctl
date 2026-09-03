@@ -582,6 +582,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 
 type orderWorkflow interface {
 	Sync(context.Context, core.SyncRequest) (core.SyncResult, error)
+	SyncStatus(context.Context) (core.SyncStatus, error)
 	EnrichCategories(context.Context, core.CategoryEnrichmentRequest) (core.CategoryEnrichmentResult, error)
 	CategoryCatalog(context.Context, core.CategoryCatalogRequest) (core.CategoryCatalog, error)
 	CategoryStability(context.Context) (core.CategoryStabilityReport, error)
@@ -598,7 +599,7 @@ type orderWorkflow interface {
 
 func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow orderWorkflow) error {
 	if len(args) == 0 {
-		return errors.New("usage: coupangctl orders <sync|categories|category-catalog|category-stability|list|spend|stats|insights|products|recap|recap-image|reorder|export|import|purge>")
+		return errors.New("usage: coupangctl orders <sync|sync-status|categories|category-catalog|category-stability|list|spend|stats|insights|products|recap|recap-image|reorder|export|import|purge>")
 	}
 	switch args[0] {
 	case "sync":
@@ -620,6 +621,15 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 			return errors.New(orderSyncUsage)
 		}
 		result, err := workflow.Sync(ctx, core.SyncRequest{MaxPages: *maxPages})
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
+	case "sync-status":
+		if len(args) != 1 {
+			return errors.New("usage: coupangctl orders sync-status")
+		}
+		result, err := workflow.SyncStatus(ctx)
 		if err != nil {
 			return err
 		}

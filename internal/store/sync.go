@@ -39,9 +39,12 @@ func (s *SQLite) SaveSyncCursor(ctx context.Context, cursor *core.OrderCursor) e
 	return nil
 }
 
-func (s *SQLite) BeginSync(ctx context.Context) (int64, error) {
-	result, err := s.db.ExecContext(ctx, `INSERT INTO sync_runs(started_at, status)
-		VALUES (?, 'running')`, time.Now().UTC().Format(time.RFC3339Nano))
+func (s *SQLite) BeginSync(ctx context.Context, source core.SyncSource, provenance string) (int64, error) {
+	if !source.ValidForAcquisition() || provenance != core.SyncProvenanceObservedStructuredOrderDocument {
+		return 0, fmt.Errorf("begin sync run: invalid acquisition evidence")
+	}
+	result, err := s.db.ExecContext(ctx, `INSERT INTO sync_runs(started_at, status, sync_source, sync_provenance)
+		VALUES (?, 'running', ?, ?)`, time.Now().UTC().Format(time.RFC3339Nano), source, provenance)
 	if err != nil {
 		return 0, fmt.Errorf("begin sync run: %w", err)
 	}
@@ -50,6 +53,42 @@ func (s *SQLite) BeginSync(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("identify sync run: %w", err)
 	}
 	return id, nil
+}
+
+func (s *SQLite) LatestSyncStatus(ctx context.Context) (core.SyncStatus, error) {
+	result := core.SyncStatus{
+		SchemaVersion: core.SyncStatusSchemaVersion,
+		Visibility:    "private_local",
+		State:         core.SyncRunNeverRun,
+		Limitations: []string{
+			"this is the latest local sync attempt and does not prove that the upstream session remains available",
+			"legacy sync attempts created before acquisition evidence was stored are labeled unknown_legacy",
+		},
+	}
+	var state string
+	var historyComplete int
+	err := s.db.QueryRowContext(ctx, `SELECT status, sync_source, sync_provenance, started_at,
+		COALESCE(completed_at, ''), pages_processed, records_upserted, history_complete,
+		COALESCE(error_code, '')
+		FROM sync_runs ORDER BY id DESC LIMIT 1`).Scan(
+		&state, &result.Source, &result.Provenance, &result.StartedAt,
+		&result.CompletedAt, &result.PagesProcessed, &result.OrdersSeen,
+		&historyComplete, &result.ErrorCode,
+	)
+	if err == sql.ErrNoRows {
+		return result, nil
+	}
+	if err != nil {
+		return core.SyncStatus{}, fmt.Errorf("read latest sync status: %w", err)
+	}
+	switch core.SyncRunState(state) {
+	case core.SyncRunRunning, core.SyncRunCompleted, core.SyncRunFailed:
+		result.State = core.SyncRunState(state)
+	default:
+		return core.SyncStatus{}, fmt.Errorf("read latest sync status: invalid state")
+	}
+	result.HistoryComplete = historyComplete != 0
+	return result, nil
 }
 
 func (s *SQLite) FinishSync(ctx context.Context, runID int64, result core.SyncResult, errorCode string) error {

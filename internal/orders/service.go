@@ -70,11 +70,14 @@ func (s *Service) Sync(ctx context.Context, request core.SyncRequest) (core.Sync
 	if s.source == nil && s.pageSource == nil {
 		return core.SyncResult{}, ErrDocumentSource
 	}
+	if !s.syncSource.ValidForAcquisition() {
+		return core.SyncResult{}, errors.New("invalid sync acquisition source")
+	}
 	cursor, err := s.ledger.LoadSyncCursor(ctx)
 	if err != nil {
 		return core.SyncResult{}, err
 	}
-	runID, err := s.ledger.BeginSync(ctx)
+	runID, err := s.ledger.BeginSync(ctx, s.syncSource, core.SyncProvenanceObservedStructuredOrderDocument)
 	if err != nil {
 		return core.SyncResult{}, err
 	}
@@ -153,6 +156,10 @@ func (s *Service) Sync(ctx context.Context, request core.SyncRequest) (core.Sync
 		return result, err
 	}
 	return result, nil
+}
+
+func (s *Service) SyncStatus(ctx context.Context) (core.SyncStatus, error) {
+	return s.ledger.LatestSyncStatus(ctx)
 }
 
 func (s *Service) List(ctx context.Context, filter core.OrderFilter) ([]core.Order, error) {
