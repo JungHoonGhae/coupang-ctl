@@ -876,15 +876,7 @@ func parseFlags(flags *flag.FlagSet, args []string, usage string) error {
 }
 
 func headedReadRequested(args []string) bool {
-	if len(args) < 2 {
-		return false
-	}
-	eligible := (args[0] == "auth" && args[1] == "verify") ||
-		(args[0] == "orders" && (args[1] == "sync" || args[1] == "categories")) ||
-		(args[0] == "products" && (args[1] == "search" || args[1] == "inspect" || args[1] == "watch-refresh" || args[1] == "cart-add")) ||
-		(args[0] == "account" && args[1] == "benefits") ||
-		args[0] == "receipts"
-	if !eligible {
+	if !commandSupportsHeadedRead(args) {
 		return false
 	}
 	for _, argument := range args[2:] {
@@ -893,6 +885,17 @@ func headedReadRequested(args []string) bool {
 		}
 	}
 	return false
+}
+
+func commandSupportsHeadedRead(args []string) bool {
+	if len(args) < 2 {
+		return false
+	}
+	return (args[0] == "auth" && args[1] == "verify") ||
+		(args[0] == "orders" && (args[1] == "sync" || args[1] == "categories")) ||
+		(args[0] == "products" && (args[1] == "search" || args[1] == "inspect" || args[1] == "watch-refresh" || args[1] == "cart-add")) ||
+		(args[0] == "account" && args[1] == "benefits") ||
+		args[0] == "receipts"
 }
 
 func ordinaryBrowserReadRequested(args []string) bool {
@@ -908,7 +911,7 @@ func ordinaryBrowserReadRequested(args []string) bool {
 }
 
 func currentBrowserReadRequested(args []string) bool {
-	if len(args) < 2 || args[0] != "orders" || args[1] != "sync" {
+	if !commandSupportsCurrentBrowserRead(args) {
 		return false
 	}
 	for _, argument := range args[2:] {
@@ -917,6 +920,10 @@ func currentBrowserReadRequested(args []string) bool {
 		}
 	}
 	return false
+}
+
+func commandSupportsCurrentBrowserRead(args []string) bool {
+	return len(args) >= 2 && args[0] == "orders" && args[1] == "sync"
 }
 
 func backgroundReadRequested(args []string) bool {
@@ -1212,10 +1219,29 @@ func WriteError(w io.Writer, err error) {
 // that actually failed. In particular, a denied explicit headed attempt must
 // not recommend selecting headed mode again.
 func WriteCommandError(w io.Writer, args []string, err error) {
-	if errors.Is(err, browser.ErrBrowserAccessDenied) && headedReadRequested(expandConvenienceCommand(args)) {
+	normalizedArgs := expandConvenienceCommand(args)
+	if errors.Is(err, browser.ErrBrowserAccessDenied) && headedReadRequested(normalizedArgs) {
 		_ = writeJSON(w, core.ErrorResponse{Error: core.ErrorBody{
 			Code:    "headed_browser_access_denied",
 			Message: "the explicit visible browser attempt was also denied; retry later and do not assume the session expired from this result",
+		}})
+		return
+	}
+	if errors.Is(err, browser.ErrBrowserAccessDenied) && currentBrowserReadRequested(normalizedArgs) {
+		_ = writeJSON(w, core.ErrorResponse{Error: core.ErrorBody{
+			Code:    "current_browser_access_denied",
+			Message: "the user-approved current-browser read was denied; retry later without changing or copying browser session state",
+		}})
+		return
+	}
+	if errors.Is(err, browser.ErrBrowserAccessDenied) && commandSupportsHeadedRead(normalizedArgs) {
+		message := "browser access was denied; retry later or rerun this command with --headed for one explicit visible attempt"
+		if commandSupportsCurrentBrowserRead(normalizedArgs) {
+			message = "browser access was denied; retry later, use --headed for one explicit visible attempt, or use --current-browser after Chrome approval"
+		}
+		_ = writeJSON(w, core.ErrorResponse{Error: core.ErrorBody{
+			Code:    "browser_access_denied",
+			Message: message,
 		}})
 		return
 	}

@@ -366,7 +366,10 @@ headless Chrome을 거부할 수 있습니다. `auth status`와 기본 `auth ver
 `auth status`는 이를 로그아웃으로 추측하지 않고 구조화된 `access_blocked`
 상태로 반환합니다. 명시적 headed 시도까지 거부되면
 `headed_browser_access_denied`가 반환되며, 이미 사용한 headed 모드를 다시
-권하는 순환 안내나 불필요한 재로그인을 하지 않습니다. 로그인 상태는 브라우저
+권하는 순환 안내나 불필요한 재로그인을 하지 않습니다. 기본 접근 거부 안내도
+명령이 실제로 지원하는 복구 모드만 제시합니다. 예를 들어 상품 검색에는
+`--current-browser`를 권하지 않으며, 이미 current-browser로 실패한 주문
+동기화는 `current_browser_access_denied`로 구분합니다. 로그인 상태는 브라우저
 소유 전용 프로필에만 남으며 별도
 쿠키·세션 파일로 복사하지 않습니다.
 

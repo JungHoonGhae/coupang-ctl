@@ -1165,6 +1165,33 @@ func TestWriteCommandErrorDoesNotRecommendHeadedModeAfterHeadedDenial(t *testing
 	if got.Error.Code != "browser_access_denied" {
 		t.Fatalf("quiet denial lost its generic remediation: %#v", got)
 	}
+
+	output.Reset()
+	WriteCommandError(&output, []string{"products", "search", "--query", "synthetic"}, browser.ErrBrowserAccessDenied)
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "browser_access_denied" || !strings.Contains(got.Error.Message, "--headed") || strings.Contains(got.Error.Message, "current-browser") {
+		t.Fatalf("product denial recommended an unsupported recovery mode: %#v", got)
+	}
+
+	output.Reset()
+	WriteCommandError(&output, []string{"sync", "--max-pages", "1"}, browser.ErrBrowserAccessDenied)
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "browser_access_denied" || !strings.Contains(got.Error.Message, "--headed") || !strings.Contains(got.Error.Message, "--current-browser") {
+		t.Fatalf("order sync denial omitted a supported recovery mode: %#v", got)
+	}
+
+	output.Reset()
+	WriteCommandError(&output, []string{"sync", "--current-browser"}, browser.ErrBrowserAccessDenied)
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "current_browser_access_denied" || strings.Contains(got.Error.Message, "use --current-browser") || !strings.Contains(got.Error.Message, "retry later") {
+		t.Fatalf("current-browser denial recommended the already-failed mode: %#v", got)
+	}
 }
 
 func TestWriteErrorClassifiesLocalRecapImageRenderFailure(t *testing.T) {

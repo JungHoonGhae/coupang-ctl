@@ -560,7 +560,10 @@ Clean-profile Linux/Windows validation and Web Store review remain.
   of guessing that the profile is logged out or reporting a generic browser
   failure. If an explicitly selected headed read is also denied, the CLI emits
   `headed_browser_access_denied` and does not circularly recommend headed mode
-  or infer that another login is required.
+  or infer that another login is required. Default denial messages are also
+  command-aware: product reads never recommend the unsupported current-browser
+  mode, while a denied user-approved current-browser sync returns
+  `current_browser_access_denied` instead of recommending the same mode again.
 - Tagged releases wait for native Linux, macOS, and Windows tests of dedicated
   profile locking and browser-family/major-version compatibility. Ordinary CI
   mirrors the missing macOS contract in addition to its full Linux and focused
