@@ -1,7 +1,7 @@
 # 릴리스 계약
 
-현재 공개 태그 릴리스는 없습니다. README의 `go install …@main`은 clone 없는
-개발 스냅샷 설치 경로이며 안정 릴리스로 취급하지 않습니다.
+stable 공개 태그 릴리스는 아직 없습니다. README의 `go install …@main`과
+`v0.1.0-rc.N` 후보 릴리스는 안정 릴리스로 취급하지 않습니다.
 이 문서는 첫 태그부터 동일하게 적용할 배포 계약을 설명합니다.
 
 ## 자동화된 태그 릴리스
@@ -10,7 +10,8 @@
 워크플로가 다음 순서로 실행됩니다. 현재 네이티브 서명 단계가 아직 없으므로
 `v0.1.0` 같은 stable 태그는 첫 빌드 전에 정책 검사에서 거부됩니다. credential의
 존재나 수동 boolean은 서명 증거로 인정하지 않으며, stable 공개는 macOS와 Windows
-산출물의 암호학적 서명 검증 adapter가 구현된 뒤에만 열 수 있습니다.
+산출물의 실제 서명·검증·재패키징 workflow와 깨끗한 운영체제 검증이 모두 끝난 뒤에만
+열 수 있습니다.
 
 1. 타입화된 release policy로 malformed tag와 unsigned stable publication 거부
 2. Go 테스트·vet, TypeScript 연구 probe typecheck, MV3 확장 계약 테스트
@@ -58,6 +59,16 @@ sh -n ./installers/install.sh
 로컬 snapshot에는 Syft가 필요합니다. CI는 GoReleaser `v2.18.0`, Syft
 `v1.42.3` 및 사용한 GitHub Actions를 고정된 버전·commit으로 실행합니다.
 실제 태그 생성과 push는 자동화하지 않습니다.
+
+`nativesignverify`는 향후 stable signing job이 사용할 release 전용 검증 adapter이며
+제품 아카이브에는 포함되지 않습니다. macOS에서는 유효한 Developer ID Application
+체인, 고정 code identifier, Team ID, hardened runtime, secure timestamp, 온라인
+notarization ticket과 entitlement 부재를 검사합니다. Windows에서는 SignTool의
+`/pa /all /tw` 정책, `Get-AuthenticodeSignature`, 예상 publisher subject의 SHA-256,
+timestamp를 함께 검사합니다. 두 경로 모두 검증 전후 실행 파일 digest가 달라지면
+`artifact_changed`로 실패하며, 로컬 경로·publisher 문자열·도구 원문은 JSON에 넣지
+않습니다. 구체적인 서명 순서와 외부 준비물은
+[`research/native-signing.md`](research/native-signing.md)에 있습니다.
 
 직접 설치기는 태그를 반드시 요구하고, 지원 플랫폼·아카이브명·실행 파일명을
 `internal/releasecontract`의 타입화된 계약과 대조하는 synthetic E2E를 통과해야
@@ -132,15 +143,16 @@ Windows 아카이브는 `.zip` 파일명을 사용합니다. SHA-256은 다운�
 
 ## 아직 남은 배포 게이트
 
-- macOS Developer ID 서명·notarization과 Windows Authenticode 서명은 아직
-  구성되지 않았습니다. 따라서 stable tag는 `stable_native_signing_required`로
-  fail-closed합니다. GitHub provenance를 운영체제 코드 서명으로 표현하면 안
-  됩니다.
+- macOS와 Windows의 fail-closed verifier는 구현됐지만 Developer ID
+  서명·notarization job, Azure Artifact Signing Public Trust onboarding/OIDC job,
+  서명 뒤 재패키징은 아직 구성되지 않았습니다. 따라서 stable tag는
+  `stable_native_signing_required`로 fail-closed합니다. GitHub provenance를
+  운영체제 코드 서명으로 표현하면 안 됩니다.
 - 향후 Apple adapter가 사용할 secret 이름은 `MACOS_SIGN_P12`,
   `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_KEY`, `MACOS_NOTARY_KEY_ID`,
   `MACOS_NOTARY_ISSUER_ID`로 예약합니다. 값은 문서, fixture, 로그, artifact에
-  넣지 않습니다. Windows는 Artifact Signing과 certificate/PFX 중 방식을 결정한
-  뒤에만 secret 이름을 확정합니다.
+  넣지 않습니다. Windows 기본 경로는 Artifact Signing Public Trust + GitHub
+  OIDC이며, 외부 계정·조직 검증 전에는 credential 이름을 확정하지 않습니다.
 - 언어 기준은 Go 1.26이지만 저장소의 `toolchain` 지시문과 CI 빌드는 보안 수정이
   반영된 Go 1.26.8을 사용합니다. 새 보안 패치가 나오면 Dependabot과
   `govulncheck` 결과를 확인해 같은 minor 계열에서 올립니다.

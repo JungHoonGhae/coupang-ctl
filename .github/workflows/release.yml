@@ -81,6 +81,34 @@ jobs:
           go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser|TestDefaultFetchNeverOpensAVisibleBrowserFallback)' -count=1
           go test ./internal/browser -run '^TestLiveInstalledChromeHeadlessLaunch$' -count=1
 
+      - name: Exercise native signing verifier fail-closed
+        shell: pwsh
+        if: runner.os == 'Windows'
+        run: |
+          $artifact = Join-Path $env:RUNNER_TEMP 'coupangctl-unsigned.exe'
+          go build -o $artifact ./cmd/coupangctl
+          go run ./cmd/nativesignverify `
+            --platform windows `
+            --artifact $artifact `
+            --expected-publisher-subject-sha256 ('0' * 64)
+          if ($LASTEXITCODE -eq 0) {
+            throw 'unsigned Windows executable unexpectedly passed native signing verification'
+          }
+
+      - name: Exercise native signing verifier fail-closed
+        if: runner.os == 'macOS'
+        run: |
+          artifact="$RUNNER_TEMP/coupangctl-unsigned"
+          go build -o "$artifact" ./cmd/coupangctl
+          if go run ./cmd/nativesignverify \
+            --platform darwin \
+            --artifact "$artifact" \
+            --expected-team-id A1B2C3D4E5 \
+            --expected-code-identifier io.github.example.coupangctl; then
+            echo "unsigned macOS executable unexpectedly passed native signing verification" >&2
+            exit 1
+          fi
+
   release:
     name: Build, verify, and publish release
     needs: browser-profile-contracts

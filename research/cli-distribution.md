@@ -357,11 +357,16 @@ Signing 또는 신뢰된 CA의 인증서를 권장하며, EV 인증서도 즉시
    prerelease만 명시적인 unsigned 상태로 허용하고 stable tag를 빌드 전에
    fail-closed한다. GoReleaser는 prerelease tag를 GitHub prerelease로 표시하고
    네이티브 서명과 checksum/attestation의 차이를 release header에 고지한다.
-   caller가 signing 상태를 주장하는 입력은 없으며 실제 검증 adapter만 향후 stable
-   gate를 열 수 있다. `homebrew_casks`는 업로드 없이 snapshot으로 생성해 Ruby
+   caller가 signing 상태를 주장하는 입력은 없다. macOS verifier는 Developer ID,
+   Team ID, code identifier, runtime, timestamp, entitlement 부재와 온라인 notarization
+   ticket을 검사하고, Windows verifier는 SignTool policy, Authenticode, publisher
+   subject hash와 timestamp를 검사한다. 두 adapter 모두 검증한 실행 파일 digest를
+   evidence에 묶고 도중 변경을 거부한다. `homebrew_casks`는 업로드 없이 snapshot으로 생성해 Ruby
    문법, binary stanza, trust-bypass·destructive stanza 부재를 CI에서 검사한다.
-   남은 일은 macOS codesign/notary와 Windows signing의 실제 검증이다. secret은
-   이름만 문서화하고 값은 fixture, log, artifact에 넣지 않는다.
+   남은 일은 실제 macOS codesign/notary job, Azure Artifact Signing Public Trust/OIDC
+   job, 서명 후 재패키징과 clean-system 검증이다. secret은 이름만 문서화하고 값은
+   fixture, log, artifact에 넣지 않는다. 세부 결정은
+   [`native-signing.md`](native-signing.md)에 있다.
 
 첫 공개 태그 이후에만 가능한 외부 작업은 tap repository publish, WinGet Community
 Repository PR, 실제 GitHub attestation 조회, macOS notarization, Windows publisher
