@@ -99,3 +99,20 @@ jobs:
         run: |
           go test ./internal/browserbridge -run '^TestWindows' -count=1
           go test ./internal/browser -run '^(TestOrdinaryBrowserNativeHostPing|TestDedicatedProfileLock|TestProfileIdentity)' -count=1
+
+  macos-browser-profile:
+    name: macOS browser profile contracts
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Test native profile lock and browser identity safety
+        run: go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity)' -count=1

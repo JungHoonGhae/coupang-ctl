@@ -511,6 +511,10 @@ Clean-profile Linux/Windows validation and Web Store review remain.
   never open a visible fallback. `auth verify --headed` is the explicit
   interactive verification path; routine data reads remain headless-first with
   their bounded headed fallback.
+- Tagged releases wait for native Linux, macOS, and Windows tests of dedicated
+  profile locking and browser-family/major-version compatibility. Ordinary CI
+  mirrors the missing macOS contract in addition to its full Linux and focused
+  Windows jobs.
 - Redact PII and stable identifiers from logs and fixtures.
 - Use synthetic fixtures in tests.
 - No checkout, purchase, payment, cancellation, return, or account-setting mutation without an explicit separately designed confirmation boundary.
