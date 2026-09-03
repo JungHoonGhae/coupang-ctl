@@ -94,6 +94,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             throw 'unsigned Windows executable unexpectedly passed native signing verification'
           }
+          exit 0
 
       - name: Exercise native signing verifier fail-closed
         if: runner.os == 'macOS'

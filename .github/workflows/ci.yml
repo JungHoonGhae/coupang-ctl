@@ -180,6 +180,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             throw 'unsigned Windows executable unexpectedly passed native signing verification'
           }
+          exit 0
 
       - name: Generate Windows package-manager metadata
         shell: pwsh
