@@ -110,6 +110,26 @@ func (fixedProductWorkflow) PurgePriceHistory(context.Context) (core.ProductPric
 	return core.ProductPriceHistoryPurgeResult{ObservationsDeleted: 2}, nil
 }
 
+func (fixedProductWorkflow) AddPriceWatch(_ context.Context, request core.ProductWatchRequest) (core.ProductWatchMutationResult, error) {
+	return core.ProductWatchMutationResult{SchemaVersion: 1, Visibility: "private_local", Changed: true, Entry: core.ProductWatchEntry{Reference: core.ProductReference{ProductID: request.ProductID, VendorItemID: request.VendorItemID}}}, nil
+}
+
+func (fixedProductWorkflow) RemovePriceWatch(_ context.Context, request core.ProductWatchRequest) (core.ProductWatchMutationResult, error) {
+	return core.ProductWatchMutationResult{SchemaVersion: 1, Visibility: "private_local", Changed: true, Entry: core.ProductWatchEntry{Reference: core.ProductReference{ProductID: request.ProductID, VendorItemID: request.VendorItemID}}}, nil
+}
+
+func (fixedProductWorkflow) PriceWatchlist(context.Context) (core.ProductWatchList, error) {
+	return core.ProductWatchList{SchemaVersion: 1, Visibility: "private_local", Count: 1, Items: []core.ProductWatchEntry{{Identity: "vendor:201"}}}, nil
+}
+
+func (fixedProductWorkflow) RefreshPriceWatches(context.Context, core.ProductWatchRefreshRequest) (core.ProductWatchRefreshResult, error) {
+	return core.ProductWatchRefreshResult{SchemaVersion: 1, Visibility: "private_local", Attempted: 1, Observed: 1}, nil
+}
+
+func (fixedProductWorkflow) ClearPriceWatches(context.Context) (core.ProductWatchClearResult, error) {
+	return core.ProductWatchClearResult{WatchesDeleted: 2}, nil
+}
+
 func (fixedProductWorkflow) AddToCart(_ context.Context, request core.CartAddRequest) (core.CartAddResult, error) {
 	return core.CartAddResult{SchemaVersion: 1, Attempted: true, Added: true, Verified: true, Quantity: request.Quantity}, nil
 }
@@ -130,6 +150,26 @@ func (*capturingProductWorkflow) PriceHistory(_ context.Context, request core.Pr
 
 func (*capturingProductWorkflow) PurgePriceHistory(context.Context) (core.ProductPriceHistoryPurgeResult, error) {
 	return core.ProductPriceHistoryPurgeResult{}, nil
+}
+
+func (*capturingProductWorkflow) AddPriceWatch(context.Context, core.ProductWatchRequest) (core.ProductWatchMutationResult, error) {
+	return core.ProductWatchMutationResult{}, nil
+}
+
+func (*capturingProductWorkflow) RemovePriceWatch(context.Context, core.ProductWatchRequest) (core.ProductWatchMutationResult, error) {
+	return core.ProductWatchMutationResult{}, nil
+}
+
+func (*capturingProductWorkflow) PriceWatchlist(context.Context) (core.ProductWatchList, error) {
+	return core.ProductWatchList{}, nil
+}
+
+func (*capturingProductWorkflow) RefreshPriceWatches(context.Context, core.ProductWatchRefreshRequest) (core.ProductWatchRefreshResult, error) {
+	return core.ProductWatchRefreshResult{}, nil
+}
+
+func (*capturingProductWorkflow) ClearPriceWatches(context.Context) (core.ProductWatchClearResult, error) {
+	return core.ProductWatchClearResult{}, nil
 }
 
 func (*capturingProductWorkflow) AddToCart(context.Context, core.CartAddRequest) (core.CartAddResult, error) {
@@ -281,6 +321,39 @@ func TestProductsPriceHistoryPurgeRequiresExactConfirmation(t *testing.T) {
 	var got core.ProductPriceHistoryPurgeResult
 	if err := json.Unmarshal(output.Bytes(), &got); err != nil || got.ObservationsDeleted != 2 {
 		t.Fatalf("unexpected purge result: %#v err=%v", got, err)
+	}
+}
+
+func TestProductsWatchCommandsExposeTypedLocalWorkflow(t *testing.T) {
+	var output bytes.Buffer
+	if err := runProducts(context.Background(), []string{"watch-add", "--product-id", "101", "--vendor-item-id", "201"}, &output, fixedProductWorkflow{}); err != nil {
+		t.Fatal(err)
+	}
+	var mutation core.ProductWatchMutationResult
+	if err := json.Unmarshal(output.Bytes(), &mutation); err != nil || !mutation.Changed || mutation.Entry.Reference.VendorItemID != "201" {
+		t.Fatalf("unexpected watch mutation: %#v err=%v", mutation, err)
+	}
+	output.Reset()
+	if err := runProducts(context.Background(), []string{"watch-refresh", "--limit", "3", "--stale-hours", "12"}, &output, fixedProductWorkflow{}); err != nil {
+		t.Fatal(err)
+	}
+	var refresh core.ProductWatchRefreshResult
+	if err := json.Unmarshal(output.Bytes(), &refresh); err != nil || refresh.Attempted != 1 || refresh.Observed != 1 {
+		t.Fatalf("unexpected watch refresh: %#v err=%v", refresh, err)
+	}
+}
+
+func TestProductsWatchClearRequiresExactConfirmation(t *testing.T) {
+	if err := runProducts(context.Background(), []string{"watch-clear"}, io.Discard, fixedProductWorkflow{}); err == nil {
+		t.Fatal("watchlist clear ran without confirmation")
+	}
+	var output bytes.Buffer
+	if err := runProducts(context.Background(), []string{"watch-clear", "--confirm", "clear-product-watchlist"}, &output, fixedProductWorkflow{}); err != nil {
+		t.Fatal(err)
+	}
+	var got core.ProductWatchClearResult
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil || got.WatchesDeleted != 2 {
+		t.Fatalf("unexpected watch clear result: %#v err=%v", got, err)
 	}
 }
 

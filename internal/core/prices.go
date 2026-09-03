@@ -90,3 +90,83 @@ type ProductPriceHistoryDefinitions struct {
 type ProductPriceHistoryPurgeResult struct {
 	ObservationsDeleted int `json:"observations_deleted"`
 }
+
+type ProductWatchRequest struct {
+	ProductID    string `json:"product_id" jsonschema:"Public numeric product identifier from a stored price observation"`
+	VendorItemID string `json:"vendor_item_id,omitempty" jsonschema:"Exact numeric vendor item identifier; omit only for a product-level observation series"`
+}
+
+func (r ProductWatchRequest) Validate() error {
+	if !NumericProductIdentifier(r.ProductID) || (r.VendorItemID != "" && !NumericProductIdentifier(r.VendorItemID)) {
+		return errors.New("product_id and vendor_item_id must be numeric")
+	}
+	return nil
+}
+
+type ProductWatchEntry struct {
+	Identity      string           `json:"identity"`
+	Reference     ProductReference `json:"reference"`
+	Name          string           `json:"name"`
+	CanonicalURL  string           `json:"canonical_url,omitempty"`
+	AddedAt       time.Time        `json:"added_at"`
+	LastCheckedAt *time.Time       `json:"last_checked_at,omitempty"`
+	LastStatus    string           `json:"last_status"`
+}
+
+type ProductWatchList struct {
+	SchemaVersion int                     `json:"schema_version"`
+	Visibility    string                  `json:"visibility"`
+	Count         int                     `json:"count"`
+	Items         []ProductWatchEntry     `json:"items"`
+	Definitions   ProductWatchDefinitions `json:"definitions"`
+}
+
+type ProductWatchDefinitions struct {
+	Eligibility string `json:"eligibility"`
+	Refresh     string `json:"refresh"`
+}
+
+type ProductWatchMutationResult struct {
+	SchemaVersion int               `json:"schema_version"`
+	Visibility    string            `json:"visibility"`
+	Changed       bool              `json:"changed"`
+	Entry         ProductWatchEntry `json:"entry"`
+}
+
+type ProductWatchClearResult struct {
+	WatchesDeleted int `json:"watches_deleted"`
+}
+
+type ProductWatchRefreshRequest struct {
+	Limit      int `json:"limit,omitempty" jsonschema:"Maximum due watch entries to refresh,minimum=1,maximum=50"`
+	StaleHours int `json:"stale_hours,omitempty" jsonschema:"Refresh entries not checked within this many hours,minimum=1,maximum=720"`
+}
+
+func (r ProductWatchRefreshRequest) Validate() error {
+	if r.Limit < 0 || r.Limit > 50 {
+		return errors.New("limit must be between 1 and 50")
+	}
+	if r.StaleHours < 0 || r.StaleHours > 720 {
+		return errors.New("stale_hours must be between 1 and 720")
+	}
+	return nil
+}
+
+type ProductWatchRefreshItem struct {
+	Reference  ProductReference `json:"reference"`
+	Status     string           `json:"status"`
+	CheckedAt  time.Time        `json:"checked_at"`
+	Provenance string           `json:"provenance"`
+}
+
+type ProductWatchRefreshResult struct {
+	SchemaVersion int                       `json:"schema_version"`
+	Visibility    string                    `json:"visibility"`
+	Attempted     int                       `json:"attempted"`
+	Observed      int                       `json:"observed"`
+	Unavailable   int                       `json:"unavailable"`
+	Failed        int                       `json:"failed"`
+	RemainingDue  int                       `json:"remaining_due"`
+	Items         []ProductWatchRefreshItem `json:"items"`
+	Definitions   ProductWatchDefinitions   `json:"definitions"`
+}

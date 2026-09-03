@@ -30,6 +30,10 @@ type ProductProvider interface {
 	Search(context.Context, core.ProductSearchRequest) (core.ProductSearchResult, error)
 	Inspect(context.Context, core.ProductInspectRequest) (core.ProductInspection, error)
 	PriceHistory(context.Context, core.ProductPriceHistoryRequest) (core.ProductPriceHistory, error)
+	AddPriceWatch(context.Context, core.ProductWatchRequest) (core.ProductWatchMutationResult, error)
+	RemovePriceWatch(context.Context, core.ProductWatchRequest) (core.ProductWatchMutationResult, error)
+	PriceWatchlist(context.Context) (core.ProductWatchList, error)
+	RefreshPriceWatches(context.Context, core.ProductWatchRefreshRequest) (core.ProductWatchRefreshResult, error)
 	AddToCart(context.Context, core.CartAddRequest) (core.CartAddResult, error)
 }
 
@@ -173,10 +177,11 @@ func addAccountTools(server *mcp.Server, provider AccountProvider) {
 
 func addProductTools(server *mcp.Server, provider ProductProvider) {
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPointer(true)}
+	observingRead := &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: false, OpenWorldHint: boolPointer(true)}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "products_search",
-		Description: "Search Coupang from natural language or a source-native category ID. Supports distinct Coupang ranking, sales, latest, price, rating, and review sorts; computer memory/storage and explicit used-item filters; and listing-level diversity by default. When Coupang Partners credentials are configured, each canonical URL may also have a separate affiliate_url plus a definite commission disclosure; set disable_affiliate=true to opt out. Search position is evidence of the selected Coupang result order, not absolute unit sales. Never invent an unobserved product field.",
-		Annotations: readOnly,
+		Description: "Search Coupang from natural language or a source-native category ID. Supports distinct Coupang ranking, sales, latest, price, rating, and review sorts; computer memory/storage and explicit used-item filters; and listing-level diversity by default. Explicitly observed returned prices are appended to private local price history. When Coupang Partners credentials are configured, each canonical URL may also have a separate affiliate_url plus a definite commission disclosure; set disable_affiliate=true to opt out. Search position is evidence of the selected Coupang result order, not absolute unit sales. Never invent an unobserved product field.",
+		Annotations: observingRead,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.ProductSearchRequest) (*mcp.CallToolResult, core.ProductSearchResult, error) {
 		result, err := provider.Search(ctx, input)
 		if err != nil {
@@ -186,8 +191,8 @@ func addProductTools(server *mcp.Server, provider ProductProvider) {
 	})
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "product_inspect",
-		Description: "Inspect one products_search candidate: public details, gallery and detail images, current price, delivery, coupons or card benefits when observed, aggregate ratings, and sanitized reviews. When configured, affiliate_url remains separate from the canonical URL and carries the same commission disclosure; set disable_affiliate=true to opt out. This never adds to cart or purchases.",
-		Annotations: readOnly,
+		Description: "Inspect one products_search candidate: public details, gallery and detail images, current price, delivery, coupons or card benefits when observed, aggregate ratings, and sanitized reviews. An explicitly observed price is appended to private local price history. When configured, affiliate_url remains separate from the canonical URL and carries the same commission disclosure; set disable_affiliate=true to opt out. This never adds to cart or purchases.",
+		Annotations: observingRead,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.ProductInspectRequest) (*mcp.CallToolResult, core.ProductInspection, error) {
 		result, err := provider.Inspect(ctx, input)
 		if err != nil {
@@ -203,6 +208,48 @@ func addProductTools(server *mcp.Server, provider ProductProvider) {
 		result, err := provider.PriceHistory(ctx, input)
 		if err != nil {
 			return nil, core.ProductPriceHistory{}, safeProductToolError(err)
+		}
+		return nil, result, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "product_watchlist", Description: "List exact product identities selected for periodic local price observation. This does not access Coupang or refresh prices.", Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, core.ProductWatchList, error) {
+		result, err := provider.PriceWatchlist(ctx)
+		if err != nil {
+			return nil, core.ProductWatchList{}, safeProductToolError(err)
+		}
+		return nil, result, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "product_watch_add",
+		Description: "Add an exact product identity to the local price watchlist. The identity must already have an observed price from products_search or product_inspect; names are never matched. This changes only local watchlist state.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: true, OpenWorldHint: boolPointer(false)},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.ProductWatchRequest) (*mcp.CallToolResult, core.ProductWatchMutationResult, error) {
+		result, err := provider.AddPriceWatch(ctx, input)
+		if err != nil {
+			return nil, core.ProductWatchMutationResult{}, safeProductToolError(err)
+		}
+		return nil, result, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "product_watch_remove",
+		Description: "Remove one exact identity from the local price watchlist without deleting its price history. This changes only local watchlist state.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: boolPointer(true), IdempotentHint: true, OpenWorldHint: boolPointer(false)},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.ProductWatchRequest) (*mcp.CallToolResult, core.ProductWatchMutationResult, error) {
+		result, err := provider.RemovePriceWatch(ctx, input)
+		if err != nil {
+			return nil, core.ProductWatchMutationResult{}, safeProductToolError(err)
+		}
+		return nil, result, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "product_watch_refresh",
+		Description: "Refresh due exact watchlist identities through bounded public product inspection and append observed current prices locally. This never uses affiliate conversion, changes a cart, checks out, orders, or pays.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: false, OpenWorldHint: boolPointer(true)},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.ProductWatchRefreshRequest) (*mcp.CallToolResult, core.ProductWatchRefreshResult, error) {
+		result, err := provider.RefreshPriceWatches(ctx, input)
+		if err != nil {
+			return nil, core.ProductWatchRefreshResult{}, safeProductToolError(err)
 		}
 		return nil, result, nil
 	})

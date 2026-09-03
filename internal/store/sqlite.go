@@ -231,6 +231,27 @@ func (s *SQLite) migrate(ctx context.Context) error {
 		VALUES (9, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`); err != nil {
 		return fmt.Errorf("record product price observation migration: %w", err)
 	}
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS product_price_watchlist (
+		product_key TEXT PRIMARY KEY,
+		product_id TEXT NOT NULL,
+		item_id TEXT NOT NULL DEFAULT '',
+		vendor_item_id TEXT NOT NULL DEFAULT '',
+		name TEXT NOT NULL,
+		canonical_url TEXT NOT NULL DEFAULT '',
+		added_at TEXT NOT NULL,
+		last_checked_at TEXT,
+		last_status TEXT NOT NULL CHECK (last_status IN ('pending', 'observed', 'unavailable', 'failed'))
+	)`); err != nil {
+		return fmt.Errorf("create product price watchlist: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS product_price_watchlist_due_idx
+		ON product_price_watchlist(last_checked_at, added_at)`); err != nil {
+		return fmt.Errorf("index product price watchlist: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+		VALUES (10, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`); err != nil {
+		return fmt.Errorf("record product price watchlist migration: %w", err)
+	}
 	return nil
 }
 

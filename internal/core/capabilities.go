@@ -99,7 +99,7 @@ func CurrentCapabilities() CapabilityReport {
 		{
 			ID: "price_and_repurchase", Priority: "P2", Status: CapabilityExperimental,
 			UserValue: "exact-option local price history and evidence-backed comparison with the last eligible paid unit amount on repurchase candidates",
-			Interface: []string{"cli", "mcp"}, NextWork: "add an explicit watchlist and scheduled refresh, then validate the 24-hour staleness threshold over longitudinal observations", LastVerified: "2026-09-03",
+			Interface: []string{"cli", "mcp"}, NextWork: "validate longitudinal price changes and the 24-hour threshold, then add optional platform scheduler installation helpers", LastVerified: "2026-09-03",
 		},
 	}}
 }

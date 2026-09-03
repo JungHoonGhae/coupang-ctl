@@ -25,6 +25,8 @@ const (
 
 var ErrSourceUnavailable = errors.New("product document source unavailable")
 var ErrPriceHistoryUnavailable = errors.New("product price history store unavailable")
+var ErrPriceWatchUnavailable = errors.New("product price watchlist unavailable")
+var ErrPriceWatchRequiresObservation = errors.New("product price watch requires an existing exact-identity observation")
 
 var (
 	computerCapacityPattern = regexp.MustCompile(`(?i)([0-9]{1,4})\s*(TB|GB|G)\b`)
@@ -50,6 +52,16 @@ type PriceHistoryRepository interface {
 	PurgePriceObservations(context.Context) (int, error)
 }
 
+type PriceWatchRepository interface {
+	AddPriceWatch(context.Context, core.ProductWatchRequest, time.Time) (core.ProductWatchEntry, bool, error)
+	RemovePriceWatch(context.Context, core.ProductWatchRequest) (core.ProductWatchEntry, bool, error)
+	ListPriceWatches(context.Context) ([]core.ProductWatchEntry, error)
+	ListDuePriceWatches(context.Context, time.Time, int) ([]core.ProductWatchEntry, error)
+	CountDuePriceWatches(context.Context, time.Time) (int, error)
+	MarkPriceWatchChecked(context.Context, core.ProductReference, time.Time, string) error
+	PurgePriceWatches(context.Context) (int, error)
+}
+
 func (s *Service) AddToCart(ctx context.Context, request core.CartAddRequest) (core.CartAddResult, error) {
 	if request.Quantity == 0 {
 		request.Quantity = 1
@@ -72,6 +84,7 @@ type Service struct {
 	source       Source
 	affiliate    AffiliateLinker
 	priceHistory PriceHistoryRepository
+	watchlist    PriceWatchRepository
 	now          func() time.Time
 }
 
@@ -84,7 +97,8 @@ func NewWithAffiliate(source Source, affiliate AffiliateLinker) *Service {
 }
 
 func NewWithAffiliateAndPrices(source Source, affiliate AffiliateLinker, priceHistory PriceHistoryRepository) *Service {
-	return &Service{source: source, affiliate: affiliate, priceHistory: priceHistory, now: time.Now}
+	watchlist, _ := priceHistory.(PriceWatchRepository)
+	return &Service{source: source, affiliate: affiliate, priceHistory: priceHistory, watchlist: watchlist, now: time.Now}
 }
 
 func (s *Service) Search(ctx context.Context, request core.ProductSearchRequest) (core.ProductSearchResult, error) {
@@ -249,6 +263,154 @@ func (s *Service) PurgePriceHistory(ctx context.Context) (core.ProductPriceHisto
 		return core.ProductPriceHistoryPurgeResult{}, errors.Join(ErrPriceHistoryUnavailable, err)
 	}
 	return core.ProductPriceHistoryPurgeResult{ObservationsDeleted: deleted}, nil
+}
+
+func (s *Service) AddPriceWatch(ctx context.Context, request core.ProductWatchRequest) (core.ProductWatchMutationResult, error) {
+	if err := request.Validate(); err != nil {
+		return core.ProductWatchMutationResult{}, err
+	}
+	if s.watchlist == nil {
+		return core.ProductWatchMutationResult{}, ErrPriceWatchUnavailable
+	}
+	entry, changed, err := s.watchlist.AddPriceWatch(ctx, request, s.now().UTC())
+	if err != nil {
+		return core.ProductWatchMutationResult{}, errors.Join(ErrPriceWatchUnavailable, err)
+	}
+	if entry.Identity == "" {
+		return core.ProductWatchMutationResult{}, ErrPriceWatchRequiresObservation
+	}
+	return core.ProductWatchMutationResult{SchemaVersion: 1, Visibility: "private_local", Changed: changed, Entry: entry}, nil
+}
+
+func (s *Service) RemovePriceWatch(ctx context.Context, request core.ProductWatchRequest) (core.ProductWatchMutationResult, error) {
+	if err := request.Validate(); err != nil {
+		return core.ProductWatchMutationResult{}, err
+	}
+	if s.watchlist == nil {
+		return core.ProductWatchMutationResult{}, ErrPriceWatchUnavailable
+	}
+	entry, changed, err := s.watchlist.RemovePriceWatch(ctx, request)
+	if err != nil {
+		return core.ProductWatchMutationResult{}, errors.Join(ErrPriceWatchUnavailable, err)
+	}
+	return core.ProductWatchMutationResult{SchemaVersion: 1, Visibility: "private_local", Changed: changed, Entry: entry}, nil
+}
+
+func (s *Service) ClearPriceWatches(ctx context.Context) (core.ProductWatchClearResult, error) {
+	if s.watchlist == nil {
+		return core.ProductWatchClearResult{}, ErrPriceWatchUnavailable
+	}
+	deleted, err := s.watchlist.PurgePriceWatches(ctx)
+	if err != nil {
+		return core.ProductWatchClearResult{}, errors.Join(ErrPriceWatchUnavailable, err)
+	}
+	return core.ProductWatchClearResult{WatchesDeleted: deleted}, nil
+}
+
+func (s *Service) PriceWatchlist(ctx context.Context) (core.ProductWatchList, error) {
+	if s.watchlist == nil {
+		return core.ProductWatchList{}, ErrPriceWatchUnavailable
+	}
+	items, err := s.watchlist.ListPriceWatches(ctx)
+	if err != nil {
+		return core.ProductWatchList{}, errors.Join(ErrPriceWatchUnavailable, err)
+	}
+	return core.ProductWatchList{
+		SchemaVersion: 1, Visibility: "private_local", Count: len(items), Items: items,
+		Definitions: priceWatchDefinitions(),
+	}, nil
+}
+
+func (s *Service) RefreshPriceWatches(ctx context.Context, request core.ProductWatchRefreshRequest) (core.ProductWatchRefreshResult, error) {
+	if request.Limit == 0 {
+		request.Limit = 10
+	}
+	if request.StaleHours == 0 {
+		request.StaleHours = 24
+	}
+	if err := request.Validate(); err != nil {
+		return core.ProductWatchRefreshResult{}, err
+	}
+	if s.watchlist == nil || s.priceHistory == nil {
+		return core.ProductWatchRefreshResult{}, ErrPriceWatchUnavailable
+	}
+	if s.source == nil {
+		return core.ProductWatchRefreshResult{}, ErrSourceUnavailable
+	}
+	now := s.now().UTC()
+	dueBefore := now.Add(-time.Duration(request.StaleHours) * time.Hour)
+	entries, err := s.watchlist.ListDuePriceWatches(ctx, dueBefore, request.Limit)
+	if err != nil {
+		return core.ProductWatchRefreshResult{}, errors.Join(ErrPriceWatchUnavailable, err)
+	}
+	result := core.ProductWatchRefreshResult{
+		SchemaVersion: 1, Visibility: "private_local", Items: []core.ProductWatchRefreshItem{},
+		Definitions: priceWatchDefinitions(),
+	}
+	for _, entry := range entries {
+		checkedAt := s.now().UTC()
+		itemResult := core.ProductWatchRefreshItem{Reference: entry.Reference, CheckedAt: checkedAt}
+		inspection, inspectErr := s.source.Inspect(ctx, core.ProductInspectRequest{
+			ProductID: entry.Reference.ProductID, ItemID: entry.Reference.ItemID,
+			VendorItemID: entry.Reference.VendorItemID, ReviewLimit: 1, DetailImageLimit: 1,
+		})
+		status := "failed"
+		itemResult.Status = status
+		itemResult.Provenance = "unavailable"
+		if inspectErr == nil && watchedIdentityMatches(entry.Reference, inspection.Product.Reference) &&
+			contains(inspection.Product.ObservedFields, "price.current_amount") && inspection.Product.Price.CurrentAmount > 0 {
+			reference := inspection.Product.Reference
+			if entry.Reference.VendorItemID == "" {
+				reference.VendorItemID = ""
+			}
+			observation := core.ProductPriceObservation{
+				Reference: reference, Name: inspection.Product.Name, CanonicalURL: inspection.Product.URL,
+				CurrentAmount: inspection.Product.Price.CurrentAmount, OriginalAmount: inspection.Product.Price.OriginalAmount,
+				DiscountRate: inspection.Product.Price.DiscountRate, Currency: "KRW", ObservedAt: checkedAt,
+				Source: "coupang_product_inspection", Provenance: "observed",
+			}
+			if recordErr := s.priceHistory.RecordPriceObservations(ctx, []core.ProductPriceObservation{observation}); recordErr == nil {
+				status = "observed"
+				itemResult.Status = status
+				itemResult.Provenance = "observed"
+			}
+		} else if inspectErr == nil {
+			status = "unavailable"
+			itemResult.Status = status
+		}
+		if err := s.watchlist.MarkPriceWatchChecked(ctx, entry.Reference, checkedAt, status); err != nil {
+			return core.ProductWatchRefreshResult{}, errors.Join(ErrPriceWatchUnavailable, err)
+		}
+		result.Attempted++
+		switch status {
+		case "observed":
+			result.Observed++
+		case "unavailable":
+			result.Unavailable++
+		default:
+			result.Failed++
+		}
+		result.Items = append(result.Items, itemResult)
+	}
+	result.RemainingDue, err = s.watchlist.CountDuePriceWatches(ctx, dueBefore)
+	if err != nil {
+		return core.ProductWatchRefreshResult{}, errors.Join(ErrPriceWatchUnavailable, err)
+	}
+	return result, nil
+}
+
+func priceWatchDefinitions() core.ProductWatchDefinitions {
+	return core.ProductWatchDefinitions{
+		Eligibility: "an exact product or vendor-item identity must already have a local observed price; names are never matched",
+		Refresh:     "due entries are inspected without affiliate conversion, cart mutation, checkout, or payment; each attempt updates its local check status",
+	}
+}
+
+func watchedIdentityMatches(watched, observed core.ProductReference) bool {
+	if watched.ProductID != observed.ProductID {
+		return false
+	}
+	return watched.VendorItemID == "" || watched.VendorItemID == observed.VendorItemID
 }
 
 func (s *Service) recordPriceObservations(ctx context.Context, items []core.ProductCard, observedAt time.Time, source string) []string {

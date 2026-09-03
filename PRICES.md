@@ -42,6 +42,15 @@
           "observed_at": "2026-09-01T00:00:00Z",
           "source": "coupang_product_search",
           "provenance": "observed"
+        },
+        {
+          "reference": {"product_id": "101", "vendor_item_id": "201"},
+          "name": "Synthetic product",
+          "current_amount": 39000,
+          "currency": "KRW",
+          "observed_at": "2026-09-03T00:00:00Z",
+          "source": "coupang_product_inspection",
+          "provenance": "observed"
         }
       ],
       "trend": {
@@ -104,8 +113,73 @@
 24시간 미만은 `recent_under_24h`, 그 이상은 `stale_24h_or_more`로
 표시하며 오래된 관찰에는 새 상세 조회가 필요하다는 limitation을 추가합니다.
 
+## Watchlist와 반복 갱신
+
+이미 관찰한 정확한 identity만 watchlist에 등록할 수 있습니다. 이름 검색으로
+대상을 추측하지 않습니다.
+
+```bash
+coupangctl products watch-add --product-id ID --vendor-item-id ID
+coupangctl products watch-list
+coupangctl products watch-refresh --limit 20 --stale-hours 24
+coupangctl products watch-remove --product-id ID --vendor-item-id ID
+```
+
+`watch-add`와 `watch-remove`는 `changed`와 대상 `entry`를 반환합니다.
+`watch-list`는 다음과 같은 bounded local 목록입니다.
+
+```json
+{
+  "schema_version": 1,
+  "visibility": "private_local",
+  "count": 1,
+  "items": [
+    {
+      "identity": "vendor:201",
+      "reference": {"product_id": "101", "vendor_item_id": "201"},
+      "name": "Synthetic product",
+      "canonical_url": "https://www.coupang.com/vp/products/101",
+      "added_at": "2026-09-03T00:00:00Z",
+      "last_status": "pending"
+    }
+  ]
+}
+```
+
+`watch-refresh`는 `last_checked_at`이 없거나 기준 시간보다 오래된 항목을 최대
+`limit`개 조회합니다. 각 시도는 `observed`, `unavailable`, `failed` 중 하나로
+기록되어 같은 실패를 즉시 반복하지 않습니다. 이 명령은 운영체제의 cron,
+systemd timer, CI scheduler에서 실행할 수 있는 구조화 JSON 명령입니다.
+
+```json
+{
+  "schema_version": 1,
+  "visibility": "private_local",
+  "attempted": 2,
+  "observed": 1,
+  "unavailable": 1,
+  "failed": 0,
+  "remaining_due": 0,
+  "items": [
+    {
+      "reference": {"product_id": "101", "vendor_item_id": "201"},
+      "status": "observed",
+      "checked_at": "2026-09-03T00:00:00Z",
+      "provenance": "observed"
+    }
+  ]
+}
+```
+
+갱신은 공개 상세 읽기와 로컬 기록만 수행합니다. 제휴 링크 변환, 장바구니,
+주문, 결제는 호출하지 않습니다. `product_watch_add`,
+`product_watch_remove`, `product_watch_refresh`는 MCP에서도 로컬 변경 여부가
+annotation에 표시됩니다.
+
 ## 삭제
 
 `products price-history-purge --confirm purge-product-price-history`는 가격
-관찰만 삭제하고 주문 원장이나 인증 세션은 건드리지 않습니다. MCP에는
-삭제 도구를 노출하지 않습니다.
+관찰만 삭제하고 watchlist는 유지합니다. watchlist 전체 삭제는
+`products watch-clear --confirm clear-product-watchlist`를 사용합니다. 두
+명령 모두 주문 원장이나 인증 세션은 건드리지 않으며 MCP에는 일괄 삭제
+도구를 노출하지 않습니다.

@@ -54,6 +54,22 @@ func (fixedProductProvider) PriceHistory(_ context.Context, request core.Product
 	return core.ProductPriceHistory{SchemaVersion: 1, Visibility: "private_local", ProductID: request.ProductID, ObservationCount: 2}, nil
 }
 
+func (fixedProductProvider) AddPriceWatch(_ context.Context, request core.ProductWatchRequest) (core.ProductWatchMutationResult, error) {
+	return core.ProductWatchMutationResult{SchemaVersion: 1, Visibility: "private_local", Changed: true, Entry: core.ProductWatchEntry{Reference: core.ProductReference{ProductID: request.ProductID, VendorItemID: request.VendorItemID}}}, nil
+}
+
+func (fixedProductProvider) RemovePriceWatch(_ context.Context, request core.ProductWatchRequest) (core.ProductWatchMutationResult, error) {
+	return core.ProductWatchMutationResult{SchemaVersion: 1, Visibility: "private_local", Changed: true, Entry: core.ProductWatchEntry{Reference: core.ProductReference{ProductID: request.ProductID, VendorItemID: request.VendorItemID}}}, nil
+}
+
+func (fixedProductProvider) PriceWatchlist(context.Context) (core.ProductWatchList, error) {
+	return core.ProductWatchList{SchemaVersion: 1, Visibility: "private_local", Count: 1}, nil
+}
+
+func (fixedProductProvider) RefreshPriceWatches(context.Context, core.ProductWatchRefreshRequest) (core.ProductWatchRefreshResult, error) {
+	return core.ProductWatchRefreshResult{SchemaVersion: 1, Visibility: "private_local", Attempted: 1, Observed: 1}, nil
+}
+
 func (fixedProductProvider) AddToCart(_ context.Context, request core.CartAddRequest) (core.CartAddResult, error) {
 	return core.CartAddResult{SchemaVersion: 1, Attempted: true, Added: true, Verified: true, Quantity: request.Quantity}, nil
 }
@@ -171,6 +187,16 @@ func TestProductToolsExposeNaturalLanguageSearchAndConfirmedCartMutation(t *test
 	var historyResult core.ProductPriceHistory
 	if err := json.Unmarshal(encoded, &historyResult); err != nil || historyResult.ObservationCount != 2 {
 		t.Fatalf("unexpected product price history: %#v, %v", historyResult, err)
+	}
+
+	watchlist, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: "product_watchlist"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ = json.Marshal(watchlist.StructuredContent)
+	var watchlistResult core.ProductWatchList
+	if err := json.Unmarshal(encoded, &watchlistResult); err != nil || watchlistResult.Count != 1 {
+		t.Fatalf("unexpected product watchlist: %#v, %v", watchlistResult, err)
 	}
 
 	cart, err := clientSession.CallTool(ctx, &mcp.CallToolParams{

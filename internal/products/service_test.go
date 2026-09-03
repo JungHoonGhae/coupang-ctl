@@ -19,6 +19,7 @@ type syntheticSource struct {
 type syntheticPriceHistory struct {
 	recorded     []core.ProductPriceObservation
 	observations []core.ProductPriceObservation
+	watches      []core.ProductWatchEntry
 	truncated    bool
 	err          error
 }
@@ -35,6 +36,65 @@ func (s *syntheticPriceHistory) ListPriceObservations(context.Context, core.Prod
 func (s *syntheticPriceHistory) PurgePriceObservations(context.Context) (int, error) {
 	deleted := len(s.observations)
 	s.observations = nil
+	return deleted, s.err
+}
+
+func (s *syntheticPriceHistory) AddPriceWatch(_ context.Context, request core.ProductWatchRequest, addedAt time.Time) (core.ProductWatchEntry, bool, error) {
+	for _, watch := range s.watches {
+		if watch.Reference.ProductID == request.ProductID && watch.Reference.VendorItemID == request.VendorItemID {
+			return watch, false, s.err
+		}
+	}
+	for index := len(s.observations) - 1; index >= 0; index-- {
+		observation := s.observations[index]
+		if observation.Reference.ProductID == request.ProductID && observation.Reference.VendorItemID == request.VendorItemID {
+			entry := core.ProductWatchEntry{
+				Identity: priceSeriesIdentity(observation.Reference), Reference: observation.Reference,
+				Name: observation.Name, CanonicalURL: observation.CanonicalURL, AddedAt: addedAt, LastStatus: "pending",
+			}
+			s.watches = append(s.watches, entry)
+			return entry, true, s.err
+		}
+	}
+	return core.ProductWatchEntry{}, false, s.err
+}
+
+func (s *syntheticPriceHistory) RemovePriceWatch(_ context.Context, request core.ProductWatchRequest) (core.ProductWatchEntry, bool, error) {
+	for index, watch := range s.watches {
+		if watch.Reference.ProductID == request.ProductID && watch.Reference.VendorItemID == request.VendorItemID {
+			s.watches = append(s.watches[:index], s.watches[index+1:]...)
+			return watch, true, s.err
+		}
+	}
+	return core.ProductWatchEntry{}, false, s.err
+}
+
+func (s *syntheticPriceHistory) ListPriceWatches(context.Context) ([]core.ProductWatchEntry, error) {
+	return append([]core.ProductWatchEntry(nil), s.watches...), s.err
+}
+
+func (s *syntheticPriceHistory) ListDuePriceWatches(context.Context, time.Time, int) ([]core.ProductWatchEntry, error) {
+	return append([]core.ProductWatchEntry(nil), s.watches...), s.err
+}
+
+func (s *syntheticPriceHistory) CountDuePriceWatches(context.Context, time.Time) (int, error) {
+	return 0, s.err
+}
+
+func (s *syntheticPriceHistory) MarkPriceWatchChecked(_ context.Context, reference core.ProductReference, checkedAt time.Time, status string) error {
+	for index := range s.watches {
+		if s.watches[index].Reference.ProductID == reference.ProductID && s.watches[index].Reference.VendorItemID == reference.VendorItemID {
+			s.watches[index].LastCheckedAt = &checkedAt
+			s.watches[index].LastStatus = status
+			return s.err
+		}
+	}
+	return errors.New("synthetic watch missing")
+}
+
+func (s *syntheticPriceHistory) PurgePriceWatches(context.Context) (int, error) {
+	deleted := len(s.watches)
+	s.watches = nil
 	return deleted, s.err
 }
 
@@ -115,6 +175,38 @@ func TestPriceHistoryKeepsVariantsSeparateAndDerivesPerSeriesTrend(t *testing.T)
 	}
 	if exact == nil || exact.Trend.Direction != "lower" || exact.Trend.ChangeFromFirstReturnedKRW != -3000 || exact.Trend.ChangeFromFirstReturnedPercent != -7.14 || exact.Trend.Provenance == "observed" {
 		t.Fatalf("unexpected exact-option trend: %#v", exact)
+	}
+}
+
+func TestPriceWatchRequiresObservationAndRefreshesOnlyExactIdentity(t *testing.T) {
+	base := time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC)
+	history := &syntheticPriceHistory{observations: []core.ProductPriceObservation{{
+		Reference: core.ProductReference{ProductID: "101", ItemID: "301", VendorItemID: "201"},
+		Name:      "Synthetic product", CanonicalURL: "https://www.coupang.com/vp/products/101",
+		CurrentAmount: 42000, Currency: "KRW", ObservedAt: base.Add(-24 * time.Hour),
+		Source: "coupang_product_search", Provenance: "observed",
+	}}}
+	source := syntheticSource{inspection: core.ProductInspection{Product: core.ProductCard{
+		Reference: core.ProductReference{ProductID: "101", ItemID: "301", VendorItemID: "201"},
+		Name:      "Synthetic product", URL: "https://www.coupang.com/vp/products/101",
+		Price: core.ProductPrice{CurrentAmount: 39000}, ObservedFields: []string{"price.current_amount"},
+	}}}
+	service := NewWithAffiliateAndPrices(source, nil, history)
+	service.now = func() time.Time { return base }
+
+	added, err := service.AddPriceWatch(context.Background(), core.ProductWatchRequest{ProductID: "101", VendorItemID: "201"})
+	if err != nil || !added.Changed || added.Entry.Identity != "vendor:201" {
+		t.Fatalf("unexpected watch add: %#v err=%v", added, err)
+	}
+	if _, err := service.AddPriceWatch(context.Background(), core.ProductWatchRequest{ProductID: "999", VendorItemID: "998"}); !errors.Is(err, ErrPriceWatchRequiresObservation) {
+		t.Fatalf("watch without observation was accepted: %v", err)
+	}
+	refreshed, err := service.RefreshPriceWatches(context.Background(), core.ProductWatchRefreshRequest{Limit: 10, StaleHours: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.Attempted != 1 || refreshed.Observed != 1 || refreshed.Failed != 0 || len(history.recorded) != 1 || history.watches[0].LastStatus != "observed" {
+		t.Fatalf("unexpected watch refresh: result=%#v recorded=%#v watches=%#v", refreshed, history.recorded, history.watches)
 	}
 }
 

@@ -47,6 +47,28 @@ func TestPriceObservationsPersistExactOptionSeriesAndBoundHistory(t *testing.T) 
 	if !truncated || len(bounded) != 2 {
 		t.Fatalf("history limit was not explicit: %#v truncated=%v", bounded, truncated)
 	}
+	watchRequest := core.ProductWatchRequest{ProductID: "101", VendorItemID: "201"}
+	watch, changed, err := ledger.AddPriceWatch(ctx, watchRequest, base.Add(4*time.Hour))
+	if err != nil || !changed || watch.Identity != "vendor:201" || watch.LastStatus != "pending" {
+		t.Fatalf("unexpected added watch: %#v changed=%v err=%v", watch, changed, err)
+	}
+	if _, changed, err := ledger.AddPriceWatch(ctx, watchRequest, base.Add(5*time.Hour)); err != nil || changed {
+		t.Fatalf("watch add was not idempotent: changed=%v err=%v", changed, err)
+	}
+	due, err := ledger.ListDuePriceWatches(ctx, base.Add(6*time.Hour), 10)
+	if err != nil || len(due) != 1 {
+		t.Fatalf("unexpected due watches: %#v err=%v", due, err)
+	}
+	if err := ledger.MarkPriceWatchChecked(ctx, watch.Reference, base.Add(6*time.Hour), "observed"); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := ledger.CountDuePriceWatches(ctx, base.Add(5*time.Hour)); err != nil || count != 0 {
+		t.Fatalf("fresh watch remained due: count=%d err=%v", count, err)
+	}
+	removed, changed, err := ledger.RemovePriceWatch(ctx, watchRequest)
+	if err != nil || !changed || removed.Identity != watch.Identity {
+		t.Fatalf("unexpected removed watch: %#v changed=%v err=%v", removed, changed, err)
+	}
 	deleted, err := ledger.PurgePriceObservations(ctx)
 	if err != nil || deleted != 4 {
 		t.Fatalf("unexpected price observation purge: deleted=%d err=%v", deleted, err)

@@ -19,7 +19,7 @@ func TestOpenMigratesMetadataOnlySchema(t *testing.T) {
 	}
 	defer store.Close()
 
-	assertCount(t, store.db, "SELECT COUNT(*) FROM schema_migrations", 9)
+	assertCount(t, store.db, "SELECT COUNT(*) FROM schema_migrations", 10)
 	assertCount(t, store.db, "SELECT COUNT(*) FROM pragma_table_info('sync_runs')", 7)
 }
 
@@ -38,7 +38,7 @@ func TestOpenIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer second.Close()
-	assertCount(t, second.db, "SELECT COUNT(*) FROM schema_migrations", 9)
+	assertCount(t, second.db, "SELECT COUNT(*) FROM schema_migrations", 10)
 }
 
 func TestOpenSecuresDatabaseAndSidecarFiles(t *testing.T) {

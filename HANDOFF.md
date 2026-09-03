@@ -121,6 +121,11 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   with the latest fully retained paid-unit order evidence when both exist. It
   returns explicit unavailable states otherwise and does not fetch a fresh
   price or imply a guaranteed checkout price.
+- An exact-identity watchlist is implemented in SQLite, CLI, and MCP. Adding a
+  watch requires an existing observation; bounded refresh inspects only entries
+  not checked within the requested interval and records observed/unavailable/
+  failed status without affiliate conversion or commerce mutation. A live
+  add-refresh-list-remove pass succeeded and left no test watch behind.
 - QR image output is cropped to the QR region and enlarged; full login-page
   screenshots are no longer written.
 - macOS can request an already-visible OTP send/resend control via the native
@@ -251,8 +256,9 @@ selected-option coverage across layouts are the next search tasks.
 Source-native purchase-category enrichment is also experimental while its
 stability is validated. Cash/card receipt reads are now experimental; completed
 artifact and vendor-receipt validation remain. Exact-option local price history
-and repurchase comparison are experimental; an explicit watchlist, scheduled
-refresh, and longitudinal validation of the 24-hour staleness threshold are next.
+and repurchase comparison are experimental; the scheduler-ready watch command
+is implemented. Longitudinal threshold validation and optional platform-specific
+scheduler installers are next.
 
 ## Security and compliance
 

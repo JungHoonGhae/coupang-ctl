@@ -134,6 +134,8 @@ MCP를 쓰면 AI가 “후기 좋은 10만 원 아래 맥북 허브, 광고 제�
 ```bash
 coupangctl products price-history --product-id ID --vendor-item-id ID
 coupangctl orders reorder --limit 20
+coupangctl products watch-add --product-id ID --vendor-item-id ID
+coupangctl products watch-refresh --limit 20 --stale-hours 24
 ```
 
 가격 이력은 coupangctl이 처음 본 시점부터 시작합니다. 쿠팡의 과거 가격을
@@ -143,10 +145,17 @@ series로 유지합니다. `orders reorder`는 동일 ID의 최신 관찰가와 
 새 가격을 조회하지 않으므로 `observed_at`을 보고 최종 상품 화면에서 다시
 확인해야 합니다.
 
+watchlist에는 이미 가격을 관찰한 정확한 ID만 등록할 수 있습니다.
+`watch-refresh`는 마지막 확인이 기준 시간보다 오래된 항목만 순서대로 상세
+조회하므로 cron, systemd timer, CI 같은 운영체제 스케줄러에서 그대로
+반복 실행할 수 있습니다. 제휴 링크 변환이나 장바구니·주문·결제는 호출하지
+않습니다.
+
 로컬 가격 관찰만 지우려면 명시적인 확인 문자열이 필요합니다.
 
 ```bash
 coupangctl products price-history-purge --confirm purge-product-price-history
+coupangctl products watch-clear --confirm clear-product-watchlist
 ```
 
 응답 계약과 계산 규칙은 [`PRICES.md`](PRICES.md)에 정리되어 있습니다.
@@ -201,9 +210,10 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 - `orders_export`, `orders_enrich_categories`
 - `products_search`, `product_inspect`, `cart_add`
 - `product_price_history`
+- `product_watchlist`, `product_watch_add`, `product_watch_remove`, `product_watch_refresh`
 - `receipts_status`, `receipts_list`, `receipts_summary`
 
-읽기 도구와 변경 도구는 MCP annotation과 입력 타입에서 구분됩니다. 영수증 MCP 도구는 조회 전용이고 파일 다운로드는 CLI에만 있습니다. `cart_add`만 되돌릴 수 있는 외부 변경이며 별도 확인값을 요구합니다.
+읽기 도구와 변경 도구는 MCP annotation과 입력 타입에서 구분됩니다. 상품 검색·상세는 관찰가를 로컬 이력에 추가할 수 있고, watch 도구는 로컬 watchlist만 바꿉니다. 영수증 MCP 도구는 조회 전용이고 파일 다운로드는 CLI에만 있습니다. `cart_add`만 되돌릴 수 있는 외부 변경이며 별도 확인값을 요구합니다.
 
 ## 로그인 방식
 

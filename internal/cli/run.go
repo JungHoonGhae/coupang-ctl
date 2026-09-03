@@ -240,12 +240,17 @@ type productWorkflow interface {
 	Inspect(context.Context, core.ProductInspectRequest) (core.ProductInspection, error)
 	PriceHistory(context.Context, core.ProductPriceHistoryRequest) (core.ProductPriceHistory, error)
 	PurgePriceHistory(context.Context) (core.ProductPriceHistoryPurgeResult, error)
+	AddPriceWatch(context.Context, core.ProductWatchRequest) (core.ProductWatchMutationResult, error)
+	RemovePriceWatch(context.Context, core.ProductWatchRequest) (core.ProductWatchMutationResult, error)
+	PriceWatchlist(context.Context) (core.ProductWatchList, error)
+	RefreshPriceWatches(context.Context, core.ProductWatchRefreshRequest) (core.ProductWatchRefreshResult, error)
+	ClearPriceWatches(context.Context) (core.ProductWatchClearResult, error)
 	AddToCart(context.Context, core.CartAddRequest) (core.CartAddResult, error)
 }
 
 func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow productWorkflow) error {
 	if len(args) == 0 {
-		return errors.New("usage: coupangctl products <search|inspect|price-history|price-history-purge|cart-add>")
+		return errors.New("usage: coupangctl products <search|inspect|price-history|price-history-purge|watch-add|watch-list|watch-remove|watch-clear|watch-refresh|cart-add>")
 	}
 	switch args[0] {
 	case "search":
@@ -329,6 +334,67 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 			return err
 		}
 		return writeJSON(stdout, result)
+	case "watch-add":
+		flags := newFlagSet("products watch-add")
+		productID := flags.String("product-id", "", "product identifier with an existing local price observation")
+		vendorItemID := flags.String("vendor-item-id", "", "exact vendor item identifier")
+		const watchAddUsage = "usage: coupangctl products watch-add --product-id ID [--vendor-item-id ID]"
+		if err := parseFlags(flags, args[1:], watchAddUsage); err != nil || *productID == "" {
+			return errors.New(watchAddUsage)
+		}
+		result, err := workflow.AddPriceWatch(ctx, core.ProductWatchRequest{ProductID: *productID, VendorItemID: *vendorItemID})
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
+	case "watch-list":
+		if err := parseFlags(newFlagSet("products watch-list"), args[1:], "usage: coupangctl products watch-list"); err != nil {
+			return err
+		}
+		result, err := workflow.PriceWatchlist(ctx)
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
+	case "watch-remove":
+		flags := newFlagSet("products watch-remove")
+		productID := flags.String("product-id", "", "watched product identifier")
+		vendorItemID := flags.String("vendor-item-id", "", "exact watched vendor item identifier")
+		const watchRemoveUsage = "usage: coupangctl products watch-remove --product-id ID [--vendor-item-id ID]"
+		if err := parseFlags(flags, args[1:], watchRemoveUsage); err != nil || *productID == "" {
+			return errors.New(watchRemoveUsage)
+		}
+		result, err := workflow.RemovePriceWatch(ctx, core.ProductWatchRequest{ProductID: *productID, VendorItemID: *vendorItemID})
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
+	case "watch-clear":
+		flags := newFlagSet("products watch-clear")
+		confirmation := flags.String("confirm", "", "confirmation token")
+		const watchClearUsage = "usage: coupangctl products watch-clear --confirm clear-product-watchlist"
+		if err := parseFlags(flags, args[1:], watchClearUsage); err != nil || *confirmation != "clear-product-watchlist" {
+			return errors.New(watchClearUsage)
+		}
+		result, err := workflow.ClearPriceWatches(ctx)
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
+	case "watch-refresh":
+		flags := newFlagSet("products watch-refresh")
+		limit := flags.Int("limit", 10, "maximum due watch entries")
+		staleHours := flags.Int("stale-hours", 24, "minimum hours since the last check")
+		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		const watchRefreshUsage = "usage: coupangctl products watch-refresh [--limit N] [--stale-hours N] [--headed]"
+		if err := parseFlags(flags, args[1:], watchRefreshUsage); err != nil {
+			return err
+		}
+		result, err := workflow.RefreshPriceWatches(ctx, core.ProductWatchRefreshRequest{Limit: *limit, StaleHours: *staleHours})
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
 	case "cart-add":
 		flags := newFlagSet("products cart-add")
 		productID := flags.String("product-id", "", "product identifier returned by search")
@@ -350,7 +416,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		}
 		return writeJSON(stdout, result)
 	default:
-		return errors.New("usage: coupangctl products <search|inspect|price-history|price-history-purge|cart-add>")
+		return errors.New("usage: coupangctl products <search|inspect|price-history|price-history-purge|watch-add|watch-list|watch-remove|watch-clear|watch-refresh|cart-add>")
 	}
 }
 
@@ -583,7 +649,7 @@ func headedReadRequested(args []string) bool {
 	}
 	eligible := (args[0] == "auth" && args[1] == "verify") ||
 		(args[0] == "orders" && (args[1] == "sync" || args[1] == "categories")) ||
-		(args[0] == "products" && (args[1] == "search" || args[1] == "inspect" || args[1] == "cart-add")) ||
+		(args[0] == "products" && (args[1] == "search" || args[1] == "inspect" || args[1] == "watch-refresh" || args[1] == "cart-add")) ||
 		(args[0] == "account" && args[1] == "benefits") ||
 		args[0] == "receipts"
 	if !eligible {
@@ -755,6 +821,12 @@ func WriteError(w io.Writer, err error) {
 	case errors.Is(err, productworkflow.ErrPriceHistoryUnavailable):
 		code = "product_price_history_unavailable"
 		message = "the local product price history was unavailable"
+	case errors.Is(err, productworkflow.ErrPriceWatchRequiresObservation):
+		code = "product_price_watch_requires_observation"
+		message = "observe this exact product option with search or inspect before adding it to the watchlist"
+	case errors.Is(err, productworkflow.ErrPriceWatchUnavailable):
+		code = "product_price_watch_unavailable"
+		message = "the local product price watchlist was unavailable"
 	case errors.Is(err, browser.ErrQRExpired):
 		code = "qr_expired"
 		message = "the QR login expired; run auth login again"
