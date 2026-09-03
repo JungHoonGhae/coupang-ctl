@@ -1,6 +1,62 @@
 package browser
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+)
+
+type recordedPhoneCall struct {
+	method string
+	params map[string]any
+}
+
+type recordingPhoneCaller struct {
+	calls []recordedPhoneCall
+}
+
+func (caller *recordingPhoneCaller) Call(_ context.Context, method string, params any, result any) error {
+	if mapped, ok := params.(map[string]any); ok {
+		caller.calls = append(caller.calls, recordedPhoneCall{method: method, params: mapped})
+	}
+	var payload []byte
+	switch method {
+	case "Runtime.evaluate":
+		payload = []byte(`{"result":{"objectId":"synthetic-global"}}`)
+	case "Runtime.callFunctionOn":
+		payload = []byte(`{"result":{"value":"{\"ready\":false}"}}`)
+	default:
+		return nil
+	}
+	if result == nil {
+		return nil
+	}
+	return json.Unmarshal(payload, result)
+}
+
+func assertSecretPassedAsRuntimeArgument(t *testing.T, calls []recordedPhoneCall, secret string) {
+	t.Helper()
+	bound := 0
+	for _, call := range calls {
+		for key, value := range call.params {
+			if key == "arguments" {
+				arguments, ok := value.([]map[string]any)
+				if !ok || len(arguments) != 1 || arguments[0]["value"] != secret {
+					t.Fatalf("runtime arguments = %#v", value)
+				}
+				bound++
+				continue
+			}
+			if text, ok := value.(string); ok && strings.Contains(text, secret) {
+				t.Fatalf("secret was embedded in %s.%s", call.method, key)
+			}
+		}
+	}
+	if bound != 1 {
+		t.Fatalf("structured secret argument count = %d, want 1", bound)
+	}
+}
 
 func TestClassifyPhonePage(t *testing.T) {
 	for _, test := range []struct {
@@ -35,4 +91,30 @@ func TestNextPhoneOTPActionRequiresFreshRequest(t *testing.T) {
 	if got := nextPhoneOTPAction(true, true); got != phoneOTPActionNone {
 		t.Fatalf("submitted OTP page action = %q, want %q", got, phoneOTPActionNone)
 	}
+}
+
+func TestPreparePhoneOTPUsesStructuredRuntimeArgument(t *testing.T) {
+	secret := `01012345678');globalThis.compromised=true;//`
+	caller := &recordingPhoneCaller{}
+	clicked, err := prepareAndRequestPhoneOTP(context.Background(), caller, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if clicked {
+		t.Fatal("synthetic button unexpectedly clicked")
+	}
+	assertSecretPassedAsRuntimeArgument(t, caller.calls, secret)
+}
+
+func TestSubmitPhoneOTPUsesStructuredRuntimeArgument(t *testing.T) {
+	secret := `123456');globalThis.compromised=true;//`
+	caller := &recordingPhoneCaller{}
+	clicked, err := submitPhoneOTP(context.Background(), caller, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if clicked {
+		t.Fatal("synthetic button unexpectedly clicked")
+	}
+	assertSecretPassedAsRuntimeArgument(t, caller.calls, secret)
 }

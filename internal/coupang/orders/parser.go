@@ -312,7 +312,8 @@ func integerValue(raw map[string]any, keys ...string) (int, bool) {
 	if !ok {
 		return 0, false
 	}
-	return int(amount), true
+	value, err := strconv.Atoi(strconv.FormatInt(amount, 10))
+	return value, err == nil
 }
 
 func amountValue(raw map[string]any, keys ...string) (int64, bool) {

@@ -121,6 +121,7 @@ jobs:
           go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
           npm audit --audit-level=high
           npm run typecheck
+          npm run test:probes
           npm run test:extension
           sh -n ./installers/install.sh
 

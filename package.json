@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test:probes": "tsx --test tests/probe-url-safety.test.ts",
     "test:extension": "node --test tests/ordinary-browser-extension.test.js",
     "probe:public": "tsx research/probes/network-probe.ts",
     "probe:product": "tsx research/probes/product-network-probe.ts",

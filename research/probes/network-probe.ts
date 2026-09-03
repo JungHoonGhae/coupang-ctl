@@ -1,9 +1,11 @@
 import { chromium } from "playwright-core";
 
+import { isCoupangHostURL } from "./coupang-url.js";
+
 const cdpURL = process.env.COUPANG_CDP_URL ?? "http://127.0.0.1:9223";
 const browser = await chromium.connectOverCDP(cdpURL);
 const context = browser.contexts()[0];
-const page = context.pages().find((candidate) => candidate.url().includes("coupang.com")) ?? context.pages()[0];
+const page = context.pages().find((candidate) => isCoupangHostURL(candidate.url())) ?? context.pages()[0];
 
 if (!page) throw new Error("No Coupang page found in the CDP browser");
 

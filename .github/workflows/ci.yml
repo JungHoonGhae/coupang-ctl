@@ -91,6 +91,9 @@ jobs:
       - name: Type-check research probes
         run: npm run typecheck
 
+      - name: Test research probe URL boundaries
+        run: npm run test:probes
+
       - name: Test ordinary-browser extension
         run: npm run test:extension
 
