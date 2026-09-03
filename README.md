@@ -155,6 +155,7 @@ coupangctl products price-history --product-id ID --vendor-item-id ID
 coupangctl orders reorder --limit 20
 coupangctl products watch-add --product-id ID --vendor-item-id ID
 coupangctl products watch-refresh --limit 20 --stale-hours 24
+coupangctl products watch-schedule --format auto --at 03:00
 ```
 
 가격 이력은 coupangctl이 처음 본 시점부터 시작합니다. 쿠팡의 과거 가격을
@@ -169,6 +170,22 @@ watchlist에는 이미 가격을 관찰한 정확한 ID만 등록할 수 있습�
 조회하므로 cron, systemd timer, CI 같은 운영체제 스케줄러에서 그대로
 반복 실행할 수 있습니다. 제휴 링크 변환이나 장바구니·주문·결제는 호출하지
 않습니다.
+
+`watch-schedule`은 현재 운영체제에서 macOS `launchd`, Linux `systemd`,
+Windows Task Scheduler, 그 밖의 환경은 cron 계획을 생성합니다. 계획만 JSON으로
+검토할 수도 있고, 다음처럼 새 설정 파일을 `0600`으로 쓸 수도 있습니다.
+
+```bash
+coupangctl products watch-schedule \
+  --format systemd \
+  --at 03:00 \
+  --output-dir ./coupangctl-scheduler
+```
+
+기존 파일은 덮어쓰지 않으며, systemd/launchd/crontab/Task Scheduler 활성화는
+출력된 `activation` 안내를 검토한 뒤 사용자가 실행합니다. 생성 작업은 기본
+headless `watch-refresh`만 호출하므로 서버에서도 쓸 수 있지만, 보호된 세션이
+만료되면 headed 재로그인은 별도로 필요합니다.
 
 로컬 가격 관찰만 지우려면 명시적인 확인 문자열이 필요합니다.
 

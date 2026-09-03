@@ -176,6 +176,24 @@ systemd timer, CI scheduler에서 실행할 수 있는 구조화 JSON 명령입�
 `product_watch_remove`, `product_watch_refresh`는 MCP에서도 로컬 변경 여부가
 annotation에 표시됩니다.
 
+## 매일 자동 갱신 계획
+
+`products watch-schedule`은 브라우저를 열지 않고 하루 한 번 실행할 scheduler
+artifact를 만듭니다. `--format auto`는 macOS에서 launchd, Linux에서 systemd,
+Windows에서 Task Scheduler, 그 밖의 운영체제에서 cron을 선택합니다.
+
+```bash
+coupangctl products watch-schedule --format auto --at 03:00
+coupangctl products watch-schedule --format cron --at 04:30 --output-dir ./schedule
+```
+
+JSON의 `command`는 오직 `products watch-refresh`이며 `limit`과 `stale_hours`를
+명시적으로 고정합니다. `artifacts`에는 생성할 파일명·mode·내용이 있고,
+`--output-dir`을 주면 새 파일만 `0600`으로 씁니다. `written`과 `written_path`로
+실제 쓰기 여부를 구분합니다. scheduler 등록 명령은 자동 실행하지 않습니다.
+따라서 계획 생성은 외부 상태를 바꾸지 않고, 파일 출력도 사용자가 지정한
+디렉터리에 한정됩니다.
+
 ## 삭제
 
 `products price-history-purge --confirm purge-product-price-history`는 가격

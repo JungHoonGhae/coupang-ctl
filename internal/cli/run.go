@@ -42,6 +42,17 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 		}
 		return writeJSON(stdout, core.CurrentCapabilities())
 	}
+	if len(args) >= 2 && args[0] == "products" && args[1] == "watch-schedule" {
+		executable, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("resolve coupangctl executable: %w", err)
+		}
+		executable, err = filepath.Abs(executable)
+		if err != nil {
+			return fmt.Errorf("resolve absolute coupangctl executable: %w", err)
+		}
+		return runProductWatchSchedule(args[2:], stdout, executable)
+	}
 
 	paths, err := platform.DefaultPaths()
 	if err != nil {
@@ -256,7 +267,7 @@ type productWorkflow interface {
 
 func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow productWorkflow) error {
 	if len(args) == 0 {
-		return errors.New("usage: coupangctl products <search|inspect|price-history|price-history-purge|watch-add|watch-list|watch-remove|watch-clear|watch-refresh|cart-add>")
+		return errors.New("usage: coupangctl products <search|inspect|price-history|price-history-purge|watch-add|watch-list|watch-remove|watch-clear|watch-refresh|watch-schedule|cart-add>")
 	}
 	switch args[0] {
 	case "search":
@@ -422,7 +433,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		}
 		return writeJSON(stdout, result)
 	default:
-		return errors.New("usage: coupangctl products <search|inspect|price-history|price-history-purge|watch-add|watch-list|watch-remove|watch-clear|watch-refresh|cart-add>")
+		return errors.New("usage: coupangctl products <search|inspect|price-history|price-history-purge|watch-add|watch-list|watch-remove|watch-clear|watch-refresh|watch-schedule|cart-add>")
 	}
 }
 

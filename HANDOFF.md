@@ -140,6 +140,12 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   not checked within the requested interval and records observed/unavailable/
   failed status without affiliate conversion or commerce mutation. A live
   add-refresh-list-remove pass succeeded and left no test watch behind.
+- `products watch-schedule` renders daily launchd, systemd, cron, or Windows
+  Task Scheduler artifacts without opening a browser. Optional output writes
+  private `0600` files without overwrite; scheduler activation stays an
+  explicit human step. Every generated command calls only bounded headless
+  `watch-refresh`, never affiliate conversion, cart, checkout, order, or
+  payment.
 - QR image output is cropped to the QR region and enlarged; full login-page
   screenshots are no longer written.
 - macOS can request an already-visible OTP send/resend control via the native
