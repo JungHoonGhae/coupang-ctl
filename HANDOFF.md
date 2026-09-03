@@ -18,6 +18,9 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   verifier rejects a missing target, extra archive content, incomplete SBOM
   set, or mismatched checksum. CI receives no Coupang or Doppler credentials
   and skips explicitly environment-gated live-browser tests.
+- The native Windows job also runs isolated real-HKCU bridge registration,
+  synthetic native-host ping, profile locking, and browser profile-identity
+  contracts.
 - `coupangctl version`, `doctor`, authentication, resumable order sync, local
   order queries, spending summaries, cancellation/return statistics,
   purchase/delivery trends, reorder candidates, normalized
@@ -223,6 +226,9 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   human-approved login. Later reads reopen that profile with a validated
   ephemeral loopback DevTools endpoint; no second cookie/session file is
   created and cookie values never enter CLI/MCP outputs.
+- A cross-platform non-blocking lock returns `profile_in_use` instead of racing
+  the profile. A private family/major marker permits upgrades and rejects
+  browser-family changes or major-version downgrades before launch.
 - `orders sync --current-browser` and MCP `orders_sync_current_browser` provide
   an experimental extension-free Chrome 144+ path after Chrome's explicit
   remote-debugging opt-in and approval. It creates only an allowlisted new tab,

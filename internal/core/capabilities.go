@@ -44,7 +44,7 @@ func CurrentCapabilities() CapabilityReport {
 			ID: "native_auth_session", Priority: "P0", Status: CapabilityAvailable,
 			UserValue:    "one headed login followed by reusable read-only sessions, with visible QR, private PNG, or explicit ephemeral app-link presentation",
 			Interface:    []string{"cli", "mcp"},
-			Implemented:  []string{"headed QR and app-link login plus headed phone/OTP UI assistance that leaves CAPTCHA to the user", "browser-owned session state in a dedicated local Chrome profile without a separate cookie export", "headless-first authenticated verification and reads with one delayed access retry plus headed fallback where available", "ephemeral loopback debugging port discovered through a validated private DevToolsActivePort file", "cross-platform non-blocking profile lock with a stable profile_in_use error"},
+			Implemented:  []string{"headed QR and app-link login plus headed phone/OTP UI assistance that leaves CAPTCHA to the user", "browser-owned session state in a dedicated local Chrome profile without a separate cookie export", "headless-first authenticated verification and reads with one delayed access retry plus headed fallback where available", "ephemeral loopback debugging port discovered through a validated private DevToolsActivePort file", "cross-platform non-blocking profile lock with a stable profile_in_use error", "private browser-family and major-version profile marker that permits upgrades and rejects family changes or downgrades"},
 			NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-03",
 		},
 		{

@@ -1048,6 +1048,9 @@ func WriteError(w io.Writer, err error) {
 	case errors.Is(err, browser.ErrProfileInUse):
 		code = "profile_in_use"
 		message = "another coupangctl browser operation is using the dedicated profile; wait for it to finish and retry"
+	case errors.Is(err, browser.ErrProfileIncompatible):
+		code = "browser_profile_incompatible"
+		message = "the dedicated profile belongs to another browser family or a newer major version; use the original browser, or deliberately create a new state directory and sign in again"
 	case errors.Is(err, browser.ErrAuthenticationRequired):
 		code = "authentication_required"
 		message = "run coupangctl auth login on an interactive desktop first"

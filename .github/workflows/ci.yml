@@ -81,7 +81,7 @@ jobs:
         run: go run ./cmd/releasecheck --require-sbom ./dist
 
   windows-browser-bridge:
-    name: Windows browser-bridge install contract
+    name: Windows browser contracts
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
@@ -94,8 +94,8 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Test isolated HKCU registration and synthetic native-host ping
+      - name: Test isolated HKCU registration, native-host ping, and profile safety
         shell: pwsh
         run: |
           go test ./internal/browserbridge -run '^TestWindows' -count=1
-          go test ./internal/browser -run '^TestOrdinaryBrowserNativeHostPing' -count=1
+          go test ./internal/browser -run '^(TestOrdinaryBrowserNativeHostPing|TestDedicatedProfileLock|TestProfileIdentity)' -count=1

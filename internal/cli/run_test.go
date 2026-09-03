@@ -1007,6 +1007,18 @@ func TestWriteErrorClassifiesProfileInUseWithoutLocalDetails(t *testing.T) {
 	}
 }
 
+func TestWriteErrorClassifiesIncompatibleProfileWithoutLocalDetails(t *testing.T) {
+	var output bytes.Buffer
+	WriteError(&output, errors.Join(browser.ErrProfileIncompatible, errors.New("sensitive executable path")))
+	var got core.ErrorResponse
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "browser_profile_incompatible" || strings.Contains(got.Error.Message, "sensitive") {
+		t.Fatalf("unexpected profile compatibility error: %#v", got)
+	}
+}
+
 func TestWriteErrorClassifiesBrowserBridgeOwnershipConflictWithoutPath(t *testing.T) {
 	var output bytes.Buffer
 	WriteError(&output, errors.Join(browserbridge.ErrInstallationConflict, errors.New("sensitive local path")))

@@ -98,6 +98,21 @@ func TestReadDevToolsActivePortRejectsPublicUnixProfileDirectory(t *testing.T) {
 	}
 }
 
+func TestReadDevToolsActivePortRejectsSymlinkProfileDirectory(t *testing.T) {
+	actual := t.TempDir()
+	parent := t.TempDir()
+	linked := filepath.Join(parent, "linked-profile")
+	if err := os.Symlink(actual, linked); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("symlink unavailable: %v", err)
+		}
+		t.Fatal(err)
+	}
+	if _, _, err := readDevToolsActivePort(linked); !errors.Is(err, ErrCurrentBrowserUnavailable) {
+		t.Fatalf("symlink profile directory error = %v, want ErrCurrentBrowserUnavailable", err)
+	}
+}
+
 func TestCurrentBrowserUserDataDirFollowsBrowserFamilyAndOS(t *testing.T) {
 	getenv := func(key string) string {
 		switch key {

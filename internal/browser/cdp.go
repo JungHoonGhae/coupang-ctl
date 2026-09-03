@@ -111,6 +111,15 @@ func startChromeSession(ctx context.Context, executable, profileDir string, head
 	if err != nil {
 		return nil, err
 	}
+	identity, err := identifyManagedBrowser(ctx, executable)
+	if err != nil {
+		_ = profileLock.release()
+		return nil, err
+	}
+	if err := validateOrUpdateProfileIdentity(profileDir, identity); err != nil {
+		_ = profileLock.release()
+		return nil, err
+	}
 	_, baselineWebSocketURL, _ := readDevToolsActivePort(profileDir)
 	command := browserCommand(ctx, executable, syncBrowserArguments(profileDir, headless)...)
 	command.Stdout = io.Discard
@@ -1542,7 +1551,7 @@ func readDevToolsActivePort(userDataDir string) (string, string, error) {
 	if !filepath.IsAbs(userDataDir) {
 		return "", "", ErrCurrentBrowserUnavailable
 	}
-	directoryInfo, err := os.Stat(userDataDir)
+	directoryInfo, err := os.Lstat(userDataDir)
 	if err != nil || !directoryInfo.IsDir() || (runtime.GOOS != "windows" && directoryInfo.Mode().Perm()&0o077 != 0) {
 		return "", "", ErrCurrentBrowserUnavailable
 	}
@@ -1620,16 +1629,8 @@ func currentBrowserUserDataDir(goos, executable, home string, getenv func(string
 		}
 		return filepath.Clean(override), nil
 	}
-	normalized := strings.ToLower(strings.ReplaceAll(executable, "\\", "/"))
-	family := ""
-	switch {
-	case strings.Contains(normalized, "google chrome") || strings.Contains(normalized, "google/chrome") || strings.Contains(normalized, "google-chrome"):
-		family = "chrome"
-	case strings.Contains(normalized, "microsoft edge") || strings.Contains(normalized, "microsoft/edge") || strings.Contains(normalized, "microsoft-edge") || strings.HasSuffix(normalized, "/msedge.exe"):
-		family = "edge"
-	case strings.Contains(normalized, "chromium"):
-		family = "chromium"
-	default:
+	family, err := browserFamily(executable)
+	if err != nil {
 		return "", ErrCurrentBrowserUnavailable
 	}
 	switch goos {
