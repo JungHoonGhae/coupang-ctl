@@ -43,6 +43,9 @@ jobs:
       - name: Run Go vet
         run: go vet ./...
 
+      - name: Launch installed Chrome twice with one clean headless profile
+        run: COUPANGCTL_LIVE_BROWSER_LAUNCH=1 go test ./internal/browser -run '^TestLiveInstalledChromeHeadlessLaunch$' -count=1
+
       - name: Type-check research probes
         run: npm run typecheck
 
@@ -104,6 +107,8 @@ jobs:
         run: |
           go test ./internal/browserbridge -run '^TestWindows' -count=1
           go test ./internal/browser -run '^(TestOrdinaryBrowserNativeHostPing|TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser|TestDefaultFetchNeverOpensAVisibleBrowserFallback)' -count=1
+          $env:COUPANGCTL_LIVE_BROWSER_LAUNCH = '1'
+          go test ./internal/browser -run '^TestLiveInstalledChromeHeadlessLaunch$' -count=1
 
   macos-browser-profile:
     name: macOS browser profile contracts
@@ -120,4 +125,6 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Test native profile safety and quiet defaults
-        run: go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser|TestDefaultFetchNeverOpensAVisibleBrowserFallback)' -count=1
+        run: |
+          go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser|TestDefaultFetchNeverOpensAVisibleBrowserFallback)' -count=1
+          COUPANGCTL_LIVE_BROWSER_LAUNCH=1 go test ./internal/browser -run '^TestLiveInstalledChromeHeadlessLaunch$' -count=1
