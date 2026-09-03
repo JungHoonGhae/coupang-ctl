@@ -14,6 +14,16 @@ type fixedStatusProvider struct {
 	status core.AuthStatus
 }
 
+type capturingAuthRecoveryProvider struct {
+	request core.AuthRecoveryRequest
+	result  core.AuthRecoveryResult
+}
+
+func (p *capturingAuthRecoveryProvider) Recover(_ context.Context, request core.AuthRecoveryRequest) (core.AuthRecoveryResult, error) {
+	p.request = request
+	return p.result, nil
+}
+
 type fixedCurrentBrowserStatusProvider struct {
 	status core.CurrentBrowserStatus
 }
@@ -682,5 +692,54 @@ func TestAuthStatusToolReturnsTypedCoreResponse(t *testing.T) {
 	}
 	if got != want {
 		t.Fatalf("status = %#v, want %#v", got, want)
+	}
+}
+
+func TestAuthLoginIfNeededToolUsesConfirmedTypedRecovery(t *testing.T) {
+	ctx := context.Background()
+	recovery := &capturingAuthRecoveryProvider{result: core.AuthRecoveryResult{
+		SchemaVersion:        core.AuthRecoverySchemaVersion,
+		BeforeState:          core.AuthUnverified,
+		State:                core.AuthVerified,
+		VisibleBrowserOpened: true,
+		Mode:                 core.LoginModeQR,
+		NextAction:           "the protected read-only browser session is available",
+	}}
+	server := NewWithProviders(Providers{
+		Auth:         fixedStatusProvider{},
+		AuthRecovery: recovery,
+	}, "v0.1.0-test")
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "coupangctl-test", Version: "v0.1.0-test"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	response, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name: "auth_login_if_needed", Arguments: map[string]any{"confirmed": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.IsError {
+		t.Fatalf("tool returned an error: %#v", response.Content)
+	}
+	encoded, err := json.Marshal(response.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got core.AuthRecoveryResult
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !recovery.request.Confirmed || !got.VisibleBrowserOpened || got.BeforeState != core.AuthUnverified || got.State != core.AuthVerified {
+		t.Fatalf("unexpected auth recovery: request=%#v result=%#v", recovery.request, got)
 	}
 }

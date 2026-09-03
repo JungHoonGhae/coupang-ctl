@@ -160,6 +160,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 		accountService := accountworkflow.NewWithCosts(coupangaccount.New(browserAdapter), ledger)
 		return mcpserver.RunWithProviders(ctx, mcpserver.Providers{
 			Auth:                 authService,
+			AuthRecovery:         authService,
 			Orders:               orderworkflow.New(ledger, browserAdapter),
 			CurrentBrowserStatus: nativeCurrentBrowserStatusProvider{},
 			CurrentBrowserOrders: currentBrowserOrderSync{ledger: ledger},

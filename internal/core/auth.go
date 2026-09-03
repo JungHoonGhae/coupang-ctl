@@ -16,8 +16,11 @@ const (
 
 var ErrInvalidLoginMode = errors.New("invalid login mode")
 var ErrInvalidLoginRequest = errors.New("invalid login request")
+var ErrInteractiveConfirmationRequired = errors.New("interactive login confirmation required")
 var ErrAuthenticationRequired = errors.New("authenticated session required")
 var ErrBrowserAccessDenied = errors.New("browser access denied")
+
+const AuthRecoverySchemaVersion = 1
 
 type LoginRequest struct {
 	Mode          LoginMode       `json:"mode"`
@@ -90,6 +93,22 @@ type LoginResult struct {
 	State      AuthState `json:"state"`
 	Mode       LoginMode `json:"mode"`
 	NextAction string    `json:"next_action"`
+}
+
+// AuthRecoveryRequest gates the only MCP authentication path that may open a
+// visible browser. The workflow still performs a quiet status check first and
+// opens QR login only when the profile is missing or the session is expired.
+type AuthRecoveryRequest struct {
+	Confirmed bool `json:"confirmed"`
+}
+
+type AuthRecoveryResult struct {
+	SchemaVersion        int       `json:"schema_version"`
+	BeforeState          AuthState `json:"before_state"`
+	State                AuthState `json:"state"`
+	VisibleBrowserOpened bool      `json:"visible_browser_opened"`
+	Mode                 LoginMode `json:"mode,omitempty"`
+	NextAction           string    `json:"next_action"`
 }
 
 type OTPResendResult struct {

@@ -325,11 +325,15 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 MCP 서버는 장시간 백그라운드에서 실행되는 프로세스이므로 기본 브라우저 읽기가
 거부되어도 보이는 창을 임의로 열지 않습니다. 사용자가 화면을 보고 재시도하려면
 해당 CLI 명령의 `--headed`를 명시하거나, Chrome에서 직접 승인한
-`orders_sync_current_browser`를 사용합니다.
+`orders_sync_current_browser`를 사용합니다. 세션 복구가 필요할 때는 먼저
+`auth_status`를 확인합니다. `auth_login_if_needed`는 `confirmed=true`일 때도
+조용한 상태 확인을 먼저 수행하고, 미설정 또는 명확히 만료된 세션에만 QR 로그인
+창을 엽니다. 이미 정상인 세션과 일시적인 `access_blocked` 상태에는 창을 열지
+않습니다.
 
 대표 도구:
 
-- `auth_status`, `current_browser_status`, `account_benefits`
+- `auth_status`, `auth_login_if_needed`, `current_browser_status`, `account_benefits`
 - `orders_sync`, `orders_sync_status`, `orders_sync_current_browser`, `orders_sync_ordinary_browser`, `orders_list`, `orders_spend`, `orders_stats`
 - `orders_insights`, `orders_product_insights`, `orders_category_catalog`, `orders_category_stability`, `orders_reorder_candidates`
 - `orders_export`, `orders_enrich_categories`
@@ -338,7 +342,11 @@ MCP 서버는 장시간 백그라운드에서 실행되는 프로세스이므로
 - `product_watchlist`, `product_watch_add`, `product_watch_remove`, `product_watch_refresh`
 - `receipts_status`, `receipts_list`, `receipts_summary`, `receipts_overview`, `receipts_vendor`
 
-읽기 도구와 변경 도구는 MCP annotation과 입력 타입에서 구분됩니다. 상품 검색·상세는 관찰가를 로컬 이력에 추가할 수 있고, watch 도구는 로컬 watchlist만 바꿉니다. 영수증 MCP 도구는 조회 전용이고 파일 다운로드는 CLI에만 있습니다. `cart_add`만 되돌릴 수 있는 외부 변경이며 별도 확인값을 요구합니다.
+읽기 도구와 변경 도구는 MCP annotation과 입력 타입에서 구분됩니다. 상품 검색·상세는 관찰가를 로컬 이력에 추가할 수 있고, watch 도구는 로컬 watchlist만 바꿉니다. 영수증 MCP 도구는 조회 전용이고 파일 다운로드는 CLI에만 있습니다. 상거래 상태를 바꾸는 도구는 `cart_add`뿐이며, 되돌릴 수 있는 장바구니 추가에도 별도 확인값을 요구합니다.
+
+`auth_login_if_needed`도 사용자에게 QR 창이 열릴 수 있음을 먼저 알린 뒤
+`confirmed=true`로 호출해야 합니다. QR 링크, 쿠키, OTP, 프로필 경로는 MCP
+응답에 포함되지 않습니다.
 
 ## 로그인 방식
 

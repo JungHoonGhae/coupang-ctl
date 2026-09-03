@@ -120,6 +120,67 @@ func TestStatusReportsMissingProfile(t *testing.T) {
 	}
 }
 
+func TestRecoverSkipsVisibleLoginWhenBackgroundSessionIsAlreadyReady(t *testing.T) {
+	browser := &fakeBrowser{status: BrowserStatus{Name: "Chrome", ProfilePresent: true}}
+	service := NewService(browser)
+
+	got, err := service.Recover(context.Background(), core.AuthRecoveryRequest{Confirmed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.BeforeState != core.AuthVerified || got.State != core.AuthVerified {
+		t.Fatalf("unexpected recovery states: %#v", got)
+	}
+	if got.VisibleBrowserOpened || browser.loginRan {
+		t.Fatalf("recovery opened an unnecessary visible login: result=%#v browser=%#v", got, browser)
+	}
+}
+
+func TestRecoverOpensQRLoginOnlyForConfirmedExpiredSession(t *testing.T) {
+	browser := &fakeBrowser{
+		status: BrowserStatus{Name: "Chrome", ProfilePresent: true},
+		verify: core.ErrAuthenticationRequired,
+	}
+	service := NewService(browser)
+
+	if _, err := service.Recover(context.Background(), core.AuthRecoveryRequest{}); !errors.Is(err, core.ErrInteractiveConfirmationRequired) {
+		t.Fatalf("unconfirmed recovery error = %v, want %v", err, core.ErrInteractiveConfirmationRequired)
+	}
+	if browser.loginRan {
+		t.Fatal("unconfirmed recovery opened a visible login")
+	}
+
+	got, err := service.Recover(context.Background(), core.AuthRecoveryRequest{Confirmed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.BeforeState != core.AuthUnverified || got.State != core.AuthVerified || !got.VisibleBrowserOpened {
+		t.Fatalf("unexpected recovery result: %#v", got)
+	}
+	if !browser.loginRan || browser.loginReq.Mode != core.LoginModeQR {
+		t.Fatalf("recovery login request = %#v", browser.loginReq)
+	}
+}
+
+func TestRecoverDoesNotMisreadAccessBlockAsExpiredLogin(t *testing.T) {
+	browser := &fakeBrowser{
+		status: BrowserStatus{Name: "Chrome", ProfilePresent: true},
+		verify: core.ErrBrowserAccessDenied,
+	}
+	service := NewService(browser)
+
+	got, err := service.Recover(context.Background(), core.AuthRecoveryRequest{Confirmed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.BeforeState != core.AuthAccessBlocked || got.State != core.AuthAccessBlocked {
+		t.Fatalf("unexpected recovery states: %#v", got)
+	}
+	if got.VisibleBrowserOpened || browser.loginRan {
+		t.Fatalf("access block incorrectly opened login: result=%#v browser=%#v", got, browser)
+	}
+}
+
 func TestLoginDelegatesToBrowser(t *testing.T) {
 	browser := &fakeBrowser{}
 	service := NewService(browser)

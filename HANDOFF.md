@@ -46,8 +46,12 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   missing source evidence, and elapsed-time validation are therefore visible
   without mislabeling them as unfinished code.
 - CLI and MCP share the same typed authentication and order services. MCP
-  exposes authentication status, sync, list, spend, reorder-candidate, and
-  normalized-export tools. The MCP composition root and scheduled
+  exposes authentication status, confirmation-gated login-if-needed, sync,
+  list, spend, reorder-candidate, and normalized-export tools.
+  `auth_login_if_needed` always performs the quiet status check first; it opens
+  visible QR login only for a missing or expired session, and never for an
+  already-ready or temporarily `access_blocked` profile. The MCP composition
+  root and scheduled
   `products watch-refresh` use a background browser adapter that never opens a
   visible fallback; an interactive CLI `--headed` remains explicit.
   Destructive purge is intentionally CLI-only.
@@ -547,6 +551,9 @@ Clean-profile Linux/Windows validation and Web Store review remain.
   never open a visible fallback. `auth verify --headed` is the explicit
   interactive verification path; routine data reads are also non-visible by
   default and require an explicit `--headed` invocation for a visible attempt.
+  MCP's `auth_login_if_needed` is a separate confirmation-gated transition: it
+  checks quietly first and opens visible QR only for `not_configured` or
+  `unverified`, without returning ephemeral authentication material.
   A denied passive check returns the typed `access_blocked` auth state instead
   of guessing that the profile is logged out or reporting a generic browser
   failure.

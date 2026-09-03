@@ -14,6 +14,10 @@ type StatusProvider interface {
 	Status(context.Context) (core.AuthStatus, error)
 }
 
+type AuthRecoveryProvider interface {
+	Recover(context.Context, core.AuthRecoveryRequest) (core.AuthRecoveryResult, error)
+}
+
 type OrderProvider interface {
 	Sync(context.Context, core.SyncRequest) (core.SyncResult, error)
 	SyncStatus(context.Context) (core.SyncStatus, error)
@@ -39,6 +43,7 @@ type CurrentBrowserStatusProvider interface {
 
 type Providers struct {
 	Auth                 StatusProvider
+	AuthRecovery         AuthRecoveryProvider
 	Orders               OrderProvider
 	CurrentBrowserStatus CurrentBrowserStatusProvider
 	CurrentBrowserOrders OrdinaryOrderProvider
@@ -110,6 +115,21 @@ func NewWithProviders(providers Providers, version string) *mcp.Server {
 		}
 		return nil, status, nil
 	})
+	if providers.AuthRecovery != nil {
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        "auth_login_if_needed",
+			Description: "Quietly check the dedicated profile first, then open the visible QR login browser only when the profile is missing or the session is confirmed expired. Set confirmed=true only after telling the user a browser may open. A temporary access_blocked state never triggers login. No QR link, cookie, credential, OTP, or profile path is returned.",
+			Annotations: &mcp.ToolAnnotations{
+				ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: false, OpenWorldHint: boolPointer(true),
+			},
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.AuthRecoveryRequest) (*mcp.CallToolResult, core.AuthRecoveryResult, error) {
+			result, err := providers.AuthRecovery.Recover(ctx, input)
+			if err != nil {
+				return nil, core.AuthRecoveryResult{}, safeAuthRecoveryToolError(err)
+			}
+			return nil, result, nil
+		})
+	}
 	if providers.CurrentBrowserStatus != nil {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "current_browser_status",
@@ -511,4 +531,11 @@ func safeProductToolError(error) error {
 
 func safeReceiptToolError(error) error {
 	return errors.New("coupangctl could not complete the requested receipt read")
+}
+
+func safeAuthRecoveryToolError(err error) error {
+	if errors.Is(err, core.ErrInteractiveConfirmationRequired) {
+		return errors.New("interactive_confirmation_required: tell the user that a visible QR login browser may open, then retry with confirmed=true")
+	}
+	return errors.New("coupangctl could not complete interactive authentication")
 }

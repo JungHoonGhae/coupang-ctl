@@ -94,3 +94,34 @@ func (s *Service) Login(ctx context.Context, request core.LoginRequest) (core.Lo
 	result.NextAction = "the protected read-only browser session is available"
 	return result, nil
 }
+
+// Recover performs the non-visible status check before deciding whether a QR
+// login is actually necessary. A temporary background access block is not
+// treated as an expired session and therefore never opens a surprise window.
+func (s *Service) Recover(ctx context.Context, request core.AuthRecoveryRequest) (core.AuthRecoveryResult, error) {
+	status, err := s.Status(ctx)
+	if err != nil {
+		return core.AuthRecoveryResult{}, err
+	}
+	result := core.AuthRecoveryResult{
+		SchemaVersion: core.AuthRecoverySchemaVersion,
+		BeforeState:   status.State,
+		State:         status.State,
+		NextAction:    status.NextAction,
+	}
+	if status.State == core.AuthVerified || status.State == core.AuthAccessBlocked {
+		return result, nil
+	}
+	if !request.Confirmed {
+		return core.AuthRecoveryResult{}, core.ErrInteractiveConfirmationRequired
+	}
+	login, err := s.Login(ctx, core.LoginRequest{Mode: core.LoginModeQR})
+	if err != nil {
+		return core.AuthRecoveryResult{}, err
+	}
+	result.State = login.State
+	result.VisibleBrowserOpened = true
+	result.Mode = login.Mode
+	result.NextAction = login.NextAction
+	return result, nil
+}
