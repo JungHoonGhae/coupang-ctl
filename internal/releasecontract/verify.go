@@ -16,16 +16,7 @@ import (
 	"strings"
 )
 
-var archiveNamePattern = regexp.MustCompile(`^coupangctl_.+_(darwin|linux|windows)_(amd64|arm64)(\.tar\.gz|\.zip)$`)
-
-var expectedTargets = map[string]string{
-	"darwin/amd64":  ".tar.gz",
-	"darwin/arm64":  ".tar.gz",
-	"linux/amd64":   ".tar.gz",
-	"linux/arm64":   ".tar.gz",
-	"windows/amd64": ".zip",
-	"windows/arm64": ".zip",
-}
+var archiveNamePattern = regexp.MustCompile(`^coupangctl_[^_]+_([a-z0-9]+)_([a-z0-9]+)\.(tar\.gz|zip)$`)
 
 type Options struct {
 	RequireSBOM bool
@@ -46,6 +37,7 @@ func VerifyWithOptions(distDir string, options Options) error {
 		return fmt.Errorf("read release directory: %w", err)
 	}
 
+	expectedTargets := expectedTargetFormats()
 	archives := make(map[string]string, len(expectedTargets))
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -56,9 +48,9 @@ func VerifyWithOptions(distDir string, options Options) error {
 			continue
 		}
 		target := matches[1] + "/" + matches[2]
-		extension := matches[3]
+		archiveFormat := matches[3]
 		expectedExtension, supported := expectedTargets[target]
-		if !supported || extension != expectedExtension {
+		if !supported || archiveFormat != expectedExtension {
 			return fmt.Errorf("unsupported release target or format: %s", entry.Name())
 		}
 		if _, duplicate := archives[target]; duplicate {
@@ -128,6 +120,14 @@ func VerifyWithOptions(distDir string, options Options) error {
 		}
 	}
 	return nil
+}
+
+func expectedTargetFormats() map[string]string {
+	targets := make(map[string]string, len(supportedPlatforms))
+	for _, target := range supportedPlatforms {
+		targets[target.goos+"/"+target.goarch] = target.archiveFormat
+	}
+	return targets
 }
 
 func verifyArchive(archivePath string, windows bool) error {

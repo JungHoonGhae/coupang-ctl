@@ -105,6 +105,7 @@ jobs:
       - name: Test isolated HKCU registration, native-host ping, profile safety, and quiet defaults
         shell: pwsh
         run: |
+          go test ./internal/releasecontract -run '^TestPowerShellInstaller' -count=1
           go test ./internal/browserbridge -run '^TestWindows' -count=1
           go test ./internal/browser -run '^(TestOrdinaryBrowserNativeHostPing|TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser|TestDefaultFetchNeverOpensAVisibleBrowserFallback)' -count=1
           $env:COUPANGCTL_LIVE_BROWSER_LAUNCH = '1'
@@ -126,5 +127,6 @@ jobs:
 
       - name: Test native profile safety and quiet defaults
         run: |
+          go test ./internal/releasecontract -run '^TestPOSIXInstaller' -count=1
           go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser|TestDefaultFetchNeverOpensAVisibleBrowserFallback)' -count=1
           COUPANGCTL_LIVE_BROWSER_LAUNCH=1 go test ./internal/browser -run '^TestLiveInstalledChromeHeadlessLaunch$' -count=1

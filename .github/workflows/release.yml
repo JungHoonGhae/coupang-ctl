@@ -33,6 +33,14 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
+      - name: Test Windows direct installer
+        if: runner.os == 'Windows'
+        run: go test ./internal/releasecontract -run '^TestPowerShellInstaller' -count=1
+
+      - name: Test POSIX direct installer
+        if: runner.os != 'Windows'
+        run: go test ./internal/releasecontract -run '^TestPOSIXInstaller' -count=1
+
       - name: Test native profile safety and quiet defaults
         env:
           COUPANGCTL_LIVE_BROWSER_LAUNCH: "1"

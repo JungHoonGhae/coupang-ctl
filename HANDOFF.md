@@ -21,6 +21,12 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   installed Chrome, not an Orca, Playwright, Node, or extension dependency.
   The tag workflow separately attests `checksums.txt` and every artifact it
   enumerates; native macOS and Windows signing remain external release gates.
+- A typed release-contract module is the platform/asset source of truth for
+  six release targets. Version-pinned POSIX and PowerShell direct installers
+  verify SHA-256, enforce the four-file archive allowlist, execute the candidate
+  `version` contract, install without elevation through a same-directory atomic
+  replacement, preserve the previous binary on failure, and never touch user
+  browser or order state. Synthetic local-server E2E covers both adapters.
 - The distributed product is now a Go 1.26 module; TypeScript remains limited
   to development probes.
 - GitHub CI runs all synthetic Go tests, `go vet`, research-probe TypeScript

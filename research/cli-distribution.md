@@ -328,12 +328,13 @@ Signing 또는 신뢰된 CA의 인증서를 권장하며, EV 인증서도 즉시
 다음 작업은 tag, release, credential 또는 외부 package repository mutation 없이
 현재 저장소에서 완전히 구현·검증할 수 있다.
 
-1. **P0 — 설치 계약 fixture**: 여섯 canonical asset name, OS/architecture mapping,
-   archive format, 내부 executable name과 설치 위치를 하나의 typed manifest로 둔다.
-   GoReleaser config, release checker, installer tests가 같은 계약을 읽게 한다.
-2. **P0 — 안전한 직접 설치기**: POSIX shell과 PowerShell installer를 version-pinned,
-   user-scope, checksum-first, atomic-replace, no-auto-sudo 계약으로 구현한다. snapshot
-   archive를 로컬 HTTP fixture로 제공해 네트워크와 실제 사용자 홈 없이 E2E 검사한다.
+1. **완료 — 설치 계약 fixture**: 여섯 canonical asset name, OS/architecture
+   mapping, archive format과 내부 executable name은 하나의 typed release-contract
+   module에 있으며 release checker와 installer E2E가 같은 표를 사용한다.
+2. **완료 — 안전한 직접 설치기**: POSIX shell과 PowerShell installer는
+   version-pinned, user-scope, checksum-first, allowlist, atomic-replace,
+   no-auto-sudo 계약을 구현한다. 로컬 HTTP fixture가 실제 사용자 홈과 외부
+   릴리스 없이 두 스크립트를 E2E 검사한다.
 3. **완료 — 체크섬 파일 attestation**: 기존 12개 checksummed artifact
    attestation과 별도로 `checksums.txt` 자체를 attest하고, 검증 명령은
    `--signer-workflow`와 `--source-ref`를 고정한다.

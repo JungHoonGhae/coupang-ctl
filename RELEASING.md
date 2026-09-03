@@ -45,11 +45,19 @@ npm run test:extension
 goreleaser check
 goreleaser release --snapshot --clean
 go run ./cmd/releasecheck --require-sbom ./dist
+sh -n ./installers/install.sh
 ```
 
 로컬 snapshot에는 Syft가 필요합니다. CI는 GoReleaser `v2.18.0`, Syft
 `v1.42.3` 및 사용한 GitHub Actions를 고정된 버전·commit으로 실행합니다.
 실제 태그 생성과 push는 자동화하지 않습니다.
+
+직접 설치기는 태그를 반드시 요구하고, 지원 플랫폼·아카이브명·실행 파일명을
+`internal/releasecontract`의 타입화된 계약과 대조하는 synthetic E2E를 통과해야
+합니다. Linux와 macOS는 실제 POSIX 스크립트를, Windows는 실제 PowerShell
+스크립트를 로컬 HTTP fixture에 연결하며 사용자 홈이나 외부 릴리스를 건드리지
+않습니다. 세부 설치·업그레이드·데이터 보존 규칙은
+[`installers/README.md`](installers/README.md)에 있습니다.
 
 선택적 일반 Chrome 호환 확장의 스토어 ZIP은 CLI 릴리스 아카이브와 분리해 새
 경로에 만들고 검증합니다. 이는 일반 사용자의 기본 설치물이 아닙니다.
