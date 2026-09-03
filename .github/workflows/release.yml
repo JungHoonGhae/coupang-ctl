@@ -34,7 +34,11 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Test native profile safety and quiet defaults
-        run: go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser|TestDefaultFetchNeverOpensAVisibleBrowserFallback)' -count=1
+        env:
+          COUPANGCTL_LIVE_BROWSER_LAUNCH: "1"
+        run: |
+          go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser|TestDefaultFetchNeverOpensAVisibleBrowserFallback)' -count=1
+          go test ./internal/browser -run '^TestLiveInstalledChromeHeadlessLaunch$' -count=1
 
   release:
     name: Build, verify, and publish release

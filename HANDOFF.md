@@ -205,6 +205,13 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   process and temporary profile/state directories were removed afterward.
   This verifies repeated attachment and disconnect behavior against Chrome 152,
   but not the official settings-page approval prompt or authenticated sync.
+- Ephemeral GitHub-hosted Linux, macOS, and Windows jobs now launch the actual
+  installed Chrome twice in sequence against one clean temporary dedicated
+  profile, then close it through the owned-browser path. The smoke covers
+  discovery, browser family/version identity, 0700/0600 profile metadata on
+  Unix, loopback-only browser-selected CDP ports, lock release, graceful close,
+  and reuse. It opens only `about:blank`, never visits Coupang, and never reads
+  an existing browser profile. The same matrix is required before a tag release.
 - MCP now exposes `orders_sync_ordinary_browser` through a dedicated typed sync
   provider. It uses the same normalized order service and SQLite ledger as the
   CLI while keeping the ordinary-page source separate from the dedicated

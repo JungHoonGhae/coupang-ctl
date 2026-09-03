@@ -9,14 +9,16 @@
 `Release` 워크플로가 다음 순서로 실행됩니다.
 
 1. Go 테스트·vet, TypeScript 연구 probe typecheck, MV3 확장 계약 테스트
-2. CGO를 끈 macOS·Linux·Windows의 amd64·arm64 바이너리 여섯 개 빌드
-3. macOS·Linux는 `tar.gz`, Windows는 `zip`으로 패키징
-4. 각 아카이브의 SPDX JSON SBOM과 SHA-256 `checksums.txt` 생성
-5. 저장소의 `releasecheck`로 대상 조합, 파일 목록, SBOM 완전성, 모든
+2. Linux·macOS·Windows의 실제 설치 Chrome을 깨끗한 임시 전용 프로필로 두 번
+   headless 실행·종료해 발견·프로필 재사용·잠금 해제·정상 종료를 검증
+3. CGO를 끈 macOS·Linux·Windows의 amd64·arm64 바이너리 여섯 개 빌드
+4. macOS·Linux는 `tar.gz`, Windows는 `zip`으로 패키징
+5. 각 아카이브의 SPDX JSON SBOM과 SHA-256 `checksums.txt` 생성
+6. 저장소의 `releasecheck`로 대상 조합, 파일 목록, SBOM 완전성, 모든
    체크섬을 재검증
-6. 체크섬에 열거된 열두 산출물 전체에 GitHub Actions provenance attestation
+7. 체크섬에 열거된 열두 산출물 전체에 GitHub Actions provenance attestation
    생성
-7. 앞 단계가 모두 성공했을 때만 draft 릴리스를 공개
+8. 앞 단계가 모두 성공했을 때만 draft 릴리스를 공개
 
 릴리스 아카이브의 허용 목록은 다음 네 파일뿐입니다.
 
