@@ -44,8 +44,16 @@ func CurrentCapabilities() CapabilityReport {
 			ID: "native_auth_session", Priority: "P0", Status: CapabilityAvailable,
 			UserValue:    "one headed login followed by reusable read-only sessions, with visible QR, private PNG, or explicit ephemeral app-link presentation",
 			Interface:    []string{"cli", "mcp"},
-			Implemented:  []string{"headed QR, app-link, and manual SMS login", "dedicated local Chrome profile with structured session persistence", "headless-first authenticated verification and reads with headed fallback where available"},
-			NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-02",
+			Implemented:  []string{"headed QR, app-link, and manual SMS login", "dedicated local Chrome profile with structured session persistence", "headless-first authenticated verification and reads with one delayed access retry plus headed fallback where available"},
+			NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-03",
+		},
+		{
+			ID: "ordinary_browser_bridge", Priority: "P0", Status: CapabilityResearched,
+			UserValue:    "read protected structured data through the user's already-running ordinary browser when short-lived dedicated Chrome contexts are rejected",
+			Interface:    []string{"planned cli", "planned mcp"},
+			Implemented:  []string{"same-account ordinary-versus-dedicated Chrome comparison with redacted success markers", "official-source Native Messaging threat model and permission design", "closed normalized order-page protocol with strict schema, frame-size, request-ID, cursor, extension-origin, and native-frame validation"},
+			NextWork:     "build the native-host rendezvous and MV3 activeTab action adapter, then run synthetic and redacted live repeatability gates without copying cookies or depending on an agent runtime",
+			NextStepKind: CapabilityNextImplementation, LastVerified: "2026-09-03",
 		},
 		{
 			ID: "full_order_history", Priority: "P0", Status: CapabilityAvailable,

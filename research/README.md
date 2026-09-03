@@ -3,6 +3,10 @@
 These are the executable probes used during the initial Coupang protocol-feasibility study. They are evidence and exploration tools, not the production architecture.
 
 Product research notes include [`viral-shopping-insights.md`](viral-shopping-insights.md), which records first-party recap patterns, privacy boundaries, and the prioritized story backlog.
+[`ordinary-browser-bridge.md`](ordinary-browser-bridge.md) records the
+official-source Native Messaging decision, least-privilege extension design,
+threat model, distribution constraints, and verification gates for using an
+explicitly selected ordinary Chrome tab without copying cookies.
 
 ## Preconditions
 

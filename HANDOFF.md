@@ -98,7 +98,20 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   nor a login form. This isolates browser context as a material variable and
   motivates a standard ordinary-browser bridge. Orca itself remains a research
   aid rather than a runtime dependency; the bridge needs a threat-modeled,
-  explicitly paired extension/loopback contract before implementation.
+  explicitly paired extension transport before implementation.
+- Official-source follow-up selected Chrome Native Messaging, not loopback, as
+  the production browser-to-Go transport. The P0 permission tier is
+  `activeTab`, `nativeMessaging`, and `scripting`, with isolated top-frame
+  execution and no cookie, debugger, web-request, broad-host, external-message,
+  or incognito access. Loopback remains an experimental fallback because it
+  must recreate authentication and is exposed to changing Chrome Local Network
+  Access behavior.
+- The first ordinary-browser implementation slice defines a closed order-page
+  request/result protocol and a Native Messaging frame codec. Requests carry
+  only a bounded year/page cursor, never a URL. Successful responses carry at
+  most five normalized orders in a 256 KiB frame; raw source IDs, invalid
+  normalized fields, unknown JSON fields, trailing data, oversized frames, and
+  non-exact extension origins fail closed. Synthetic tests cover those rules.
 - `receipts download` can save an already-completed history artifact to a new
   private `0600` file. It re-reads the selected history row, keeps the source
   URL in browser memory, validates the final Coupang host and bounded content,
@@ -384,6 +397,8 @@ adapter, but it is no longer assumed to be the most reliable local context. The
 next architecture candidate is a standard, explicitly paired ordinary-browser
 bridge behind the same narrow document-source interface—not an Orca dependency,
 cookie-copying shortcut, stealth mode, or automation of a login challenge.
+The evidence-backed design and verification gates are recorded in
+`research/ordinary-browser-bridge.md`.
 
 ## Roadmap
 

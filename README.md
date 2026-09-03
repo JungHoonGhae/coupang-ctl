@@ -363,6 +363,7 @@ coupangctl products inspect --product-id ID --no-affiliate
 - [`RECEIPTS.md`](RECEIPTS.md) — 영수증 조회·다운로드의 JSON 계약과 안전 경계
 - [`PRICES.md`](PRICES.md) — 옵션별 가격 이력과 재구매 비교 계약
 - [`PRODUCT_PRINCIPLES.md`](PRODUCT_PRINCIPLES.md) — 증거·개인정보·완료 기준
+- [`research/ordinary-browser-bridge.md`](research/ordinary-browser-bridge.md) — 일반 Chrome 보호 데이터 브리지의 공식 자료 기반 설계·위협 모델
 - [`research/endpoint-catalog.md`](research/endpoint-catalog.md) — 가린 비공개 route 목록
 - [`research/README_BENCHMARKS.md`](research/README_BENCHMARKS.md) — 인기 CLI·MCP 저장소를 참고한 README 설계 근거
 
