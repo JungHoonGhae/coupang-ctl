@@ -17,6 +17,7 @@ import (
 	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
 	"github.com/JungHoonGhae/coupang-ctl/internal/browserbridge"
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/platform"
 	productworkflow "github.com/JungHoonGhae/coupang-ctl/internal/products"
 	receiptworkflow "github.com/JungHoonGhae/coupang-ctl/internal/receipts"
 	"github.com/JungHoonGhae/coupang-ctl/internal/store"
@@ -58,6 +59,15 @@ func (blockedStatusBrowser) Inspect(context.Context) (auth.BrowserStatus, error)
 func (blockedStatusBrowser) Login(context.Context, core.LoginRequest) error { return nil }
 
 func (blockedStatusBrowser) Verify(context.Context) error { return core.ErrBrowserAccessDenied }
+
+type fixedDoctorAuthStatus struct {
+	status core.AuthStatus
+	err    error
+}
+
+func (f fixedDoctorAuthStatus) Status(context.Context) (core.AuthStatus, error) {
+	return f.status, f.err
+}
 
 type noopResendAssistant struct{}
 
@@ -1162,6 +1172,59 @@ func TestAuthStatusWritesBackgroundAccessBlockAsTypedJSON(t *testing.T) {
 	}
 	if got.State != core.AuthAccessBlocked || !got.ProfilePresent || got.Browser != "Synthetic Chrome" {
 		t.Fatalf("unexpected auth status: %#v", got)
+	}
+}
+
+func TestDoctorSeparatesBrowserInstallationFromBackgroundSessionReadiness(t *testing.T) {
+	service := auth.NewService(blockedStatusBrowser{})
+	paths := platform.Paths{Database: filepath.Join(t.TempDir(), "coupangctl.sqlite3")}
+	var output bytes.Buffer
+	if err := runDoctor(context.Background(), &output, paths, service); err != nil {
+		t.Fatal(err)
+	}
+	var got core.DoctorReport
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.OK {
+		t.Fatal("doctor reported background access as ready")
+	}
+	want := map[string]core.CheckStatus{
+		"browser":            core.CheckOK,
+		"background_session": core.CheckError,
+		"sqlite":             core.CheckOK,
+	}
+	for _, check := range got.Checks {
+		if status, ok := want[check.Name]; ok {
+			if check.Status != status {
+				t.Fatalf("check %q status = %q, want %q", check.Name, check.Status, status)
+			}
+			delete(want, check.Name)
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("doctor omitted checks: %#v", want)
+	}
+}
+
+func TestDoctorReportsVerifiedBackgroundSessionAsReady(t *testing.T) {
+	provider := fixedDoctorAuthStatus{status: core.AuthStatus{State: core.AuthVerified, Browser: "Synthetic Chrome", ProfilePresent: true}}
+	paths := platform.Paths{Database: filepath.Join(t.TempDir(), "coupangctl.sqlite3")}
+	var output bytes.Buffer
+	if err := runDoctor(context.Background(), &output, paths, provider); err != nil {
+		t.Fatal(err)
+	}
+	var got core.DoctorReport
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.OK {
+		t.Fatalf("doctor did not report verified background session ready: %#v", got)
+	}
+	for _, check := range got.Checks {
+		if check.Status != core.CheckOK {
+			t.Fatalf("unexpected failed check: %#v", check)
+		}
 	}
 }
 

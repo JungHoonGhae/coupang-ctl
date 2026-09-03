@@ -25,6 +25,9 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   order queries, spending summaries, cancellation/return statistics,
   purchase/delivery trends, reorder candidates, normalized
   export/import, explicit purge, and the local stdio MCP server are implemented.
+- `doctor` performs the same non-visible background proof as `auth status` and
+  reports browser installation, `background_session`, and SQLite independently.
+  A present browser no longer makes a blocked or expired session look ready.
 - `coupangctl capabilities` schema v2 lists each capability's concrete
   `implemented` surfaces separately from `next_step_kind`, `blocked_by`, and
   `last_verified`. External approval, explicit mutation authorization,

@@ -54,6 +54,11 @@ go build -o ./bin/coupangctl ./cmd/coupangctl
 한 번 열어 재시도합니다. 확장 프로그램, Node, Playwright, Orca는 기본 실행에
 필요하지 않습니다. 모든 CLI 명령은 문서화된 JSON 객체를 출력합니다.
 
+`doctor`는 보이는 창을 열지 않고 브라우저 설치, 백그라운드 세션 준비 상태,
+SQLite를 별도 체크로 반환합니다. 첫 로그인 전이나 headless 접근이 거부된
+환경에서는 설치가 정상이어도 전체 `ok`가 `false`일 수 있으며,
+`background_session.message`가 다음 동작을 설명합니다.
+
 여섯 플랫폼 아카이브·SBOM·체크섬·GitHub provenance를 만드는 태그 릴리스
 파이프라인은 snapshot으로 검증되어 있지만, 아직 공개 릴리스 태그가 없으므로
 존재하지 않는 다운로드 URL을 설치 경로로 안내하지 않습니다. 배포물의 정확한

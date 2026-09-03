@@ -101,7 +101,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 
 	switch args[0] {
 	case "doctor":
-		return runDoctor(ctx, stdout, paths, browserAdapter)
+		return runDoctor(ctx, stdout, paths, authService)
 	case "auth":
 		return runAuth(ctx, args[1:], stdout, stderr, authService, loginassist.New(paths.ProfileDir), newTerminalLoginSecrets(os.Stdin, stderr))
 	case "orders":
@@ -1003,13 +1003,36 @@ func runAuth(ctx context.Context, args []string, stdout, stderr io.Writer, servi
 	}
 }
 
-func runDoctor(ctx context.Context, stdout io.Writer, paths platform.Paths, native *browser.Native) error {
+type authStatusProvider interface {
+	Status(context.Context) (core.AuthStatus, error)
+}
+
+func runDoctor(ctx context.Context, stdout io.Writer, paths platform.Paths, authProvider authStatusProvider) error {
 	report := core.DoctorReport{OK: true}
-	if _, err := native.Inspect(ctx); err != nil {
+	status, err := authProvider.Status(ctx)
+	if err != nil {
 		report.OK = false
 		report.Checks = append(report.Checks, core.Check{Name: "browser", Status: core.CheckError, Message: "a supported browser is unavailable or misconfigured"})
+		report.Checks = append(report.Checks, core.Check{Name: "background_session", Status: core.CheckError, Message: "background session readiness could not be checked"})
 	} else {
 		report.Checks = append(report.Checks, core.Check{Name: "browser", Status: core.CheckOK})
+		check := core.Check{Name: "background_session", Status: core.CheckError}
+		switch status.State {
+		case core.AuthVerified:
+			check.Status = core.CheckOK
+		case core.AuthNotConfigured:
+			check.Message = "run coupangctl auth login on an interactive desktop"
+		case core.AuthUnverified:
+			check.Message = "the stored login must be renewed with coupangctl auth login"
+		case core.AuthAccessBlocked:
+			check.Message = "background access was denied; retry later or explicitly run coupangctl auth verify --headed"
+		default:
+			check.Message = "the background session returned an unknown readiness state"
+		}
+		if check.Status != core.CheckOK {
+			report.OK = false
+		}
+		report.Checks = append(report.Checks, check)
 	}
 
 	db, err := store.Open(ctx, paths.Database)
