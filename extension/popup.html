@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>coupangctl 연결</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <p class="eyebrow">coupangctl · 한 번만 연결</p>
+    <h1>이 탭의 주문 기록을<br>내 컴퓨터로 가져올까요?</h1>
+    <div class="doodle" aria-hidden="true">↳</div>
+    <section aria-labelledby="data-heading">
+      <h2 id="data-heading">계속하면</h2>
+      <p>현재 선택한 쿠팡 주문목록 탭에서 <strong>주문일·금액·상품·배송 상태</strong>를 읽어 내 컴퓨터의 coupangctl로 전달합니다.</p>
+    </section>
+    <ul>
+      <li>쿠키와 로그인 정보는 읽지 않습니다.</li>
+      <li>확장 프로그램에는 결과를 저장하지 않습니다.</li>
+      <li>개발자나 외부 서버로 보내지 않습니다.</li>
+    </ul>
+    <button id="connect" type="button">이 탭 연결</button>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+    <a class="privacy" href="https://github.com/JungHoonGhae/coupang-ctl/blob/main/PRIVACY.md" target="_blank" rel="noreferrer">개인정보 처리 자세히 보기</a>
+  </main>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

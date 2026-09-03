@@ -12,7 +12,8 @@
     "type": "module"
   },
   "action": {
-    "default_title": "이 쿠팡 주문 탭을 coupangctl에 연결"
+    "default_title": "이 쿠팡 주문 탭을 coupangctl에 연결",
+    "default_popup": "popup.html"
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'"

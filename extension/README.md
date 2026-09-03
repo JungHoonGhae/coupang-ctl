@@ -40,7 +40,8 @@ Windows에서는 로컬 상태 디렉터리의 매니페스트와 HKCU 레지스
 동기화합니다.
 
 등록 후 명령을 먼저 실행하고, 이미 로그인된 일반 Chrome 주문목록 탭에서
-확장 버튼을 한 번 누릅니다.
+확장 팝업을 연 뒤 데이터 범위를 확인하고 **이 탭 연결**을 누릅니다. 팝업을
+닫으면 읽기를 시작하지 않습니다.
 
 ```bash
 coupangctl orders sync --max-pages 1 --ordinary-browser
@@ -48,6 +49,7 @@ coupangctl orders sync --max-pages 1 --ordinary-browser
 
 확장은 `activeTab`, `nativeMessaging`, `scripting`만 요청합니다. 광범위한
 host permission, 쿠키 권한, 외부 메시지, incognito, telemetry는 사용하지
-않습니다. 프로토콜과 위협 모델은
+않습니다. 개인정보 처리 범위는 [`PRIVACY.md`](../PRIVACY.md), Web Store
+제출 답안과 검증 게이트는 [`STORE_LISTING.md`](STORE_LISTING.md), 프로토콜과 위협 모델은
 [`research/ordinary-browser-bridge.md`](../research/ordinary-browser-bridge.md)에
 정리되어 있습니다.

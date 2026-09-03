@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
+	"testing/fstest"
 
 	"github.com/JungHoonGhae/coupang-ctl/extension"
 )
@@ -23,6 +25,7 @@ type testInstallationRecord struct {
 	ExecutablePath         string            `json:"executable_path"`
 	BundleFiles            []string          `json:"bundle_files"`
 	ArtifactSHA256         map[string]string `json:"artifact_sha256"`
+	TargetBundleFiles      []string          `json:"target_bundle_files,omitempty"`
 	TargetArtifactSHA256   map[string]string `json:"target_artifact_sha256,omitempty"`
 }
 
@@ -32,7 +35,7 @@ func TestInstallRecordsDigestsAndUpgradesOnlyOwnedArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	record := readTestInstallationRecord(t, manager.installationRecordPath())
-	if record.SchemaVersion != 2 || record.State != "active" || len(record.ArtifactSHA256) != 5 || len(record.TargetArtifactSHA256) != 0 {
+	if record.SchemaVersion != 3 || record.State != "active" || len(record.ArtifactSHA256) != len(manager.bundleFiles)+1 || len(record.TargetArtifactSHA256) != 0 {
 		t.Fatalf("unexpected installation record: %#v", record)
 	}
 	for name, digest := range record.ArtifactSHA256 {
@@ -117,7 +120,7 @@ func TestInstallMigratesExactLegacyOwnershipRecord(t *testing.T) {
 		t.Fatalf("legacy migration status = %q, want installed", result.Status)
 	}
 	record := readTestInstallationRecord(t, manager.installationRecordPath())
-	if record.SchemaVersion != 2 || record.State != "active" || len(record.ArtifactSHA256) != 5 {
+	if record.SchemaVersion != 3 || record.State != "active" || len(record.ArtifactSHA256) != len(manager.bundleFiles)+1 {
 		t.Fatalf("legacy record was not migrated: %#v", record)
 	}
 }
@@ -135,6 +138,7 @@ func TestInstallRecoversRecordedInterruptedUpgrade(t *testing.T) {
 	priorAction := []byte("// prior action left by an interrupted upgrade\n")
 	record.State = "upgrading"
 	record.ArtifactSHA256["extension/action.js"] = digestBytes(priorAction)
+	record.TargetBundleFiles = slices.Clone(record.BundleFiles)
 	record.TargetArtifactSHA256 = desiredDigests
 	writeTestInstallationRecord(t, manager.installationRecordPath(), record)
 	if err := os.WriteFile(filepath.Join(manager.extensionPath(), "action.js"), priorAction, 0o600); err != nil {
@@ -214,6 +218,67 @@ func TestInstallUpdatesOwnedNativeManifestWhenExecutableMoves(t *testing.T) {
 	if report := next.Doctor(); !report.Ready {
 		t.Fatalf("doctor after executable move = %#v", report)
 	}
+}
+
+func TestInstallSafelyAddsAndRemovesReviewedBundleFiles(t *testing.T) {
+	manager := newTestManager(t)
+	if _, err := manager.Install(); err != nil {
+		t.Fatal(err)
+	}
+
+	expandedFiles := append(slices.Clone(manager.bundleFiles), "reviewed-extra.html")
+	expandedBundle := cloneTestBundle(t, manager)
+	expandedBundle["reviewed-extra.html"] = &fstest.MapFile{Data: []byte("<p>synthetic reviewed file</p>\n")}
+	manager.bundleFiles = expandedFiles
+	manager.bundle = expandedBundle
+	result, err := manager.Install()
+	if err != nil {
+		t.Fatalf("Install() add bundle file error = %v", err)
+	}
+	if result.Status != "upgraded" {
+		t.Fatalf("add bundle file status = %q, want upgraded", result.Status)
+	}
+	if _, err := os.Stat(filepath.Join(manager.extensionPath(), "reviewed-extra.html")); err != nil {
+		t.Fatalf("new reviewed bundle file missing: %v", err)
+	}
+
+	contractedFiles := make([]string, 0, len(expandedFiles)-1)
+	contractedBundle := fstest.MapFS{}
+	for _, filename := range expandedFiles {
+		if filename == "service-worker.js" {
+			continue
+		}
+		contractedFiles = append(contractedFiles, filename)
+		contractedBundle[filename] = expandedBundle[filename]
+	}
+	manager.bundleFiles = contractedFiles
+	manager.bundle = contractedBundle
+	result, err = manager.Install()
+	if err != nil {
+		t.Fatalf("Install() remove bundle file error = %v", err)
+	}
+	if result.Status != "upgraded" {
+		t.Fatalf("remove bundle file status = %q, want upgraded", result.Status)
+	}
+	if _, err := os.Stat(filepath.Join(manager.extensionPath(), "service-worker.js")); !os.IsNotExist(err) {
+		t.Fatalf("obsolete owned bundle file remains: %v", err)
+	}
+	if report := manager.Doctor(); !report.Ready {
+		t.Fatalf("doctor after bundle file-set upgrades = %#v", report)
+	}
+}
+
+func cloneTestBundle(t *testing.T, manager *Manager) fstest.MapFS {
+	t.Helper()
+	bundle := fstest.MapFS{}
+	for _, filename := range manager.bundleFiles {
+		content, err := manager.bundle.ReadFile(filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bundle[filename] = &fstest.MapFile{Data: content}
+	}
+	return bundle
 }
 
 func readTestInstallationRecord(t *testing.T, path string) testInstallationRecord {

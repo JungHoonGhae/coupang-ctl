@@ -24,7 +24,8 @@ import (
 const NativeHostName = "com.coupangctl.browser_bridge"
 
 const (
-	installationRecordSchemaVersion = 2
+	installationRecordSchemaVersion = 3
+	legacyDigestRecordSchemaVersion = 2
 	installationStateActive         = "active"
 	installationStateUpgrading      = "upgrading"
 	manifestArtifactName            = "native_host_manifest"
@@ -41,6 +42,12 @@ type Environment struct {
 type Manager struct {
 	environment  Environment
 	registration platformRegistration
+	bundle       extensionBundle
+	bundleFiles  []string
+}
+
+type extensionBundle interface {
+	ReadFile(string) ([]byte, error)
 }
 
 type managedArtifact struct {
@@ -60,6 +67,7 @@ type installationRecord struct {
 	ExecutablePath         string            `json:"executable_path"`
 	BundleFiles            []string          `json:"bundle_files"`
 	ArtifactSHA256         map[string]string `json:"artifact_sha256"`
+	TargetBundleFiles      []string          `json:"target_bundle_files,omitempty"`
 	TargetArtifactSHA256   map[string]string `json:"target_artifact_sha256,omitempty"`
 }
 
@@ -110,7 +118,12 @@ func New(environment Environment) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{environment: environment, registration: registration}, nil
+	return &Manager{
+		environment:  environment,
+		registration: registration,
+		bundle:       extensionbundle.Files,
+		bundleFiles:  slices.Clone(extensionbundle.Filenames),
+	}, nil
 }
 
 func (manager *Manager) Install() (core.BrowserBridgeInstallation, error) {
@@ -135,7 +148,7 @@ func (manager *Manager) Install() (core.BrowserBridgeInstallation, error) {
 	if err != nil {
 		return core.BrowserBridgeInstallation{}, err
 	}
-	mode, currentDigests, existingRecordContent, err := manager.preflightInstall(artifacts, desiredRecord, desiredRecordContent)
+	mode, currentBundleFiles, currentDigests, existingRecordContent, err := manager.preflightInstall(artifacts, desiredRecord, desiredRecordContent)
 	if err != nil {
 		return core.BrowserBridgeInstallation{}, err
 	}
@@ -171,7 +184,9 @@ func (manager *Manager) Install() (core.BrowserBridgeInstallation, error) {
 	case installUpgrade:
 		transition := desiredRecord
 		transition.State = installationStateUpgrading
+		transition.BundleFiles = currentBundleFiles
 		transition.ArtifactSHA256 = currentDigests
+		transition.TargetBundleFiles = slices.Clone(desiredRecord.BundleFiles)
 		transition.TargetArtifactSHA256 = desiredRecord.ArtifactSHA256
 		transitionContent, encodeErr := encodeInstallationRecord(transition)
 		if encodeErr != nil {
@@ -181,11 +196,31 @@ func (manager *Manager) Install() (core.BrowserBridgeInstallation, error) {
 			return core.BrowserBridgeInstallation{}, fmt.Errorf("start browser bridge upgrade: %w", err)
 		}
 		for _, artifact := range artifacts {
-			if digestContent(artifact.content) == currentDigests[artifact.name] {
+			currentDigest, exists := currentDigests[artifact.name]
+			if digestContent(artifact.content) == currentDigest {
 				continue
 			}
-			if err := replaceOwnedPrivateFile(artifact.path, artifact.content, currentDigests[artifact.name]); err != nil {
+			if !exists {
+				if err := writeExactPrivateFile(artifact.path, artifact.content); err != nil {
+					return core.BrowserBridgeInstallation{}, fmt.Errorf("add browser bridge artifact %s: %w", filepath.Base(artifact.path), err)
+				}
+				continue
+			}
+			if err := replaceOwnedPrivateFile(artifact.path, artifact.content, currentDigest); err != nil {
 				return core.BrowserBridgeInstallation{}, fmt.Errorf("upgrade browser bridge artifact %s: %w", filepath.Base(artifact.path), err)
+			}
+		}
+		desiredBundleFiles := make(map[string]struct{}, len(desiredRecord.BundleFiles))
+		for _, filename := range desiredRecord.BundleFiles {
+			desiredBundleFiles[filename] = struct{}{}
+		}
+		for _, filename := range currentBundleFiles {
+			if _, keep := desiredBundleFiles[filename]; keep {
+				continue
+			}
+			name := "extension/" + filename
+			if err := removeOwnedPrivateFile(filepath.Join(extensionPath, filename), currentDigests[name]); err != nil {
+				return core.BrowserBridgeInstallation{}, fmt.Errorf("remove obsolete browser bridge artifact %s: %w", filename, err)
 			}
 		}
 		if err := replaceOwnedPrivateFile(recordPath, desiredRecordContent, digestContent(transitionContent)); err != nil {
@@ -216,6 +251,12 @@ func (manager *Manager) Install() (core.BrowserBridgeInstallation, error) {
 }
 
 func (manager *Manager) desiredArtifacts() ([]managedArtifact, error) {
+	if manager.bundle == nil {
+		return nil, errors.New("ordinary browser extension bundle is unavailable")
+	}
+	if err := validateBundleFiles(manager.bundleFiles); err != nil {
+		return nil, fmt.Errorf("invalid embedded extension bundle: %w", err)
+	}
 	manifestPath, err := manager.nativeHostManifestPath()
 	if err != nil {
 		return nil, err
@@ -224,9 +265,9 @@ func (manager *Manager) desiredArtifacts() ([]managedArtifact, error) {
 	if err != nil {
 		return nil, err
 	}
-	artifacts := make([]managedArtifact, 0, len(extensionbundle.Filenames)+1)
-	for _, filename := range extensionbundle.Filenames {
-		content, readErr := extensionbundle.Files.ReadFile(filename)
+	artifacts := make([]managedArtifact, 0, len(manager.bundleFiles)+1)
+	for _, filename := range manager.bundleFiles {
+		content, readErr := manager.bundle.ReadFile(filename)
 		if readErr != nil {
 			return nil, fmt.Errorf("read embedded extension file %s: %w", filename, readErr)
 		}
@@ -254,65 +295,65 @@ func (manager *Manager) desiredInstallationRecord(artifacts []managedArtifact) i
 		NativeHostName:         NativeHostName,
 		NativeHostManifestPath: manifestPath,
 		ExecutablePath:         manager.environment.ExecutablePath,
-		BundleFiles:            slices.Clone(extensionbundle.Filenames),
+		BundleFiles:            slices.Clone(manager.bundleFiles),
 		ArtifactSHA256:         digests,
 	}
 }
 
-func (manager *Manager) preflightInstall(artifacts []managedArtifact, desired installationRecord, desiredContent []byte) (installMode, map[string]string, []byte, error) {
+func (manager *Manager) preflightInstall(artifacts []managedArtifact, desired installationRecord, desiredContent []byte) (installMode, []string, map[string]string, []byte, error) {
 	recordPath := manager.installationRecordPath()
 	info, err := os.Lstat(recordPath)
 	if errors.Is(err, os.ErrNotExist) {
 		if err := manager.preflightFreshArtifacts(artifacts); err != nil {
-			return 0, nil, nil, err
+			return 0, nil, nil, nil, err
 		}
-		return installFresh, maps.Clone(desired.ArtifactSHA256), nil, nil
+		return installFresh, slices.Clone(desired.BundleFiles), maps.Clone(desired.ArtifactSHA256), nil, nil
 	}
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("%w: inspect installation record: %v", ErrInstallationConflict, err)
+		return 0, nil, nil, nil, fmt.Errorf("%w: inspect installation record: %v", ErrInstallationConflict, err)
 	}
 	if !info.Mode().IsRegular() || (manager.environment.GOOS != "windows" && info.Mode().Perm() != 0o600) {
-		return 0, nil, nil, fmt.Errorf("%w: installation record is not a private regular file", ErrInstallationConflict)
+		return 0, nil, nil, nil, fmt.Errorf("%w: installation record is not a private regular file", ErrInstallationConflict)
 	}
 	existingContent, err := os.ReadFile(recordPath)
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("%w: read installation record: %v", ErrInstallationConflict, err)
+		return 0, nil, nil, nil, fmt.Errorf("%w: read installation record: %v", ErrInstallationConflict, err)
 	}
 	if bytes.Equal(existingContent, desiredContent) {
 		if err := manager.preflightFreshArtifacts(artifacts); err != nil {
-			return 0, nil, nil, err
+			return 0, nil, nil, nil, err
 		}
-		return installIdempotent, maps.Clone(desired.ArtifactSHA256), existingContent, nil
+		return installIdempotent, slices.Clone(desired.BundleFiles), maps.Clone(desired.ArtifactSHA256), existingContent, nil
 	}
 
 	legacyContent, legacyErr := manager.legacyInstallationRecordContent()
 	if legacyErr == nil && bytes.Equal(existingContent, legacyContent) {
 		if err := manager.preflightFreshArtifacts(artifacts); err != nil {
-			return 0, nil, nil, err
+			return 0, nil, nil, nil, err
 		}
-		return installMigrateLegacy, maps.Clone(desired.ArtifactSHA256), existingContent, nil
+		return installMigrateLegacy, slices.Clone(desired.BundleFiles), maps.Clone(desired.ArtifactSHA256), existingContent, nil
 	}
 
 	record, err := decodeInstallationRecord(existingContent)
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("%w: installation record is not a supported owned record", ErrInstallationConflict)
+		return 0, nil, nil, nil, fmt.Errorf("%w: installation record is not a supported owned record", ErrInstallationConflict)
 	}
 	canonical, err := encodeInstallationRecord(record)
 	if err != nil || !bytes.Equal(canonical, existingContent) {
-		return 0, nil, nil, fmt.Errorf("%w: installation record is not canonical", ErrInstallationConflict)
+		return 0, nil, nil, nil, fmt.Errorf("%w: installation record is not canonical", ErrInstallationConflict)
 	}
 	if err := manager.validateInstallationRecord(record); err != nil {
-		return 0, nil, nil, fmt.Errorf("%w: %v", ErrInstallationConflict, err)
+		return 0, nil, nil, nil, fmt.Errorf("%w: %v", ErrInstallationConflict, err)
 	}
-	currentDigests, err := manager.validateRecordedArtifacts(artifacts, record)
+	currentBundleFiles, currentDigests, err := manager.validateRecordedArtifacts(record)
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("%w: %v", ErrInstallationConflict, err)
+		return 0, nil, nil, nil, fmt.Errorf("%w: %v", ErrInstallationConflict, err)
 	}
-	return installUpgrade, currentDigests, existingContent, nil
+	return installUpgrade, currentBundleFiles, currentDigests, existingContent, nil
 }
 
 func (manager *Manager) preflightFreshArtifacts(artifacts []managedArtifact) error {
-	if err := manager.checkExtensionDirectoryEntries(true); err != nil {
+	if err := manager.checkExtensionDirectoryEntries(manager.bundleFiles, true); err != nil {
 		return fmt.Errorf("%w: %v", ErrInstallationConflict, err)
 	}
 	for _, artifact := range artifacts {
@@ -328,15 +369,17 @@ func (manager *Manager) validateInstallationRecord(record installationRecord) er
 	if err != nil {
 		return err
 	}
-	if record.SchemaVersion != installationRecordSchemaVersion ||
+	if (record.SchemaVersion != installationRecordSchemaVersion && record.SchemaVersion != legacyDigestRecordSchemaVersion) ||
 		record.Browser != "chrome" ||
 		record.ExtensionID != browser.OrdinaryBrowserExtensionID ||
 		record.ExtensionPath != manager.extensionPath() ||
 		record.NativeHostName != NativeHostName ||
 		record.NativeHostManifestPath != manifestPath ||
-		!filepath.IsAbs(record.ExecutablePath) ||
-		!slices.Equal(record.BundleFiles, extensionbundle.Filenames) {
+		!filepath.IsAbs(record.ExecutablePath) {
 		return errors.New("installation ownership metadata does not match this managed location")
+	}
+	if err := validateBundleFiles(record.BundleFiles); err != nil {
+		return fmt.Errorf("invalid installed bundle files: %w", err)
 	}
 	expectedNames := artifactNames(record.BundleFiles)
 	if err := validateDigestSet(record.ArtifactSHA256, expectedNames); err != nil {
@@ -344,11 +387,21 @@ func (manager *Manager) validateInstallationRecord(record installationRecord) er
 	}
 	switch record.State {
 	case installationStateActive:
-		if len(record.TargetArtifactSHA256) != 0 {
-			return errors.New("active installation record contains target digests")
+		if len(record.TargetBundleFiles) != 0 || len(record.TargetArtifactSHA256) != 0 {
+			return errors.New("active installation record contains upgrade targets")
 		}
 	case installationStateUpgrading:
-		if err := validateDigestSet(record.TargetArtifactSHA256, expectedNames); err != nil {
+		targetBundleFiles := record.TargetBundleFiles
+		if record.SchemaVersion == legacyDigestRecordSchemaVersion {
+			if len(targetBundleFiles) != 0 {
+				return errors.New("legacy upgrading record contains target bundle files")
+			}
+			targetBundleFiles = record.BundleFiles
+		}
+		if err := validateBundleFiles(targetBundleFiles); err != nil {
+			return fmt.Errorf("invalid upgrade target bundle files: %w", err)
+		}
+		if err := validateDigestSet(record.TargetArtifactSHA256, artifactNames(targetBundleFiles)); err != nil {
 			return fmt.Errorf("invalid upgrade target digests: %w", err)
 		}
 	default:
@@ -357,30 +410,73 @@ func (manager *Manager) validateInstallationRecord(record installationRecord) er
 	return nil
 }
 
-func (manager *Manager) validateRecordedArtifacts(artifacts []managedArtifact, record installationRecord) (map[string]string, error) {
-	if err := manager.checkExtensionDirectoryEntries(false); err != nil {
-		return nil, err
+func (manager *Manager) validateRecordedArtifacts(record installationRecord) ([]string, map[string]string, error) {
+	targetBundleFiles := record.TargetBundleFiles
+	if record.State == installationStateUpgrading && record.SchemaVersion == legacyDigestRecordSchemaVersion {
+		targetBundleFiles = record.BundleFiles
 	}
-	current := make(map[string]string, len(artifacts))
-	for _, artifact := range artifacts {
-		content, err := manager.readPrivateRegularFile(artifact.path)
+	allowedBundleFiles := make(map[string]struct{}, len(record.BundleFiles)+len(targetBundleFiles))
+	for _, filename := range record.BundleFiles {
+		allowedBundleFiles[filename] = struct{}{}
+	}
+	for _, filename := range targetBundleFiles {
+		allowedBundleFiles[filename] = struct{}{}
+	}
+	entries, err := os.ReadDir(manager.extensionPath())
+	if err != nil {
+		return nil, nil, fmt.Errorf("inspect managed extension directory: %w", err)
+	}
+	if record.State == installationStateActive && len(entries) != len(record.BundleFiles) {
+		return nil, nil, errors.New("managed extension directory is incomplete")
+	}
+	currentBundleFiles := make([]string, 0, len(entries))
+	current := make(map[string]string, len(entries)+1)
+	for _, entry := range entries {
+		filename := entry.Name()
+		if _, allowed := allowedBundleFiles[filename]; !allowed {
+			return nil, nil, errors.New("managed extension directory contains an unexpected file")
+		}
+		name := "extension/" + filename
+		content, err := manager.readPrivateRegularFile(filepath.Join(manager.extensionPath(), filename))
 		if err != nil {
-			return nil, fmt.Errorf("owned artifact %s is unavailable", filepath.Base(artifact.path))
+			return nil, nil, fmt.Errorf("owned artifact %s is unavailable", filename)
 		}
 		digest := digestContent(content)
-		allowed := digest == record.ArtifactSHA256[artifact.name]
+		allowed := digest == record.ArtifactSHA256[name]
 		if record.State == installationStateUpgrading {
-			allowed = allowed || digest == record.TargetArtifactSHA256[artifact.name]
+			allowed = allowed || digest == record.TargetArtifactSHA256[name]
 		}
 		if !allowed {
-			return nil, fmt.Errorf("owned artifact %s has unrecorded content", filepath.Base(artifact.path))
+			return nil, nil, fmt.Errorf("owned artifact %s has unrecorded content", filename)
 		}
-		current[artifact.name] = digest
+		currentBundleFiles = append(currentBundleFiles, filename)
+		current[name] = digest
 	}
-	return current, nil
+	if record.State == installationStateActive && !sameStringSet(currentBundleFiles, record.BundleFiles) {
+		return nil, nil, errors.New("managed extension directory does not match the active record")
+	}
+	manifestPath, err := manager.nativeHostManifestPath()
+	if err != nil {
+		return nil, nil, err
+	}
+	manifestContent, err := manager.readPrivateRegularFile(manifestPath)
+	if err != nil {
+		return nil, nil, errors.New("owned native host manifest is unavailable")
+	}
+	manifestDigest := digestContent(manifestContent)
+	manifestAllowed := manifestDigest == record.ArtifactSHA256[manifestArtifactName]
+	if record.State == installationStateUpgrading {
+		manifestAllowed = manifestAllowed || manifestDigest == record.TargetArtifactSHA256[manifestArtifactName]
+	}
+	if !manifestAllowed {
+		return nil, nil, errors.New("owned native host manifest has unrecorded content")
+	}
+	current[manifestArtifactName] = manifestDigest
+	slices.Sort(currentBundleFiles)
+	return currentBundleFiles, current, nil
 }
 
-func (manager *Manager) checkExtensionDirectoryEntries(allowMissing bool) error {
+func (manager *Manager) checkExtensionDirectoryEntries(expectedFiles []string, allowMissing bool) error {
 	entries, err := os.ReadDir(manager.extensionPath())
 	if errors.Is(err, os.ErrNotExist) && allowMissing {
 		return nil
@@ -388,11 +484,11 @@ func (manager *Manager) checkExtensionDirectoryEntries(allowMissing bool) error 
 	if err != nil {
 		return fmt.Errorf("inspect managed extension directory: %w", err)
 	}
-	if len(entries) > len(extensionbundle.Filenames) {
+	if len(entries) > len(expectedFiles) {
 		return errors.New("managed extension directory contains an unexpected file")
 	}
-	expected := make(map[string]struct{}, len(extensionbundle.Filenames))
-	for _, filename := range extensionbundle.Filenames {
+	expected := make(map[string]struct{}, len(expectedFiles))
+	for _, filename := range expectedFiles {
 		expected[filename] = struct{}{}
 	}
 	for _, entry := range entries {
@@ -404,6 +500,39 @@ func (manager *Manager) checkExtensionDirectoryEntries(allowMissing bool) error 
 		return errors.New("managed extension directory is incomplete")
 	}
 	return nil
+}
+
+func validateBundleFiles(files []string) error {
+	if len(files) == 0 || len(files) > 64 {
+		return errors.New("bundle file count is out of range")
+	}
+	seen := make(map[string]struct{}, len(files))
+	for _, filename := range files {
+		if filename == "" || filename == "." || filename == ".." || filepath.Base(filename) != filename {
+			return errors.New("bundle filename is unsafe")
+		}
+		if _, duplicate := seen[filename]; duplicate {
+			return errors.New("bundle filename is duplicated")
+		}
+		seen[filename] = struct{}{}
+	}
+	return nil
+}
+
+func sameStringSet(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	seen := make(map[string]struct{}, len(left))
+	for _, value := range left {
+		seen[value] = struct{}{}
+	}
+	for _, value := range right {
+		if _, ok := seen[value]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (manager *Manager) readPrivateRegularFile(path string) ([]byte, error) {
@@ -494,8 +623,12 @@ func (manager *Manager) Doctor() core.BrowserBridgeDoctorReport {
 	checks = append(checks, recordCheck)
 
 	bundleCheck := core.Check{Name: "extension_bundle", Status: core.CheckOK}
-	for _, filename := range extensionbundle.Filenames {
-		content, err := extensionbundle.Files.ReadFile(filename)
+	if !managedDirectoriesOK || manager.checkExtensionDirectoryEntries(manager.bundleFiles, false) != nil {
+		bundleCheck.Status = core.CheckError
+		bundleCheck.Message = "run coupangctl browser-bridge install to restore the reviewed extension bundle"
+	}
+	for _, filename := range manager.bundleFiles {
+		content, err := manager.bundle.ReadFile(filename)
 		if !managedDirectoriesOK || err != nil || manager.checkManagedFile(filepath.Join(extensionPath, filename), content) != nil {
 			bundleCheck.Status = core.CheckError
 			bundleCheck.Message = "run coupangctl browser-bridge install to restore the reviewed extension bundle"
@@ -594,8 +727,11 @@ func (manager *Manager) Uninstall() (core.BrowserBridgeUninstallResult, error) {
 	if err != nil || manager.checkManagedFile(manifestPath, expectedManifest) != nil {
 		return core.BrowserBridgeUninstallResult{}, fmt.Errorf("%w: refusing removal of a modified native host manifest", ErrInstallationConflict)
 	}
-	for _, filename := range extensionbundle.Filenames {
-		expected, readErr := extensionbundle.Files.ReadFile(filename)
+	if manager.checkExtensionDirectoryEntries(manager.bundleFiles, false) != nil {
+		return core.BrowserBridgeUninstallResult{}, fmt.Errorf("%w: refusing removal with an unexpected extension bundle file set", ErrInstallationConflict)
+	}
+	for _, filename := range manager.bundleFiles {
+		expected, readErr := manager.bundle.ReadFile(filename)
 		if readErr != nil || manager.checkManagedFile(filepath.Join(extensionPath, filename), expected) != nil {
 			return core.BrowserBridgeUninstallResult{}, fmt.Errorf("%w: refusing removal of a modified extension bundle file: %s", ErrInstallationConflict, filename)
 		}
@@ -610,7 +746,7 @@ func (manager *Manager) Uninstall() (core.BrowserBridgeUninstallResult, error) {
 	if err := os.Remove(manifestPath); err != nil {
 		return core.BrowserBridgeUninstallResult{}, fmt.Errorf("remove native host manifest: %w", err)
 	}
-	for _, filename := range extensionbundle.Filenames {
+	for _, filename := range manager.bundleFiles {
 		if err := os.Remove(filepath.Join(extensionPath, filename)); err != nil {
 			return core.BrowserBridgeUninstallResult{}, fmt.Errorf("remove extension bundle file %s: %w", filename, err)
 		}
@@ -693,7 +829,7 @@ func (manager *Manager) legacyInstallationRecordContent() ([]byte, error) {
 		NativeHostName:         NativeHostName,
 		NativeHostManifestPath: manifestPath,
 		ExecutablePath:         manager.environment.ExecutablePath,
-		BundleFiles:            extensionbundle.Filenames,
+		BundleFiles:            slices.Clone(manager.bundleFiles),
 	}
 	content, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
@@ -825,6 +961,24 @@ func replaceOwnedPrivateFile(path string, content []byte, expectedDigest string)
 		return err
 	}
 	return os.Chmod(path, 0o600)
+}
+
+func removeOwnedPrivateFile(path, expectedDigest string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("refusing to remove a non-regular file")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if digestContent(content) != expectedDigest {
+		return errors.New("existing file changed after ownership validation")
+	}
+	return os.Remove(path)
 }
 
 func preflightExactFile(path string, expected []byte) error {

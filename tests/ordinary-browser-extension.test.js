@@ -8,6 +8,8 @@ import {
 	createOrdinaryBrowserActionHandler,
 } from "../extension/action.js";
 import { readSelectedOrderPage } from "../extension/page-reader.js";
+import { createPopupConnectionRequest } from "../extension/popup.js";
+import { createServiceWorkerMessageHandler } from "../extension/service-worker.js";
 
 test("MV3 manifest has only the selected-tab bridge permissions", async () => {
 	const manifest = JSON.parse(
@@ -26,6 +28,7 @@ test("MV3 manifest has only the selected-tab bridge permissions", async () => {
 		service_worker: "service-worker.js",
 		type: "module",
 	});
+	assert.equal(manifest.action.default_popup, "popup.html");
 	assert.equal(
 		manifest.content_security_policy.extension_pages,
 		"script-src 'self'; object-src 'none'",
@@ -36,6 +39,57 @@ test("MV3 manifest has only the selected-tab bridge permissions", async () => {
 		.map((nibble) => String.fromCharCode("a".charCodeAt(0) + nibble))
 		.join("");
 	assert.equal(extensionID, "kdpkegejlalobnlbgpjjibllolajjonf");
+});
+
+test("popup discloses the exact local data flow before its affirmative button", async () => {
+	const html = await readFile(new URL("../extension/popup.html", import.meta.url), "utf8");
+	for (const disclosure of ["현재 선택한 쿠팡 주문목록 탭", "주문일·금액·상품·배송 상태", "내 컴퓨터의 coupangctl", "쿠키와 로그인 정보", "외부 서버로 보내지 않습니다"]) {
+		assert.match(html, new RegExp(disclosure));
+	}
+	assert.match(html, /<button[^>]+id="connect"[^>]*>\s*이 탭 연결\s*<\/button>/);
+	assert.match(html, /<script[^>]+src="popup\.js"[^>]*><\/script>/);
+	assert.doesNotMatch(html, /<script(?![^>]+src=)[^>]*>/);
+
+	const messages = [];
+	const requestConnection = createPopupConnectionRequest({
+		runtime: {
+			async sendMessage(message) {
+				messages.push(message);
+				return { status: "started" };
+			},
+		},
+	});
+	assert.deepEqual(await requestConnection(), { status: "started" });
+	assert.deepEqual(messages, [{ schema_version: 1, type: "connect_selected_order_tab" }]);
+});
+
+test("service worker starts the native bridge only for the closed popup message", async () => {
+	const port = fakeNativePort();
+	let queryCount = 0;
+	const chromeApi = {
+		runtime: {
+			connectNative(name) {
+				assert.equal(name, NATIVE_HOST_NAME);
+				return port;
+			},
+			lastError: undefined,
+		},
+		tabs: {
+			async query(options) {
+				queryCount += 1;
+				assert.deepEqual(options, { active: true, lastFocusedWindow: true });
+				return [{ id: 17, url: "https://mc.coupang.com/ssr/desktop/order/list" }];
+			},
+		},
+		scripting: { async executeScript() { return []; } },
+	};
+	const handler = createServiceWorkerMessageHandler(chromeApi, function syntheticReader() {});
+	assert.equal(handler({ schema_version: 1, type: "ignored" }, {}, () => {}), false);
+	let response;
+	assert.equal(handler({ schema_version: 1, type: "connect_selected_order_tab" }, {}, (value) => { response = value; }), true);
+	await eventLoopTurn();
+	assert.equal(queryCount, 1);
+	assert.deepEqual(response, { status: "started" });
 });
 
 test("one extension action relays validated requests through the selected top frame", async () => {

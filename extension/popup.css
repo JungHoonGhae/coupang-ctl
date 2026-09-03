@@ -1,0 +1,123 @@
+:root {
+  color-scheme: light;
+  font-family: ui-rounded, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  color: #1f1d1a;
+  background: #fffdf7;
+}
+
+body {
+  width: 348px;
+  margin: 0;
+  background:
+    linear-gradient(#e9e3d6 1px, transparent 1px) 0 34px / 100% 28px,
+    #fffdf7;
+}
+
+main {
+  position: relative;
+  padding: 20px;
+}
+
+.eyebrow {
+  display: inline-block;
+  margin: 0 0 10px;
+  padding: 4px 8px;
+  border: 1.5px solid #1f1d1a;
+  border-radius: 999px;
+  background: #fff6a8;
+  font-size: 12px;
+  font-weight: 800;
+  transform: rotate(-1deg);
+}
+
+h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.22;
+  letter-spacing: -0.04em;
+}
+
+.doodle {
+  position: absolute;
+  top: 78px;
+  right: 22px;
+  font: 700 36px/1 ui-rounded, system-ui, sans-serif;
+  transform: rotate(18deg);
+}
+
+section {
+  margin-top: 20px;
+  padding: 13px 14px;
+  border: 1.5px solid #1f1d1a;
+  border-radius: 11px 14px 10px 13px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 3px 3px 0 #1f1d1a;
+  transform: rotate(0.3deg);
+}
+
+h2 {
+  margin: 0 0 5px;
+  font-size: 13px;
+}
+
+section p,
+li {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+section p {
+  margin: 0;
+}
+
+ul {
+  margin: 16px 0;
+  padding-left: 21px;
+}
+
+li + li {
+  margin-top: 4px;
+}
+
+button {
+  width: 100%;
+  min-height: 46px;
+  border: 2px solid #1f1d1a;
+  border-radius: 11px 9px 12px 8px;
+  background: #4f74ff;
+  color: white;
+  box-shadow: 3px 3px 0 #1f1d1a;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #365be8;
+}
+
+button:focus-visible {
+  outline: 3px solid #ffcf33;
+  outline-offset: 3px;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.status {
+  min-height: 20px;
+  margin: 11px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.privacy {
+  display: inline-block;
+  margin-top: 4px;
+  color: #4a4741;
+  font-size: 11px;
+  text-underline-offset: 2px;
+}
