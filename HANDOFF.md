@@ -157,6 +157,14 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   explicit human step. Every generated command calls only bounded headless
   `watch-refresh`, never affiliate conversion, cart, checkout, order, or
   payment.
+- `orders recap-image` is a two-step public-share workflow. Without
+  confirmation it returns the exact month-level values, axis evidence,
+  sample sizes, provenance, and exclusion list that would appear. With a new
+  `.png` path and `--confirm-public-safe-image`, it renders a 1080x1350 card
+  from a temporary local HTML file, validates the PNG dimensions, writes it
+  `0600` without overwrite, and removes the temporary source. Private product
+  names, amounts, exact dates, category/brand labels, and payment data have no
+  PNG inclusion flag. A live local render and pixel inspection succeeded.
 - QR image output is cropped to the QR region and enlarged; full login-page
   screenshots are no longer written.
 - macOS can request an already-visible OTP send/resend control via the native

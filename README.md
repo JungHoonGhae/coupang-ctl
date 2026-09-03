@@ -83,6 +83,8 @@ coupangctl orders categories --max-products 25
 coupangctl orders category-catalog --query '생활용품'
 coupangctl orders reorder --limit 20
 coupangctl orders recap --output ./shopping-recap.html
+coupangctl orders recap-image
+coupangctl orders recap-image --output ./shopping-recap.png --confirm-public-safe-image
 ```
 
 분석값은 세 가지 출처를 구분합니다.
@@ -92,6 +94,13 @@ coupangctl orders recap --output ./shopping-recap.html
 - **추론값**: 원천에 없는 정보를 휴리스틱으로 추정한 값
 
 공개형 리캡은 기간, 표본 수, 분모, 제외 규칙을 함께 보여줍니다. 카테고리는 상품명으로 억지 매핑하지 않고 쿠팡 상품 페이지의 가변 길이 `BreadcrumbList`만 사용하며, 확인하지 못한 상품은 `unknown`으로 남깁니다.
+
+`orders recap-image`는 먼저 1080×1350 공유 카드에 들어갈 실제 값과
+provenance, 표본 수, 제외 필드를 JSON으로 미리 보여주며 파일을 만들지
+않습니다. 그 내용을 확인한 뒤 `--output`과
+`--confirm-public-safe-image`를 함께 줄 때만 새 `0600` PNG를 씁니다.
+PNG에는 상품명·금액·정확한 날짜·결제수단을 넣는 옵션 자체가 없습니다.
+응답 계약은 [`RECAP.md`](RECAP.md)에 있습니다.
 
 `orders category-catalog`은 그 breadcrumb에서 실제로 관찰한 카테고리
 이름·숫자 ID·경로만 찾습니다. 응답의 `category_id`를

@@ -604,6 +604,48 @@ func TestOrdersRecapWritesPrivateStandaloneHTMLWithoutEchoingPath(t *testing.T) 
 	}
 }
 
+func TestOrdersRecapImagePreviewsExactPublicFieldsBeforeWriting(t *testing.T) {
+	ctx := context.Background()
+	stateDir := t.TempDir()
+	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
+	ledger, err := store.Open(ctx, filepath.Join(stateDir, "coupangctl.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ledger.UpsertOrderPage(ctx, core.OrderPage{Orders: []core.Order{{
+		SourceRef: "synthetic-image-preview", PurchasedAt: "2026-08-29", TotalAmount: 1200, Currency: "KRW",
+		Items: []core.OrderItem{{ProductID: "101", VendorItemID: "201", Name: "Synthetic private image product", Quantity: 1, UnitPrice: 1200, PaidPrice: 1200}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	outputPath := filepath.Join(t.TempDir(), "shopping-recap.png")
+	var stdout, stderr bytes.Buffer
+	if err := Run(ctx, []string{"orders", "recap-image", "--output", outputPath}, &stdout, &stderr, "test"); err != nil {
+		t.Fatal(err)
+	}
+	var preview core.RecapSharePreview
+	if err := json.Unmarshal(stdout.Bytes(), &preview); err != nil {
+		t.Fatal(err)
+	}
+	if preview.Visibility != "public_safe" || preview.Format != "png" || preview.ConfirmationFlag != "--confirm-public-safe-image" || len(preview.Fields) == 0 {
+		t.Fatalf("unexpected recap image preview: %#v", preview)
+	}
+	if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
+		t.Fatalf("recap image was written without confirmation: %v", err)
+	}
+	if bytes.Contains(stdout.Bytes(), []byte("Synthetic private image product")) || bytes.Contains(stdout.Bytes(), []byte("2026-08-29")) {
+		t.Fatalf("public image preview exposed a private field: %s", stdout.Bytes())
+	}
+	stdout.Reset()
+	if err := Run(ctx, []string{"orders", "recap-image", "--confirm-public-safe-image"}, &stdout, &stderr, "test"); err == nil {
+		t.Fatal("confirmed recap image without an output path was accepted")
+	}
+}
+
 func TestOrdersRecapCanExplicitlyIncludePrivateProductDetails(t *testing.T) {
 	ctx := context.Background()
 	stateDir := t.TempDir()
@@ -686,6 +728,18 @@ func TestWriteErrorDoesNotClaimAnAccessDeniedReadWasHeadless(t *testing.T) {
 	}
 	if got.Error.Code != "browser_access_denied" || strings.HasPrefix(got.Error.Message, "headless access") {
 		t.Fatalf("misleading browser access error: %#v", got)
+	}
+}
+
+func TestWriteErrorClassifiesLocalRecapImageRenderFailure(t *testing.T) {
+	var output bytes.Buffer
+	WriteError(&output, browser.ErrLocalPageRenderFailed)
+	var got core.ErrorResponse
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "recap_image_render_failed" {
+		t.Fatalf("unexpected recap image render error: %#v", got)
 	}
 }
 

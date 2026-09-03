@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1080, initial-scale=1">
+  <title>coupangctl 쇼핑 리캡 공유 카드</title>
+  <style>
+    @font-face { font-family: "RecapDoodle"; src: url("{{.FontData}}") format("truetype"); }
+    :root { --paper: #f4eddf; --sheet: #fffdf7; --ink: #191919; --blue: #2457ff; --soft: #dfe6ff; }
+    * { box-sizing: border-box; }
+    html, body { width: 1080px; height: 1350px; margin: 0; overflow: hidden; }
+    body {
+      color: var(--ink);
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      background: linear-gradient(rgba(25,25,25,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(25,25,25,.12) 1px, transparent 1px), var(--paper);
+      background-size: 34px 34px;
+      padding: 28px;
+    }
+    .card { position: relative; width: 1024px; height: 1294px; overflow: hidden; padding: 46px 52px 40px; border: 3px solid var(--ink); background: var(--sheet); box-shadow: 8px 9px 0 var(--ink); }
+    .card::after { content: ""; position: absolute; inset: 15px; border: 1px solid rgba(25,25,25,.2); pointer-events: none; }
+    .card > * { position: relative; z-index: 1; }
+    header { display: flex; justify-content: space-between; align-items: center; }
+    .brand { font-family: "RecapDoodle", sans-serif; font-size: 31px; }
+    .brand b { color: var(--blue); }
+    .period { margin: 0; padding: 7px 12px 5px; border: 2px solid var(--ink); font-size: 15px; font-weight: 900; }
+    .hero { display: grid; grid-template-columns: 1.16fr .84fr; gap: 25px; align-items: center; min-height: 495px; }
+    .kicker { margin: 0 0 8px; color: var(--blue); font-size: 17px; font-weight: 950; letter-spacing: .08em; }
+    .code { margin: 0; color: var(--blue); font-family: "RecapDoodle", sans-serif; font-size: 174px; line-height: .7; letter-spacing: -.075em; }
+    h1 { margin: 25px 0 14px; font-family: "RecapDoodle", sans-serif; font-size: 58px; line-height: .92; letter-spacing: -.045em; word-break: keep-all; }
+    .note { max-width: 545px; margin: 0; font-size: 20px; line-height: 1.45; font-weight: 850; }
+    .avatar-wrap { position: relative; display: grid; place-items: center; }
+    .stamp { position: absolute; right: 0; top: 4px; z-index: 3; padding: 6px 15px 2px; border: 2px solid var(--ink); color: white; background: var(--blue); font-family: "RecapDoodle", sans-serif; font-size: 31px; transform: rotate(5deg); }
+    .avatar { position: relative; width: 340px; height: 340px; overflow: hidden; border: 3px solid var(--ink); border-radius: 49% 51% 44% 56%; background: var(--paper); transform: rotate(2deg); }
+    .avatar img { position: absolute; left: calc(var(--char-col) * -100%); top: calc(var(--char-row) * -100%); width: 400%; height: 400%; max-width: none; }
+    .axes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 13px; }
+    .axis { min-height: 162px; padding: 17px 19px 15px; border: 2px solid var(--ink); background: var(--paper); }
+    .axis:nth-child(2), .axis:nth-child(3) { transform: rotate(-.45deg); }
+    .axis-head { display: flex; gap: 12px; align-items: baseline; }
+    .axis-code { color: var(--blue); font-family: "RecapDoodle", sans-serif; font-size: 59px; line-height: .75; }
+    .axis-name { font-family: "RecapDoodle", sans-serif; font-size: 28px; }
+    .axis-proof { margin: 14px 0 0; font-size: 13px; line-height: 1.35; font-weight: 750; color: #65625d; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 18px; border: 2px solid var(--ink); background: var(--soft); }
+    .stat { min-height: 137px; padding: 18px 19px; }
+    .stat + .stat { border-left: 2px dashed var(--ink); }
+    .stat span { display: block; font-size: 13px; font-weight: 900; }
+    .stat strong { display: block; margin-top: 9px; color: var(--blue); font-family: "RecapDoodle", sans-serif; font-size: 47px; line-height: .95; }
+    footer { display: flex; justify-content: space-between; gap: 26px; align-items: end; margin-top: 25px; padding-top: 20px; border-top: 2px dashed var(--ink); }
+    footer p { margin: 0; max-width: 720px; font-size: 13px; line-height: 1.45; color: #65625d; }
+    .tag { color: var(--blue); font-family: "RecapDoodle", sans-serif; font-size: 25px; white-space: nowrap; }
+    .empty { height: 1100px; display: grid; place-items: center; text-align: center; }
+    .empty h1 { font-size: 92px; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <header>
+      <span class="brand">coupang<b>ctl</b> shopping recap</span>
+      <p class="period">실제 기록 {{monthRange .Summary.FirstOrderDate .Summary.LastOrderDate}}</p>
+    </header>
+    {{if .Summary.Profile.Ready}}
+    <section class="hero">
+      <div>
+        <p class="kicker">나의 쇼핑 기록 네 글자</p>
+        <p class="code">{{.Summary.Profile.Code}}</p>
+        <h1>{{typeTitle .Summary.Profile.Code}}</h1>
+        <p class="note">성격을 점치는 검사가 아니라, 내 주문 기록에서 보인 구매 리듬을 장난스럽게 요약했어요.</p>
+      </div>
+      <div class="avatar-wrap">
+        <span class="stamp">기록에 딱 걸림</span>
+        <div class="avatar"><img style="--char-col: {{characterColumn .Summary.Profile.Code}}; --char-row: {{characterRow .Summary.Profile.Code}}" src="{{.RosterData}}" alt=""></div>
+      </div>
+    </section>
+    <section class="axes">
+      {{range .Summary.Profile.Axes}}
+      <article class="axis">
+        <div class="axis-head"><strong class="axis-code">{{.SelectedCode}}</strong><span class="axis-name">{{axisLabel .SelectedCode}}</span></div>
+        <p class="axis-proof">{{axisReceipt .}}</p>
+      </article>
+      {{end}}
+    </section>
+    <section class="stats">
+      <div class="stat"><span>분석 주문</span><strong>{{comma .Summary.OrderCount}}건</strong></div>
+      <div class="stat"><span>최장 연속 구매</span><strong>{{comma .Summary.LongestActiveMonthStreak}}개월</strong></div>
+      <div class="stat"><span>24시간 안 배송 · n={{comma .Summary.Samples.DeliveryEvents}}</span><strong>{{pct .Summary.DeliveredWithin24HoursRate}}%</strong></div>
+    </section>
+    {{else}}
+    <section class="empty"><div><p class="kicker">표본 수집 중</p><h1>조금 더 쇼핑 기록이 필요해요</h1><p>부족한 축은 물음표로 남기고 타입을 지어내지 않습니다.</p></div></section>
+    {{end}}
+    <footer>
+      <p>정규화된 내 주문 기록에서 계산 · 기간은 월 단위 · 취소·반품과 누락 커버리지는 원본 리캡 규칙을 따름 · 쿠팡 공식 성격검사 아님</p>
+      <span class="tag">#coupangctl #쇼핑리캡</span>
+    </footer>
+  </main>
+</body>
+</html>

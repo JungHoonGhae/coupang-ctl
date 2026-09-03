@@ -589,3 +589,34 @@ type RecapWriteResult struct {
 	Visibility string `json:"visibility"`
 	Bytes      int64  `json:"bytes"`
 }
+
+type RecapSharePreview struct {
+	SchemaVersion    int               `json:"schema_version"`
+	Visibility       string            `json:"visibility"`
+	Format           string            `json:"format"`
+	Width            int               `json:"width"`
+	Height           int               `json:"height"`
+	Ready            bool              `json:"ready"`
+	Fields           []RecapShareField `json:"fields"`
+	Excluded         []string          `json:"excluded"`
+	ConfirmationFlag string            `json:"confirmation_flag"`
+	Limitations      []string          `json:"limitations"`
+}
+
+type RecapShareField struct {
+	ID         string `json:"id"`
+	Value      string `json:"value"`
+	Provenance string `json:"provenance"`
+	SampleSize int    `json:"sample_size,omitempty"`
+	Rule       string `json:"rule,omitempty"`
+}
+
+type RecapImageWriteResult struct {
+	Written    bool              `json:"written"`
+	Format     string            `json:"format"`
+	Visibility string            `json:"visibility"`
+	Width      int               `json:"width"`
+	Height     int               `json:"height"`
+	Bytes      int64             `json:"bytes"`
+	Preview    RecapSharePreview `json:"preview"`
+}

@@ -454,7 +454,7 @@ type orderWorkflow interface {
 
 func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow orderWorkflow) error {
 	if len(args) == 0 {
-		return errors.New("usage: coupangctl orders <sync|categories|category-catalog|list|spend|stats|insights|products|recap|reorder|export|import|purge>")
+		return errors.New("usage: coupangctl orders <sync|categories|category-catalog|list|spend|stats|insights|products|recap|recap-image|reorder|export|import|purge>")
 	}
 	switch args[0] {
 	case "sync":
@@ -570,6 +570,32 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 			return err
 		}
 		return writeJSON(stdout, written)
+	case "recap-image":
+		flags := newFlagSet("orders recap-image")
+		from := flags.String("from", "", "start date")
+		to := flags.String("to", "", "end date")
+		output := flags.String("output", "", "new public-safe PNG output file")
+		confirmed := flags.Bool("confirm-public-safe-image", false, "confirm the exact previewed public-safe fields")
+		const imageUsage = "usage: coupangctl orders recap-image [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--output PATH --confirm-public-safe-image]"
+		if err := parseFlags(flags, args[1:], imageUsage); err != nil {
+			return err
+		}
+		result, err := workflow.Insights(ctx, core.OrderFilter{From: *from, To: *to})
+		if err != nil {
+			return err
+		}
+		preview := recap.PublicSharePreview(result)
+		if !*confirmed {
+			return writeJSON(stdout, preview)
+		}
+		if *output == "" {
+			return errors.New(imageUsage)
+		}
+		written, err := recap.WritePublicShareImage(ctx, *output, result, browser.NewLocalPageRenderer())
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, written)
 	case "reorder":
 		filter, err := parseOrderFilter(args[1:], true, "usage: coupangctl orders reorder [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N]")
 		if err != nil {
@@ -620,7 +646,7 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 		}
 		return writeJSON(stdout, result)
 	default:
-		return errors.New("usage: coupangctl orders <sync|categories|category-catalog|list|spend|stats|insights|products|recap|reorder|export|import|purge>")
+		return errors.New("usage: coupangctl orders <sync|categories|category-catalog|list|spend|stats|insights|products|recap|recap-image|reorder|export|import|purge>")
 	}
 }
 
@@ -845,6 +871,9 @@ func WriteError(w io.Writer, err error) {
 	case errors.Is(err, browser.ErrBrowserAccessDenied):
 		code = "browser_access_denied"
 		message = "browser access was denied; retry later, or use --headed if the failed read was headless"
+	case errors.Is(err, browser.ErrLocalPageRenderFailed):
+		code = "recap_image_render_failed"
+		message = "the installed browser could not render the local recap image"
 	case errors.Is(err, productworkflow.ErrSourceUnavailable):
 		code = "product_source_unavailable"
 		message = "the public product source was temporarily unavailable; the request may be retried"

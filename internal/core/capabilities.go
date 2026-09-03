@@ -79,10 +79,10 @@ func CurrentCapabilities() CapabilityReport {
 		},
 		{
 			ID: "shopping_type_recap", Priority: "P0", Status: CapabilityAvailable,
-			UserValue:   "explainable four-axis shopping type, achievements, and public-safe or explicitly private standalone HTML recaps",
+			UserValue:   "explainable four-axis shopping type, achievements, public-safe or explicitly private HTML, and a preview-gated public-safe PNG share card",
 			Interface:   []string{"cli", "mcp"},
-			Implemented: []string{"versioned four-axis evidence rules", "16 doodle characters and deterministic badges", "public-safe and explicit private-product standalone HTML"},
-			NextWork:    "add image export only with a preview of the exact fields shared", NextStepKind: CapabilityNextImplementation, LastVerified: "2026-09-02",
+			Implemented: []string{"versioned four-axis evidence rules", "16 doodle characters and deterministic badges", "public-safe and explicit private-product standalone HTML", "two-step exact-field preview and 1080x1350 public-safe PNG export"},
+			NextWork:    "keep the share-field preview and rendered image content aligned in release tests", NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-03",
 		},
 		{
 			ID: "private_product_insights", Priority: "P0", Status: CapabilityAvailable,
