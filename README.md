@@ -50,6 +50,11 @@ go build -o ./bin/coupangctl ./cmd/coupangctl
 
 `auth login`은 QR 로그인을 기본으로 엽니다. 휴대폰에서 승인하면 세션을 전용 브라우저 프로필에 연결하고, 이후 읽기는 headless 우선으로 실행합니다. 모든 CLI 명령은 문서화된 JSON 객체를 출력합니다.
 
+여섯 플랫폼 아카이브·SBOM·체크섬·GitHub provenance를 만드는 태그 릴리스
+파이프라인은 snapshot으로 검증되어 있지만, 아직 공개 릴리스 태그가 없으므로
+존재하지 않는 다운로드 URL을 설치 경로로 안내하지 않습니다. 배포물의 정확한
+파일 허용 목록과 검증 방법은 [`RELEASING.md`](RELEASING.md)에 있습니다.
+
 > [!CAUTION]
 > 생성된 세션과 주문 DB는 개인 데이터입니다. 공유용 리캡은 기본적으로 상품명과 정확한 날짜를 제외하지만, `--include-products`로 만든 HTML은 파일 자체에 실제 상품·금액·날짜가 들어 있으므로 공유하면 안 됩니다.
 
@@ -71,7 +76,7 @@ go build -o ./bin/coupangctl ./cmd/coupangctl
 | 영수증 일괄 처리 | 실험적 | 현금·카드 상태·이력·기간 합계, 주문별 거래명세, 완료 파일의 비공개 저장 |
 | 주문·결제 | 지원 안 함 | 자동 주문, 결제, 구매 확정은 구현하지 않음 |
 
-현재 구현 상태와 다음 순서는 [`ROADMAP.md`](ROADMAP.md)와 `coupangctl capabilities`에서 확인할 수 있습니다. capabilities schema v2는 각 항목의 `implemented`, `next_step_kind`, `blocked_by`, `last_verified`를 분리하므로 AI도 “더 구현할 일”과 “외부 승인·사용자 확인·시간 경과가 필요한 검증”을 구별할 수 있습니다.
+현재 구현 상태와 다음 순서는 [`ROADMAP.md`](ROADMAP.md)와 `coupangctl capabilities`에서 확인할 수 있습니다. capabilities schema v2는 각 항목의 `implemented`, `next_step_kind`, `blocked_by`, `last_verified`를 분리하므로 AI도 “더 구현할 일”과 “외부 승인·사용자 확인·시간 경과가 필요한 검증”을 구별할 수 있습니다. 일반 Chrome 브리지의 설치·권한·제거 계약은 [`BROWSER_BRIDGE.md`](BROWSER_BRIDGE.md)에 있습니다.
 
 ## 주문 분석과 리캡
 

@@ -51,8 +51,8 @@ func CurrentCapabilities() CapabilityReport {
 			ID: "ordinary_browser_bridge", Priority: "P0", Status: CapabilityExperimental,
 			UserValue:    "read protected structured data through the user's already-running ordinary browser when short-lived dedicated Chrome contexts are rejected",
 			Interface:    []string{"cli", "mcp"},
-			Implemented:  []string{"same-account ordinary-versus-dedicated Chrome comparison with redacted success markers", "MV3 activeTab action with isolated top-frame execution and no cookie or host permission", "Chrome Native Messaging plus an authenticated single-use CLI rendezvous", "closed normalized order-page protocol with independent extension and Go validation", "embedded per-user install, doctor, and ownership-checked uninstall on macOS, Linux, and Windows", "CLI and MCP typed sync surfaces", "four consecutive redacted live one-page CLI-to-SQLite reads after a managed macOS host install, including the installed extension bundle"},
-			NextWork:     "validate clean Chrome profiles and Linux and Windows installations, then complete Chrome Web Store privacy review and distribution",
+			Implemented:  []string{"same-account ordinary-versus-dedicated Chrome comparison with redacted success markers", "MV3 activeTab action with isolated top-frame execution and no cookie or host permission", "Chrome Native Messaging plus an authenticated single-use CLI rendezvous", "closed normalized order-page protocol with independent extension and Go validation", "embedded per-user install, doctor, and ownership-checked uninstall on macOS, Linux, and Windows", "CLI and MCP typed sync surfaces", "four consecutive redacted live one-page CLI-to-SQLite reads after a managed macOS host install, including the installed extension bundle", "six-target allowlisted release archives with checksums, per-archive SBOMs, and provenance-ready tag automation"},
+			NextWork:     "validate clean Chrome profiles and Linux and Windows installations, complete Chrome Web Store privacy review and distribution, and add native OS signing",
 			NextStepKind: CapabilityNextLiveValidation, LastVerified: "2026-09-03",
 		},
 		{

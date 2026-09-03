@@ -87,3 +87,10 @@ CLI→Native Messaging→typed core→SQLite 한 페이지 읽기가 네 번 연
 성공했습니다. 마지막 실행 전 Chrome 세부정보에서 관리형 `extension_path`가
 실제 로드 위치임을 확인했습니다. 깨끗한 Chrome 프로필, Linux·Windows 실설치,
 Chrome Web Store 심사는 아직 완료되지 않았으므로 상태는 `experimental`입니다.
+
+배포 snapshot은 CGO를 끈 macOS·Linux·Windows의 amd64·arm64 아카이브 여섯
+개를 생성했고, 파일 허용 목록·SHA-256·플랫폼 조합과 여섯 SBOM을
+`releasecheck`로 검증했습니다. GitHub 태그 워크플로는 이 검증과 provenance
+attestation이 모두 성공해야 draft를 공개합니다. macOS·Windows 네이티브 코드
+서명은 별도 미완료 게이트이며 자세한 계약은 [`RELEASING.md`](RELEASING.md)에
+있습니다.

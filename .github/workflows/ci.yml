@@ -49,36 +49,33 @@ jobs:
       - name: Test ordinary-browser extension
         run: npm run test:extension
 
-  cross-build:
-    name: Build ${{ matrix.target }}
+  release-contract:
+    name: Six-target release contract
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: linux-amd64
-            goos: linux
-            goarch: amd64
-          - target: darwin-arm64
-            goos: darwin
-            goarch: arm64
-          - target: windows-amd64
-            goos: windows
-            goarch: amd64
+    timeout-minutes: 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Build
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: "0"
-        run: go build -trimpath -o "dist/coupangctl-${{ matrix.target }}" ./cmd/coupangctl
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          syft-version: v1.42.3
+
+      - name: Build snapshot archives
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
+        with:
+          distribution: goreleaser
+          version: v2.18.0
+          args: release --snapshot --clean
+
+      - name: Verify release contents and checksums
+        run: go run ./cmd/releasecheck --require-sbom ./dist

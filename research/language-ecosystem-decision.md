@@ -351,6 +351,22 @@ Time-box this to a thin vertical slice; it is not a second research project.
    Windows signature verification. These are release baselines, not marketing
    comparisons.
 
+### Proof status — 2026-09-03
+
+- The CGO-free GoReleaser snapshot produced all six required OS/architecture
+  archives. A repository-owned verifier opened every archive and accepted only
+  the platform executable, license, README, and browser-bridge documentation.
+- The same snapshot produced one SPDX JSON SBOM per archive and a twelve-entry
+  SHA-256 checksum set; the verifier recomputed every digest and rejected
+  incomplete or unexpected artifact sets in synthetic tests.
+- The tag workflow is provenance-ready: it builds a draft, verifies it, creates
+  a GitHub attestation from the complete checksum set, and publishes only after
+  those steps pass. No release tag has been created.
+- Existing synthetic SQLite, CDP, MCP, native-host, and extension tests cover
+  the remaining runtime slice without shipping the TypeScript probes.
+- Archive sizes, startup/idle-memory baselines, macOS notarization, Windows
+  Authenticode verification, and clean-machine install matrices remain open.
+
 If Go fails because of `modernc.org/sqlite` or release-target support, repeat
 only this slice in Bun. If Go passes, proceed without maintaining two product
 implementations.

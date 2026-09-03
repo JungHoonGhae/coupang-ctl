@@ -13,9 +13,11 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 - The distributed product is now a Go 1.26 module; TypeScript remains limited
   to development probes.
 - GitHub CI runs all synthetic Go tests, `go vet`, research-probe TypeScript
-  type-checking, and CGO-free Linux amd64, macOS arm64, and Windows amd64
-  compile checks. It receives no Coupang or Doppler credentials and skips the
-  explicitly environment-gated live-browser tests.
+  type-checking, extension tests, and a CGO-free six-target GoReleaser snapshot
+  covering macOS, Linux, and Windows on amd64 and arm64. A release-contract
+  verifier rejects a missing target, extra archive content, incomplete SBOM
+  set, or mismatched checksum. CI receives no Coupang or Doppler credentials
+  and skips explicitly environment-gated live-browser tests.
 - `coupangctl version`, `doctor`, authentication, resumable order sync, local
   order queries, spending summaries, cancellation/return statistics,
   purchase/delivery trends, reorder candidates, normalized
@@ -125,12 +127,13 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   frame. The extension normalizes at most five orders, preserves numeric source
   identifiers before hashing, validates the closed response, and sends no raw
   body or cookie to Go.
-- A 2026-09-03 live run in the user's ordinary logged-in Chrome completed one
-  first-page CLI-to-SQLite sync through this path. No raw order payload was
-  printed or captured. Synthetic tests cover repeated lifecycle, ownership,
-  malformed-frame, permission, validation, and CLI integration behavior. Live
-  multi-run repeatability and clean-machine install/doctor packaging remain the
-  next release gates, so the capability is `experimental`, not `available`.
+- Four 2026-09-03 live runs in the user's ordinary logged-in Chrome completed
+  bounded first-page CLI-to-SQLite syncs through this path. The final run used
+  the installer-managed extension bundle. No raw order payload was printed or
+  captured. Synthetic tests cover repeated lifecycle, ownership,
+  malformed-frame, permission, validation, and CLI integration behavior. Clean
+  profiles and real Linux/Windows installations remain release gates, so the
+  capability is `experimental`, not `available`.
 - Native-host reads now obey context cancellation and a bounded per-operation
   deadline, preventing a disconnected or non-responsive extension port from
   leaving the host blocked indefinitely.
@@ -154,6 +157,13 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   page/order/item counts and cursors were observed, and no raw order content
   was recorded. Clean Chrome profiles and Linux/Windows environments remain
   separate gates.
+- GoReleaser v2 configuration and pinned GitHub Actions now produce six
+  allowlisted archives, six SPDX JSON SBOMs, and one SHA-256 checksum set. Both
+  a local full-SBOM snapshot and the repository release-contract verifier
+  passed. A SemVer tag workflow creates a draft, reruns all checks, generates a
+  GitHub provenance attestation from the complete checksum set, and publishes
+  only afterward. No tag or release has been created. Native macOS/Windows code
+  signing and Chrome Web Store distribution remain external release gates.
 - `receipts download` can save an already-completed history artifact to a new
   private `0600` file. It re-reads the selected history row, keeps the source
   URL in browser memory, validates the final Coupang host and bounded content,

@@ -1,0 +1,75 @@
+# 릴리스 계약
+
+현재 공개 태그 릴리스는 없으며 README의 소스 빌드가 유일한 설치 경로입니다.
+이 문서는 첫 태그부터 동일하게 적용할 배포 계약을 설명합니다.
+
+## 자동화된 태그 릴리스
+
+`v0.1.0` 또는 `v0.1.0-rc.1` 같은 SemVer 태그가 원격 저장소에 push되면
+`Release` 워크플로가 다음 순서로 실행됩니다.
+
+1. Go 테스트·vet, TypeScript 연구 probe typecheck, MV3 확장 계약 테스트
+2. CGO를 끈 macOS·Linux·Windows의 amd64·arm64 바이너리 여섯 개 빌드
+3. macOS·Linux는 `tar.gz`, Windows는 `zip`으로 패키징
+4. 각 아카이브의 SPDX JSON SBOM과 SHA-256 `checksums.txt` 생성
+5. 저장소의 `releasecheck`로 대상 조합, 파일 목록, SBOM 완전성, 모든
+   체크섬을 재검증
+6. 체크섬에 열거된 열두 산출물 전체에 GitHub Actions provenance attestation
+   생성
+7. 앞 단계가 모두 성공했을 때만 draft 릴리스를 공개
+
+릴리스 아카이브의 허용 목록은 다음 네 파일뿐입니다.
+
+- 현재 플랫폼의 `coupangctl` 또는 `coupangctl.exe`
+- `LICENSE`
+- `README.md`
+- `BROWSER_BRIDGE.md`
+
+연구 probe, Node 런타임, 브라우저, 프로필, 쿠키, 자격 증명, 원본 주문
+payload, 테스트 fixture는 배포물에 들어갈 수 없습니다. 아카이브에 파일이 하나라도
+더 있거나 여섯 대상 중 하나가 빠지면 draft 공개 전에 실패합니다.
+
+## 태그 전 확인
+
+유지관리자는 깨끗한 `main`에서 다음을 확인합니다.
+
+```bash
+go test ./...
+go vet ./...
+npm ci
+npm run typecheck
+npm run test:extension
+goreleaser check
+goreleaser release --snapshot --clean
+go run ./cmd/releasecheck --require-sbom ./dist
+```
+
+로컬 snapshot에는 Syft가 필요합니다. CI는 GoReleaser `v2.18.0`, Syft
+`v1.42.3` 및 사용한 GitHub Actions를 고정된 버전·commit으로 실행합니다.
+실제 태그 생성과 push는 자동화하지 않습니다.
+
+## 다운로드 검증
+
+릴리스가 생긴 뒤 사용자는 원하는 태그의 산출물을 모두 받은 디렉터리에서
+다음처럼 무결성과 빌드 출처를 각각 확인할 수 있습니다.
+
+```bash
+shasum -a 256 -c checksums.txt
+gh attestation verify coupangctl_VERSION_OS_ARCH.tar.gz \
+  -R JungHoonGhae/coupang-ctl
+```
+
+Windows 아카이브는 `.zip` 파일명을 사용합니다. SHA-256은 다운로드 파일의
+무결성을 확인하고, attestation은 해당 digest를 이 저장소의 GitHub Actions
+빌드와 연결합니다. 어느 쪽도 프로그램 자체의 안전성을 보증하지는 않습니다.
+
+## 아직 남은 배포 게이트
+
+- macOS Developer ID 서명·notarization과 Windows Authenticode 서명은 아직
+  구성되지 않았습니다. GitHub provenance를 운영체제 코드 서명으로 표현하면
+  안 됩니다.
+- 일반 Chrome 확장의 자동 설치는 Chrome Web Store 검토와 배포가 끝나기
+  전까지 지원하지 않습니다. 현재 바이너리는 검토된 번들을 풀어 주지만 사용자가
+  Chrome에서 그 경로를 직접 로드해야 합니다.
+- 깨끗한 macOS·Linux·Windows 사용자 환경에서 install/doctor/sync/uninstall
+  전체 행렬을 통과하기 전 일반 Chrome 브리지는 `experimental`입니다.
