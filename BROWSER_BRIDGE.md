@@ -53,7 +53,10 @@ Chrome Web Store 배포 전에는 `extension_path`를 `chrome://extensions`에�
 
 `doctor`는 실행 파일, 소유권 기록, 내장 번들과 설치된 번들의 일치, Native
 Messaging 매니페스트의 정확한 origin·바이너리 경로, Windows의 HKCU 등록을
-검사합니다. `status`는 `ready`, `not_installed`, `repair_required` 중 하나이고
+검사한 뒤 합성 native-host ping을 수행합니다. ping은 비공개 일회성 rendezvous,
+정확한 확장 origin, Native Messaging framing, 빈 typed 주문 페이지 왕복을 실제
+코드 경로로 검증하고 즉시 정리하며 Chrome·쿠팡·프로필·쿠키·주문 데이터는 열지
+않습니다. `status`는 `ready`, `not_installed`, `repair_required` 중 하나이고
 모든 로컬 검사가 통과할 때만 `ready: true`입니다. Chrome 프로필을 읽어 확장
 설치 여부를 추측하지 않으므로 `extension_load_status`는 `not_checked`,
 `next_action`은 `load_or_verify_extension_in_chrome`입니다. 검사 메시지는 원본
@@ -97,7 +100,7 @@ coupangctl browser-bridge uninstall
 origin, digest 기반 정상 업그레이드, 중단 복구, 실행 경로 이동, 기록되지 않은
 변조와 예상 밖 파일 거부, 소유권 기반 제거, MCP typed provider 분리를 검증합니다.
 Linux, macOS, Windows 바이너리는 CGO 없이 교차 빌드합니다. 실제 macOS
-관리형 호스트 설치는 doctor를 통과했고, 일반 Chrome에서
+관리형 호스트 설치는 일곱 doctor 검사를 통과했고, 일반 Chrome에서
 CLI→Native Messaging→typed core→SQLite 한 페이지 읽기가 네 번 연속
 성공했습니다. 마지막 실행 전 Chrome 세부정보에서 관리형 `extension_path`가
 실제 로드 위치임을 확인했습니다. 깨끗한 Chrome 프로필, Linux·Windows 실설치,

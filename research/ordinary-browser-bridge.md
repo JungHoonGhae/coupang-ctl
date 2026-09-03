@@ -411,7 +411,9 @@ Recommended release path:
    registration with an absolute binary path and exact released extension ID.
 4. Have `browser-bridge doctor` verify file ownership/permissions, manifest
    shape, executable version, extension ID, and a redacted ping without opening
-   a protected page.
+   a protected page. **Implemented:** the seventh check runs the authenticated
+   rendezvous, exact-origin Native Messaging framing, and a synthetic typed
+   empty-page round trip without starting Chrome or reading private state.
 5. Make uninstall remove only the registration created by the same installation;
    it must not remove Chrome profiles, cookies, extension data, or user orders.
 

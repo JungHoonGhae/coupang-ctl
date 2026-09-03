@@ -38,6 +38,15 @@ func TestBrowserBridgeDoctorReportsReadyAndDetectsManifestTampering(t *testing.T
 			t.Fatalf("unexpected ready check: %#v", check)
 		}
 	}
+	foundPing := false
+	for _, check := range ready.Checks {
+		if check.Name == "native_host_ping" {
+			foundPing = true
+		}
+	}
+	if !foundPing {
+		t.Fatalf("ready report omitted native-host ping: %#v", ready.Checks)
+	}
 
 	if err := os.WriteFile(ready.NativeHostManifestPath, []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)

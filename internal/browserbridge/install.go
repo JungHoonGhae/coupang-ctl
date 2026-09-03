@@ -2,6 +2,7 @@ package browserbridge
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"time"
 
 	"github.com/JungHoonGhae/coupang-ctl/extension"
 	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
@@ -515,6 +517,24 @@ func (manager *Manager) Doctor() core.BrowserBridgeDoctorReport {
 		registrationCheck.Message = "run coupangctl browser-bridge install to restore the current-user native host registration"
 	}
 	checks = append(checks, registrationCheck)
+	pingCheck := core.Check{Name: "native_host_ping", Status: core.CheckOK}
+	for _, check := range checks {
+		if check.Status != core.CheckOK {
+			pingCheck.Status = core.CheckError
+			pingCheck.Message = "resolve the failed installation checks before retrying the synthetic native-host ping"
+			break
+		}
+	}
+	if pingCheck.Status == core.CheckOK {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		pingErr := browser.PingOrdinaryBrowserNativeHost(ctx, manager.environment.StateDir)
+		cancel()
+		if pingErr != nil {
+			pingCheck.Status = core.CheckError
+			pingCheck.Message = "finish any active ordinary-browser sync, then rerun doctor or reinstall the bridge"
+		}
+	}
+	checks = append(checks, pingCheck)
 
 	ready := true
 	for _, check := range checks {

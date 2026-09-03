@@ -150,6 +150,12 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   old/new state, and rejects unrecorded content or unexpected extension files.
   The existing live macOS v1 record migrated to v2 with five active digests;
   doctor remained fully ready and no extension code changed.
+- Doctor now adds a seventh `native_host_ping` check after the six static
+  install checks. It executes the real authenticated rendezvous, exact-origin
+  Native Messaging framing, and a typed empty-page round trip in-process using
+  synthetic data, then removes its ephemeral metadata. It never starts Chrome
+  or reads a profile, cookie, Coupang page, or order. The installed macOS path
+  passed this ping live.
 - MCP now exposes `orders_sync_ordinary_browser` through a dedicated typed sync
   provider. It uses the same normalized order service and SQLite ledger as the
   CLI while keeping the ordinary-page source separate from the dedicated
