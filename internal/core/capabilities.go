@@ -118,7 +118,7 @@ func CurrentCapabilities() CapabilityReport {
 			ID: "source_native_product_rankings", Priority: "P0", Status: CapabilityAvailable,
 			UserValue:   "product-type or observed real-category rankings with label-to-ID discovery and separate Coupang ranking, sales, latest, price, rating, and review semantics",
 			Interface:   []string{"cli", "mcp"},
-			Implemented: []string{"ordinary query and source-native category-ID scopes", "separate Coupang ranking, sales, latest, and price controls", "honest local rating and review-count sorts", "observed local category label-to-ID catalog"},
+			Implemented: []string{"ordinary query and source-native category-ID scopes", "separate Coupang ranking, sales, latest, and price controls", "source order preserved without treating unavailable prices as zero", "local rating and review-count sorts limited to explicitly observed fields", "observed local category label-to-ID catalog"},
 			NextWork:    "keep query and observed-category sort semantics in release checks", NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-03",
 		},
 		{

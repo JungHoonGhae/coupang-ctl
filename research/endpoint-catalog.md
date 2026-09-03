@@ -116,6 +116,10 @@ being listed as `researched` does not make it a supported product API.
   combines multiple signals, while 판매량순 is a separate ordering and does
   not expose absolute sales units. Local rating and review-count sorts are
   labeled as local observed-field sorts.
+- The product workflow preserves source-native order for ranking, sales,
+  latest, and price controls. It does not reinterpret an unobserved price as
+  zero, and local rating/review sorting promotes only values whose field is
+  explicitly observed.
 - A headed metadata-only product-option probe observed that `quantity-info`
   exposes price, delivery, promotion, quantity, and selection-index shapes but
   no option label in the sampled response. A selected-option DOM signal was

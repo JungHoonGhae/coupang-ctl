@@ -138,6 +138,14 @@ func (s *Service) Search(ctx context.Context, request core.ProductSearchRequest)
 	if collapsed > 0 {
 		warnings = append(warnings, "multiple options from the same Coupang product page were collapsed; set include_variants=true to inspect every observed option")
 	}
+	if request.Sort == core.ProductSortPriceAsc || request.Sort == core.ProductSortPriceDesc {
+		for _, item := range items {
+			if !contains(item.ObservedFields, "price.current_amount") {
+				warnings = append(warnings, "source-native price order was preserved; one or more returned products had no observed current price and were not treated as zero-priced")
+				break
+			}
+		}
+	}
 	fetchedAt := s.now().UTC()
 	affiliate, affiliateWarnings := s.applyAffiliateLinks(ctx, items, request.DisableAffiliate)
 	warnings = append(warnings, affiliateWarnings...)
@@ -583,15 +591,23 @@ func filterProducts(items []core.ProductCard, request core.ProductSearchRequest)
 }
 
 func sortProducts(items []core.ProductCard, order core.ProductSort) {
-	if order == core.ProductSortRelevance {
+	if order != core.ProductSortRating && order != core.ProductSortReviewCount {
 		return
 	}
 	sort.SliceStable(items, func(i, j int) bool {
+		field := "rating"
+		if order == core.ProductSortReviewCount {
+			field = "review_count"
+		}
+		leftObserved := contains(items[i].ObservedFields, field)
+		rightObserved := contains(items[j].ObservedFields, field)
+		if leftObserved != rightObserved {
+			return leftObserved
+		}
+		if !leftObserved {
+			return false
+		}
 		switch order {
-		case core.ProductSortPriceAsc:
-			return items[i].Price.CurrentAmount < items[j].Price.CurrentAmount
-		case core.ProductSortPriceDesc:
-			return items[i].Price.CurrentAmount > items[j].Price.CurrentAmount
 		case core.ProductSortRating:
 			return items[i].Rating > items[j].Rating
 		case core.ProductSortReviewCount:
@@ -732,7 +748,7 @@ func rankingSummary(request core.ProductSearchRequest) core.ProductRankingSummar
 	case core.ProductSortPriceAsc, core.ProductSortPriceDesc:
 		result.Source = "coupang_search_order"
 		result.SourceNative = true
-		result.Description = "Coupang price-sort order with local deterministic verification"
+		result.Description = "Coupang price-sort result order preserved without treating an unavailable observed price as zero"
 	default:
 		result.Applied = core.ProductSortCoupangRanking
 		result.Source = "coupang_search_order"

@@ -396,6 +396,10 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   `salePriceDesc`. Rating/review-count orders are local observed-field sorts.
   Responses preserve the selected scope, provenance, and original page
   position; 판매량순 does not claim an unavailable absolute sales count.
+- Source-native ranking, sales, latest, and price results retain source order.
+  An unavailable current price is never sorted as zero; the response warns when
+  such a card appears. Local rating/review sorts place only cards carrying the
+  corresponding `observed_fields` evidence ahead of unavailable cards.
 - A live private-local catalog-to-search pass selected an observed leaf ID
   without logging it and returned five current category results with category
   scope, `sales` applied as a source-native sort, and positive source positions.

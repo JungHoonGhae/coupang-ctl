@@ -249,6 +249,63 @@ func TestSearchCanReturnAllExplicitVariants(t *testing.T) {
 	}
 }
 
+func TestSearchPreservesSourceNativePriceOrderWhenSomePricesAreUnavailable(t *testing.T) {
+	service := New(syntheticSource{items: []core.ProductCard{
+		{Reference: core.ProductReference{ProductID: "101", VendorItemID: "201"}, Name: "Synthetic source first", Price: core.ProductPrice{CurrentAmount: 10000}, SearchPosition: 1, ObservedFields: []string{"price.current_amount", "search_position"}},
+		{Reference: core.ProductReference{ProductID: "102", VendorItemID: "202"}, Name: "Synthetic unavailable price", SearchPosition: 2, ObservedFields: []string{"search_position"}},
+		{Reference: core.ProductReference{ProductID: "103", VendorItemID: "203"}, Name: "Synthetic source third", Price: core.ProductPrice{CurrentAmount: 5000}, SearchPosition: 3, ObservedFields: []string{"price.current_amount", "search_position"}},
+	}})
+
+	result, err := service.Search(context.Background(), core.ProductSearchRequest{
+		Query: "synthetic", Sort: core.ProductSortPriceAsc, IncludeVariants: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 3 {
+		t.Fatalf("unexpected result count: %#v", result.Items)
+	}
+	for index, item := range result.Items {
+		if item.SearchPosition != index+1 {
+			t.Fatalf("source-native price order changed at index %d: %#v", index, result.Items)
+		}
+	}
+	if !result.Ranking.SourceNative || result.Ranking.Applied != core.ProductSortPriceAsc || result.Ranking.Source != "coupang_search_order" {
+		t.Fatalf("unexpected price ranking contract: %#v", result.Ranking)
+	}
+	warnings := strings.Join(result.Warnings, "\n")
+	if !strings.Contains(warnings, "source-native price order was preserved") || !strings.Contains(warnings, "not treated as zero-priced") {
+		t.Fatalf("missing unavailable-price ordering warning: %#v", result.Warnings)
+	}
+}
+
+func TestSearchLocalRatingSortRanksOnlyObservedEvidence(t *testing.T) {
+	service := New(syntheticSource{items: []core.ProductCard{
+		{Reference: core.ProductReference{ProductID: "101", VendorItemID: "201"}, Name: "Synthetic observed lower", Rating: 4.5, SearchPosition: 1, ObservedFields: []string{"rating", "search_position"}},
+		{Reference: core.ProductReference{ProductID: "102", VendorItemID: "202"}, Name: "Synthetic unobserved numeric value", Rating: 5, SearchPosition: 2, ObservedFields: []string{"search_position"}},
+		{Reference: core.ProductReference{ProductID: "103", VendorItemID: "203"}, Name: "Synthetic observed higher", Rating: 4.8, SearchPosition: 3, ObservedFields: []string{"rating", "search_position"}},
+	}})
+
+	result, err := service.Search(context.Background(), core.ProductSearchRequest{
+		Query: "synthetic", Sort: core.ProductSortRating, IncludeVariants: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPositions := []int{3, 1, 2}
+	if len(result.Items) != len(wantPositions) {
+		t.Fatalf("unexpected result count: %#v", result.Items)
+	}
+	for index, item := range result.Items {
+		if item.SearchPosition != wantPositions[index] {
+			t.Fatalf("local observed-rating order mismatch at index %d: %#v", index, result.Items)
+		}
+	}
+	if result.Ranking.SourceNative || result.Ranking.Source != "local_observed_field_sort" || result.Ranking.Applied != core.ProductSortRating {
+		t.Fatalf("unexpected local rating contract: %#v", result.Ranking)
+	}
+}
+
 func TestComputerSpecificationParserRecognizesCommonKoreanListingSpellings(t *testing.T) {
 	tests := []struct {
 		name string
