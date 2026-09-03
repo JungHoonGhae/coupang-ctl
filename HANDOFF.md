@@ -12,6 +12,10 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 
 - The distributed product is now a Go 1.26 module; TypeScript remains limited
   to development probes.
+- GitHub CI runs all synthetic Go tests, `go vet`, research-probe TypeScript
+  type-checking, and CGO-free Linux amd64, macOS arm64, and Windows amd64
+  compile checks. It receives no Coupang or Doppler credentials and skips the
+  explicitly environment-gated live-browser tests.
 - `coupangctl version`, `doctor`, authentication, resumable order sync, local
   order queries, spending summaries, cancellation/return statistics,
   purchase/delivery trends, reorder candidates, normalized

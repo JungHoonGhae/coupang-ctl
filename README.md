@@ -3,6 +3,7 @@
 내 쿠팡 주문을 내 컴퓨터에 동기화하고, CLI와 AI로 검색·분석하는 로컬 우선 오픈소스 도구입니다.
 
 ![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)
+[![CI](https://github.com/JungHoonGhae/coupang-ctl/actions/workflows/ci.yml/badge.svg)](https://github.com/JungHoonGhae/coupang-ctl/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Status: early access](https://img.shields.io/badge/status-early%20access-f59e0b)
 
