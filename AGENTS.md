@@ -1,6 +1,6 @@
 # Agent instructions
 
-- Product name: `coupangctl`; repository/workspace name: `coupang-ctl`.
+- Product name: `coupangctl`; local workspace name: `oss-coupang-ctl`; GitHub repository name: `coupang-ctl`.
 - Preserve the separation between the typed core, CLI adapter, and MCP adapter.
 - Prefer structured JSON and documented response shapes over DOM selectors.
 - Never commit or print credentials, cookies, OTPs, PII, raw order payloads, or real customer fixtures.
