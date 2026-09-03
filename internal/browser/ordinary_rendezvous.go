@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -408,7 +409,7 @@ func readOrdinaryRendezvousMetadata(path string) (ordinaryRendezvousMetadata, er
 	if err != nil {
 		return ordinaryRendezvousMetadata{}, err
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+	if !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 		return ordinaryRendezvousMetadata{}, ErrOrdinaryRendezvous
 	}
 	file, err := os.Open(path)

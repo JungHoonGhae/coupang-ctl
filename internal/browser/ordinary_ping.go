@@ -33,7 +33,7 @@ func PingOrdinaryBrowserNativeHost(ctx context.Context, stateDir string) error {
 
 	hostDone := make(chan error, 1)
 	go func() {
-		hostDone <- RunOrdinaryBrowserNativeHost(
+		hostErr := RunOrdinaryBrowserNativeHost(
 			ctx,
 			stateDir,
 			"chrome-extension://"+OrdinaryBrowserExtensionID+"/",
@@ -41,6 +41,8 @@ func PingOrdinaryBrowserNativeHost(ctx context.Context, stateDir string) error {
 			extensionToHostReader,
 			hostToExtensionWriter,
 		)
+		_ = hostToExtensionWriter.CloseWithError(hostErr)
+		hostDone <- hostErr
 	}()
 
 	type fetchResult struct {
