@@ -250,6 +250,13 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   human-approved login. Later reads reopen that profile with a validated
   ephemeral loopback DevTools endpoint; no second cookie/session file is
   created and cookie values never enter CLI/MCP outputs.
+- `coupangctl login` is an idempotent convenience path over typed auth recovery:
+  it checks the protected session without a visible window, reuses verified
+  state, and opens QR Chrome only for a missing or confirmed-expired session.
+  A temporary access block never triggers another login. Protected reads reuse
+  the persistent profile and close Chrome gracefully so browser-managed cookie
+  and storage updates survive, but server-side lifetime extension is not claimed
+  without an observed expiry contract.
 - A cross-platform non-blocking lock returns `profile_in_use` instead of racing
   the profile. A private family/major marker permits upgrades and rejects
   browser-family changes or major-version downgrades before launch.

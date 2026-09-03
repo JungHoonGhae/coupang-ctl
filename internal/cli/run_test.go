@@ -25,15 +25,20 @@ import (
 )
 
 type loginModeBrowser struct {
-	request    core.LoginRequest
-	consumeOTP bool
+	request        core.LoginRequest
+	consumeOTP     bool
+	profilePresent bool
+	verifyErr      error
+	loginCalls     int
+	verifyCalls    int
 }
 
 func (b *loginModeBrowser) Inspect(context.Context) (auth.BrowserStatus, error) {
-	return auth.BrowserStatus{Name: "synthetic"}, nil
+	return auth.BrowserStatus{Name: "synthetic", ProfilePresent: b.profilePresent}, nil
 }
 
 func (b *loginModeBrowser) Login(ctx context.Context, request core.LoginRequest) error {
+	b.loginCalls++
 	b.request = request
 	if request.PresentQRLink != nil {
 		if err := request.PresentQRLink(ctx, core.QRLoginLink{
@@ -49,7 +54,10 @@ func (b *loginModeBrowser) Login(ctx context.Context, request core.LoginRequest)
 	return nil
 }
 
-func (b *loginModeBrowser) Verify(context.Context) error { return nil }
+func (b *loginModeBrowser) Verify(context.Context) error {
+	b.verifyCalls++
+	return b.verifyErr
+}
 
 type blockedStatusBrowser struct{}
 
@@ -608,6 +616,7 @@ func TestConvenienceCommandsExpandWithoutMutatingInput(t *testing.T) {
 	}{
 		{[]string{"sync", "--max-pages", "2"}, []string{"orders", "sync", "--max-pages", "2"}},
 		{[]string{"recap", "--output", "recap.html"}, []string{"orders", "recap", "--output", "recap.html"}},
+		{[]string{"login"}, []string{"auth", "ensure"}},
 		{[]string{"orders", "sync"}, []string{"orders", "sync"}},
 	} {
 		original := append([]string(nil), test.input...)
@@ -1234,6 +1243,54 @@ func TestAuthLoginDefaultsToQRAndAcceptsPhoneFallback(t *testing.T) {
 				t.Fatalf("result mode = %q, want %q", result.Mode, test.want)
 			}
 		})
+	}
+}
+
+func TestAuthEnsureReusesReadySessionWithoutOpeningLogin(t *testing.T) {
+	browser := &loginModeBrowser{profilePresent: true}
+	service := auth.NewService(browser)
+	var output bytes.Buffer
+	if err := runAuth(context.Background(), []string{"ensure"}, &output, io.Discard, service, noopResendAssistant{}, &fixedLoginSecrets{}); err != nil {
+		t.Fatal(err)
+	}
+	var got core.AuthRecoveryResult
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.State != core.AuthVerified || got.VisibleBrowserOpened || browser.loginCalls != 0 || browser.verifyCalls != 1 {
+		t.Fatalf("ready session was not reused: result=%#v browser=%#v", got, browser)
+	}
+}
+
+func TestAuthEnsureOpensQRLoginOnlyForExpiredSession(t *testing.T) {
+	browser := &loginModeBrowser{profilePresent: true, verifyErr: core.ErrAuthenticationRequired}
+	service := auth.NewService(browser)
+	var output bytes.Buffer
+	if err := runAuth(context.Background(), []string{"ensure"}, &output, io.Discard, service, noopResendAssistant{}, &fixedLoginSecrets{}); err != nil {
+		t.Fatal(err)
+	}
+	var got core.AuthRecoveryResult
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.BeforeState != core.AuthUnverified || got.State != core.AuthVerified || !got.VisibleBrowserOpened || got.Mode != core.LoginModeQR || browser.loginCalls != 1 {
+		t.Fatalf("expired session was not recovered once: result=%#v browser=%#v", got, browser)
+	}
+}
+
+func TestAuthEnsureDoesNotOpenLoginForTemporaryAccessBlock(t *testing.T) {
+	browser := &loginModeBrowser{profilePresent: true, verifyErr: core.ErrBrowserAccessDenied}
+	service := auth.NewService(browser)
+	var output bytes.Buffer
+	if err := runAuth(context.Background(), []string{"ensure"}, &output, io.Discard, service, noopResendAssistant{}, &fixedLoginSecrets{}); err != nil {
+		t.Fatal(err)
+	}
+	var got core.AuthRecoveryResult
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.State != core.AuthAccessBlocked || got.VisibleBrowserOpened || browser.loginCalls != 0 {
+		t.Fatalf("temporary access block opened unnecessary login: result=%#v browser=%#v", got, browser)
 	}
 }
 

@@ -43,17 +43,19 @@ cd coupang-ctl
 go build -o ./bin/coupangctl ./cmd/coupangctl
 
 ./bin/coupangctl doctor
-./bin/coupangctl auth login
+./bin/coupangctl login
 ./bin/coupangctl sync
 ./bin/coupangctl recap --output ./shopping-recap.html
 ```
 
-`auth login`은 QR 로그인을 기본으로 엽니다. 휴대폰에서 승인하면 로그인 상태는
-전용 브라우저 프로필 안에 남고, 이후 기본 읽기는 화면 없는 headless 모드에서만
-실행합니다. 접근이 거부되어도 창을 갑자기 열지 않으며 구조화된 오류와 다음
-동작을 반환합니다. 실제 화면이 필요한 경우에만 사용자가 같은 명령에
-`--headed`를 명시합니다. 확장 프로그램, Node, Playwright, Orca는 기본 실행에
-필요하지 않습니다. 모든 CLI 명령은 문서화된 JSON 객체를 출력합니다.
+`coupangctl login`은 기존 세션을 화면 없이 먼저 확인합니다. 정상 세션은 그대로
+재사용하고, 명확히 미설정 또는 만료된 경우에만 실제 Chrome의 QR 로그인을
+엽니다. 일시적인 `access_blocked`를 로그아웃으로 오인해 불필요한 로그인 창을
+띄우지 않습니다. 휴대폰에서 승인하면 로그인 상태는 전용 브라우저 프로필 안에
+남고, 이후 기본 읽기는 화면 없는 headless 모드에서만 실행합니다. 실제 화면이
+필요한 경우에만 사용자가 같은 읽기 명령에 `--headed`를 명시합니다. 확장 프로그램,
+Node, Playwright, Orca는 기본 실행에 필요하지 않습니다. 모든 CLI 명령은
+문서화된 JSON 객체를 출력합니다.
 
 `doctor`는 보이는 창을 열지 않고 브라우저 설치, 백그라운드 세션 준비 상태,
 SQLite를 별도 체크로 반환합니다. 첫 로그인 전이나 headless 접근이 거부된
@@ -352,6 +354,7 @@ MCP 서버는 장시간 백그라운드에서 실행되는 프로세스이므로
 
 | 방식 | 명령 | 용도 |
 | --- | --- | --- |
+| 자동 | `coupangctl login` | 기존 세션을 먼저 확인하고 정말 필요할 때만 QR Chrome을 엶 |
 | QR | `coupangctl auth login` | 기본값. 실제 브라우저에서 QR을 열고 휴대폰으로 승인 |
 | 앱 링크 | `coupangctl auth login --link` | QR에서 읽은 일회성 링크와 두 자리 승인번호를 stderr에 한 번 표시 |
 | SMS | `coupangctl auth login --phone` | 번호 요청과 전달받은 OTP만 UI에 입력하며 CAPTCHA는 사용자가 푸는 대안 |
@@ -372,6 +375,11 @@ headless Chrome을 거부할 수 있습니다. `auth status`와 기본 `auth ver
 동기화는 `current_browser_access_denied`로 구분합니다. 로그인 상태는 브라우저
 소유 전용 프로필에만 남으며 별도
 쿠키·세션 파일로 복사하지 않습니다.
+모든 보호된 조회는 같은 영속 프로필을 다시 열고 Chrome의 정상 종료 경로를
+사용하므로, 응답에서 Chrome이 갱신한 쿠키와 브라우저 저장소는 다음 실행에도
+보존됩니다. 다만 현재 확인된 쿠팡 응답에는 토스증권처럼 서버측 만료 연장을
+직접 증명하는 만료 시각이 없으므로, 단순 조회가 계정 세션의 서버측 수명을
+연장한다고 보장하지 않습니다.
 
 Chrome 144 이상에서는 실행 중인 현재 Chrome을 확장 없이 사용하는 실험적 고급
 경로도 있습니다. 먼저 `chrome://inspect/#remote-debugging`에서 원격 디버깅을

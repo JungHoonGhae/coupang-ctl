@@ -56,14 +56,14 @@ func (s *Service) Status(ctx context.Context) (core.AuthStatus, error) {
 		Browser:        status.Name,
 		ProfilePresent: status.ProfilePresent,
 		CheckedAt:      s.now().UTC(),
-		NextAction:     "run `coupangctl auth login` on an interactive desktop",
+		NextAction:     "run `coupangctl login` on an interactive desktop",
 	}
 	if status.ProfilePresent {
 		if err := s.browser.Verify(ctx); err != nil {
 			switch {
 			case errors.Is(err, core.ErrAuthenticationRequired):
 				result.State = core.AuthUnverified
-				result.NextAction = "run `coupangctl auth login` to renew the expired session"
+				result.NextAction = "run `coupangctl login` to renew the expired session"
 				return result, nil
 			case errors.Is(err, core.ErrBrowserAccessDenied):
 				result.State = core.AuthAccessBlocked

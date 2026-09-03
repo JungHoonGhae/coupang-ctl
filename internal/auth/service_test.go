@@ -74,7 +74,7 @@ func TestStatusReportsExpiredStoredSessionWithoutClaimingSuccess(t *testing.T) {
 	if got.State != core.AuthUnverified || !got.ProfilePresent {
 		t.Fatalf("unexpected status: %#v", got)
 	}
-	if got.NextAction != "run `coupangctl auth login` to renew the expired session" {
+	if got.NextAction != "run `coupangctl login` to renew the expired session" {
 		t.Fatalf("next_action = %q", got.NextAction)
 	}
 }

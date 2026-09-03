@@ -184,6 +184,10 @@ func expandConvenienceCommand(args []string) []string {
 		subcommand = "sync"
 	case "recap":
 		subcommand = "recap"
+	case "login":
+		expanded := make([]string, 0, len(args)+1)
+		expanded = append(expanded, "auth", "ensure")
+		return append(expanded, args[1:]...)
 	default:
 		return args
 	}
@@ -957,7 +961,7 @@ type loginSecretSource interface {
 
 func runAuth(ctx context.Context, args []string, stdout, stderr io.Writer, service *auth.Service, assistant resendAssistant, secrets loginSecretSource) error {
 	if len(args) == 0 {
-		return errors.New("usage: coupangctl auth <status|login|verify|resend>")
+		return errors.New("usage: coupangctl auth <status|login|ensure|verify|resend>")
 	}
 	switch args[0] {
 	case "status":
@@ -1006,6 +1010,15 @@ func runAuth(ctx context.Context, args []string, stdout, stderr io.Writer, servi
 			return err
 		}
 		return writeJSON(stdout, result)
+	case "ensure":
+		if len(args) != 1 {
+			return errors.New("usage: coupangctl auth ensure")
+		}
+		result, err := service.Recover(ctx, core.AuthRecoveryRequest{Confirmed: true})
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
 	case "verify":
 		if len(args) != 1 && !(len(args) == 2 && args[1] == "--headed") {
 			return errors.New("usage: coupangctl auth verify [--headed]")
@@ -1025,7 +1038,7 @@ func runAuth(ctx context.Context, args []string, stdout, stderr io.Writer, servi
 		}
 		return writeJSON(stdout, result)
 	default:
-		return errors.New("usage: coupangctl auth <status|login|verify|resend>")
+		return errors.New("usage: coupangctl auth <status|login|ensure|verify|resend>")
 	}
 }
 
@@ -1047,9 +1060,9 @@ func runDoctor(ctx context.Context, stdout io.Writer, paths platform.Paths, auth
 		case core.AuthVerified:
 			check.Status = core.CheckOK
 		case core.AuthNotConfigured:
-			check.Message = "run coupangctl auth login on an interactive desktop"
+			check.Message = "run coupangctl login on an interactive desktop"
 		case core.AuthUnverified:
-			check.Message = "the stored login must be renewed with coupangctl auth login"
+			check.Message = "the stored login must be renewed with coupangctl login"
 		case core.AuthAccessBlocked:
 			check.Message = "background access was denied; retry later or explicitly run coupangctl auth verify --headed"
 		default:
@@ -1111,7 +1124,7 @@ func WriteError(w io.Writer, err error) {
 		message = "the dedicated profile belongs to another browser family or a newer major version; use the original browser, or deliberately create a new state directory and sign in again"
 	case errors.Is(err, browser.ErrAuthenticationRequired):
 		code = "authentication_required"
-		message = "run coupangctl auth login on an interactive desktop first"
+		message = "run coupangctl login on an interactive desktop first"
 	case errors.Is(err, browser.ErrStructuredOrderDataMissing):
 		code = "structured_order_data_missing"
 		message = "the authenticated order document was not available"
