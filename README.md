@@ -87,7 +87,7 @@ SQLite를 별도 체크로 반환합니다. 첫 로그인 전이나 headless 접
 | 영수증 일괄 처리 | 실험적 | 현금·카드 상태·이력·기간 합계, 주문별 거래명세, 완료 파일의 비공개 저장 |
 | 주문·결제 | 지원 안 함 | 자동 주문, 결제, 구매 확정은 구현하지 않음 |
 
-현재 구현 상태와 다음 순서는 [`ROADMAP.md`](ROADMAP.md)와 `coupangctl capabilities`에서 확인할 수 있습니다. capabilities schema v2는 각 항목의 `implemented`, `next_step_kind`, `blocked_by`, `last_verified`를 분리하므로 AI도 “더 구현할 일”과 “외부 승인·사용자 확인·시간 경과가 필요한 검증”을 구별할 수 있습니다. 일반 Chrome 브리지의 설치·권한·제거 계약은 [`BROWSER_BRIDGE.md`](BROWSER_BRIDGE.md)에 있습니다.
+현재 구현 상태와 다음 순서는 [`ROADMAP.md`](ROADMAP.md)와 `coupangctl capabilities`에서 확인할 수 있습니다. capabilities schema v3는 전체 `summary`에서 추가 구현과 검증·외부 조정을 먼저 분리하고, 각 항목의 `implemented`, `next_step_kind`, `blocked_by`, `last_verified`를 이어서 보여줍니다. 따라서 AI도 “더 구현할 일”과 “외부 승인·사용자 확인·시간 경과가 필요한 검증”을 즉시 구별할 수 있습니다. 일반 Chrome 브리지의 설치·권한·제거 계약은 [`BROWSER_BRIDGE.md`](BROWSER_BRIDGE.md)에 있습니다.
 
 모든 주문 동기화 결과는 schema v1의 `source`와 `provenance`를 함께 반환합니다.
 `source`는 `dedicated_browser_profile`, `current_browser_connection`,

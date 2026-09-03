@@ -34,12 +34,38 @@ type Capability struct {
 }
 
 type CapabilityReport struct {
-	SchemaVersion int          `json:"schema_version"`
-	Capabilities  []Capability `json:"capabilities"`
+	SchemaVersion int               `json:"schema_version"`
+	Summary       CapabilitySummary `json:"summary"`
+	Capabilities  []Capability      `json:"capabilities"`
+}
+
+type CapabilitySummary struct {
+	Total                             int                      `json:"total"`
+	StatusCounts                      CapabilityStatusCounts   `json:"status_counts"`
+	NextStepCounts                    CapabilityNextStepCounts `json:"next_step_counts"`
+	ImplementationNextSteps           int                      `json:"implementation_next_steps"`
+	ValidationOrCoordinationNextSteps int                      `json:"validation_or_coordination_next_steps"`
+}
+
+type CapabilityStatusCounts struct {
+	Available    int `json:"available"`
+	Experimental int `json:"experimental"`
+	Researched   int `json:"researched"`
+	Planned      int `json:"planned"`
+}
+
+type CapabilityNextStepCounts struct {
+	Maintenance            int `json:"maintenance"`
+	Implementation         int `json:"implementation"`
+	EvidenceRequired       int `json:"evidence_required"`
+	LiveValidation         int `json:"live_validation"`
+	ExternalDependency     int `json:"external_dependency"`
+	UserAuthorization      int `json:"user_authorization"`
+	LongitudinalValidation int `json:"longitudinal_validation"`
 }
 
 func CurrentCapabilities() CapabilityReport {
-	return CapabilityReport{SchemaVersion: 2, Capabilities: []Capability{
+	capabilities := []Capability{
 		{
 			ID: "native_auth_session", Priority: "P0", Status: CapabilityAvailable,
 			UserValue:    "one headed login followed by reusable read-only sessions, with visible QR, private PNG, or explicit ephemeral app-link presentation",
@@ -169,5 +195,49 @@ func CurrentCapabilities() CapabilityReport {
 			NextWork:    "validate real longitudinal price changes before tuning the 24-hour threshold", NextStepKind: CapabilityNextLongitudinalValidation,
 			BlockedBy: []string{"real price-change validation requires future observations of the same exact option"}, LastVerified: "2026-09-03",
 		},
-	}}
+	}
+	return CapabilityReport{
+		SchemaVersion: 3,
+		Summary:       summarizeCapabilities(capabilities),
+		Capabilities:  capabilities,
+	}
+}
+
+func summarizeCapabilities(capabilities []Capability) CapabilitySummary {
+	result := CapabilitySummary{Total: len(capabilities)}
+	for _, capability := range capabilities {
+		switch capability.Status {
+		case CapabilityAvailable:
+			result.StatusCounts.Available++
+		case CapabilityExperimental:
+			result.StatusCounts.Experimental++
+		case CapabilityResearched:
+			result.StatusCounts.Researched++
+		case CapabilityPlanned:
+			result.StatusCounts.Planned++
+		}
+		switch capability.NextStepKind {
+		case CapabilityNextMaintenance:
+			result.NextStepCounts.Maintenance++
+		case CapabilityNextImplementation:
+			result.NextStepCounts.Implementation++
+			result.ImplementationNextSteps++
+		case CapabilityNextEvidenceRequired:
+			result.NextStepCounts.EvidenceRequired++
+			result.ValidationOrCoordinationNextSteps++
+		case CapabilityNextLiveValidation:
+			result.NextStepCounts.LiveValidation++
+			result.ValidationOrCoordinationNextSteps++
+		case CapabilityNextExternalDependency:
+			result.NextStepCounts.ExternalDependency++
+			result.ValidationOrCoordinationNextSteps++
+		case CapabilityNextUserAuthorization:
+			result.NextStepCounts.UserAuthorization++
+			result.ValidationOrCoordinationNextSteps++
+		case CapabilityNextLongitudinalValidation:
+			result.NextStepCounts.LongitudinalValidation++
+			result.ValidationOrCoordinationNextSteps++
+		}
+	}
+	return result
 }

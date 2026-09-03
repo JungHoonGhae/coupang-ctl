@@ -8,8 +8,19 @@ import (
 
 func TestCapabilitiesExposeImplementedStateAndNextEvidence(t *testing.T) {
 	report := core.CurrentCapabilities()
-	if report.SchemaVersion != 2 {
-		t.Fatalf("capability schema version = %d, want 2", report.SchemaVersion)
+	if report.SchemaVersion != 3 {
+		t.Fatalf("capability schema version = %d, want 3", report.SchemaVersion)
+	}
+	if report.Summary.Total != 17 || report.Summary.StatusCounts.Available != 8 || report.Summary.StatusCounts.Experimental != 9 {
+		t.Fatalf("unexpected capability status summary: %#v", report.Summary)
+	}
+	if report.Summary.NextStepCounts.Maintenance != 7 || report.Summary.NextStepCounts.LiveValidation != 2 ||
+		report.Summary.NextStepCounts.EvidenceRequired != 4 || report.Summary.NextStepCounts.ExternalDependency != 1 ||
+		report.Summary.NextStepCounts.UserAuthorization != 1 || report.Summary.NextStepCounts.LongitudinalValidation != 2 {
+		t.Fatalf("unexpected capability next-step summary: %#v", report.Summary)
+	}
+	if report.Summary.ImplementationNextSteps != 0 || report.Summary.ValidationOrCoordinationNextSteps != 10 {
+		t.Fatalf("summary does not separate code work from external evidence: %#v", report.Summary)
 	}
 	byID := make(map[string]core.Capability, len(report.Capabilities))
 	for _, capability := range report.Capabilities {

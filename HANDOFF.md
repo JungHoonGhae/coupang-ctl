@@ -40,11 +40,13 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 - `doctor` performs the same non-visible background proof as `auth status` and
   reports browser installation, `background_session`, and SQLite independently.
   A present browser no longer makes a blocked or expired session look ready.
-- `coupangctl capabilities` schema v2 lists each capability's concrete
-  `implemented` surfaces separately from `next_step_kind`, `blocked_by`, and
-  `last_verified`. External approval, explicit mutation authorization,
-  missing source evidence, and elapsed-time validation are therefore visible
-  without mislabeling them as unfinished code.
+- `coupangctl capabilities` schema v3 adds typed status and next-step counts,
+  including separate implementation and validation-or-coordination totals,
+  before listing each capability's concrete `implemented` surfaces,
+  `next_step_kind`, `blocked_by`, and `last_verified`. External approval,
+  explicit mutation authorization, missing source evidence, and elapsed-time
+  validation are therefore visible without mislabeling them as unfinished
+  code.
 - CLI and MCP share the same typed authentication and order services. MCP
   exposes authentication status, confirmation-gated login-if-needed, sync,
   list, spend, reorder-candidate, and normalized-export tools.

@@ -318,7 +318,7 @@ func TestCapabilitiesAreStructuredAndOrderedByPriority(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.SchemaVersion != 2 || len(report.Capabilities) < 5 || report.Capabilities[0].Priority != "P0" {
+	if report.SchemaVersion != 3 || report.Summary.Total != len(report.Capabilities) || report.Summary.ImplementationNextSteps != 0 || report.Summary.ValidationOrCoordinationNextSteps == 0 || len(report.Capabilities) < 5 || report.Capabilities[0].Priority != "P0" {
 		t.Fatalf("unexpected capability report: %#v", report)
 	}
 	if report.Capabilities[0].Status != core.CapabilityAvailable || len(report.Capabilities[0].Implemented) == 0 || report.Capabilities[0].NextStepKind == "" {
