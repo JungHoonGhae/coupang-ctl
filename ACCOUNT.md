@@ -1,8 +1,13 @@
 # 계정·멤버십 응답 계약
 
 `coupangctl account benefits`와 MCP `account_benefits`는 같은
-`private_local` schema version 2 응답을 사용합니다. 계정 상태를 바꾸지 않는
+`private_local` schema version 3 응답을 사용합니다. 계정 상태를 바꾸지 않는
 조회이며 OTP, 쿠키, 계정번호, 카드번호, raw 주문·캐시 거래를 반환하지 않습니다.
+
+`membership.current_monthly_fee_krw`와 `membership.source_fee_change_date`는
+멤버십 화면에서 관찰한 현재 요금·원천 변경일 metadata입니다. 변경일은 과거 요금,
+실제 청구일, 변경 전후 금액을 뜻하지 않습니다. 따라서 이 필드만으로 역사적 회비를
+재구성하지 않습니다.
 
 ## 멤버십 비용
 
@@ -54,6 +59,8 @@ headed metadata-only 검증에서 화면의 `최근 3개월` 문구를 확인했
 결제 실패·기간 중 요금 변경을 반영한 실제 납부액이 아닙니다. 그래서
 `confirmed_net_value_krw`는 채우지 않고 `missing_evidence`에
 `actual_membership_payments_for_benefit_window`를 남깁니다.
+`source_fee_change_date`가 존재하면 응답의 `definitions.membership_fee`와
+`net_value.limitations`도 이 관찰값과 실제 결제 증거의 차이를 명시합니다.
 
 와우카드 적립, 카드 연회비, 등록 결제수단은 각각 별도 관찰 기간과 의미를 가지므로
 이 멤버십-only 계산에 합치지 않습니다. 등록된 카드는 실제 주문 결제수단의 증거도

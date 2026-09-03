@@ -25,7 +25,7 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   exposes authentication status, sync, list, spend, reorder-candidate, and
   normalized-export tools. Destructive purge is intentionally CLI-only.
 - `account benefits` and MCP `account_benefits` expose an experimental
-  `private_local` account snapshot: current membership state/fee, source-
+  `private_local` account schema v3 snapshot: current membership state/fee, source-
   reported benefit aggregates, registered payment-method brand/type/issuer,
   and expected plus monthly observed WOW Card reward aggregates. Account
   identifiers and raw cash transaction text are discarded.
@@ -35,8 +35,11 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   contained only the source enum pairs `SKU/GOODS` and `NORMAL/GOODS`, so zero
   matching rows is returned as `unavailable_no_explicit_membership_order_metadata`,
   not as zero fees paid.
-- A headed, metadata-only live probe verified that the membership UI labels
-  its displayed savings as `recent 3 months`. Schema v2 exposes that observed
+- A headed, metadata-only live probe verified a positive plausible epoch
+  `loyaltyFeeChangeDate`; schema v3 exposes its normalized
+  `source_fee_change_date` as schedule metadata, never as a historical charge
+  or prior fee amount. The same probe verified that the membership UI labels
+  its displayed savings as `recent 3 months`. Schema v3 exposes that observed
   window. Its membership-only comparison uses current monthly fee times three
   only as an `inferred` estimate; pauses, refunds, free periods, and fee changes
   remain explicit limitations. Confirmed net value remains unset, and card
@@ -61,6 +64,9 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   and cancellation payment components. A live typed read succeeded. These
   components are not relabeled as a completed refund settlement, and the
   verified response contained no installment-month field.
+- A follow-up static-shape inspection found installment-named identifiers in
+  cancellation/return-flow state and feature flags, not receipt transaction
+  fields. They were not promoted into the typed contract.
 - `receipts download` can save an already-completed history artifact to a new
   private `0600` file. It re-reads the selected history row, keeps the source
   URL in browser memory, validates the final Coupang host and bounded content,

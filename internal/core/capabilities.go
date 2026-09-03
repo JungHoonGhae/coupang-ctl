@@ -64,9 +64,9 @@ func CurrentCapabilities() CapabilityReport {
 		},
 		{
 			ID: "account_membership_benefits", Priority: "P0", Status: CapabilityExperimental,
-			UserValue:   "current WOW state and fee, source-labeled recent benefit usage, an explicitly inferred current-fee comparison, registered payment-method brands, and observed monthly WOW Card cash rewards",
+			UserValue:   "current WOW state and fee, source fee-change schedule metadata, source-labeled recent benefit usage, an explicitly inferred current-fee comparison, registered payment-method brands, and observed monthly WOW Card cash rewards",
 			Interface:   []string{"cli", "mcp"},
-			Implemented: []string{"current WOW status and current monthly fee", "observed recent benefit amount and window", "monthly WOW Card rewards and registered card brands", "explicit-only membership cost aggregation with inferred comparison kept separate"},
+			Implemented: []string{"current WOW status, current monthly fee, and source fee-change date", "observed recent benefit amount and window", "monthly WOW Card rewards and registered card brands", "explicit-only membership cost aggregation with inferred comparison kept separate"},
 			NextWork:    "adopt membership-fee receipt evidence for exact historical costs; the complete live order history has no membership-specific item metadata", NextStepKind: CapabilityNextEvidenceRequired,
 			BlockedBy: []string{"the current account exposes no explicit historical membership-payment rows in the synchronized order data or available receipt history"}, LastVerified: "2026-09-03",
 		},

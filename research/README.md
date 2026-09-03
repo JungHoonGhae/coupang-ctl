@@ -52,12 +52,14 @@ The probes default to `http://127.0.0.1:9223`. Override with `COUPANG_CDP_URL` w
   body values are never emitted even if a blocked request is observed.
 - `receipt-contract-metadata/`: uses the product's installed-Chrome session to
   read only payment-receipt page key paths, control kinds, and same-origin
-  static endpoint paths. It performs no click, POST, request creation, or
-  download; `--headed` forces a visible Chrome verification and
+  static endpoint paths. Installment-named bundle snippets are string/number-
+  sanitized before output and are research evidence only. It performs no
+  click, POST, request creation, or download; `--headed` forces a visible Chrome verification and
   `--skip-order-samples` omits the bounded per-order vendor GET checks.
 - `account-benefits-probe.ts`: uses the persisted authenticated session to
   discover WOW membership, payment-method, card, cash, and benefit surfaces.
-  It emits only URL shapes, response shapes, and boolean DOM signals; cookie
+  It emits only URL shapes, response shapes, boolean DOM signals, and the
+  type/plausibility of source date metadata; cookie
   values, card identifiers, account text, and response bodies are discarded.
 - `product-option-metadata-probe.ts`: loads one public product through an
   installed Chrome session and emits only page/quantity-response status and

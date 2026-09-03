@@ -56,6 +56,10 @@ being listed as `researched` does not make it a supported product API.
   cancellation component fields but no installment-month field. The adopted
   command preserves those components as observed values without asserting a
   completed refund settlement.
+- A later static-shape pass found installment-named identifiers only in
+  cancellation/return-flow state and experiment flags, not in adopted receipt
+  result fields. Identifier presence is therefore not installment evidence;
+  installments remain unavailable until an explicit transaction field exists.
 - Static reducer evidence maps a successful request-status GET response's
   `data=true` to `POSSIBLE` and `data=false` to `IMPOSSIBLE`. The same UI uses
   `IMPOSSIBLE` during request submission, but the GET does not expose a reason.
@@ -80,6 +84,10 @@ being listed as `researched` does not make it a supported product API.
   cannot currently prove historical membership fees. Official Coupang guidance
   directs membership-fee cash receipts to the PC receipt screen; receipt
   evidence remains the required source for exact paid-history adoption.
+- The same account-state probe observed a positive, plausible epoch-millisecond
+  `loyaltyFeeChangeDate`. Schema v3 exposes only its normalized date as
+  `source_fee_change_date`: schedule metadata distinct from historical fee
+  amounts, charge dates, and actual payment evidence.
 - Three redacted live product samples returned one JSON-LD breadcrumb each,
   with 5, 6, and 5 list items. The source does not name fixed
   large/middle/small fields, so the adapter preserves every category ID, label,

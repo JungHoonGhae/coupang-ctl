@@ -270,6 +270,11 @@ async function inspectDOM(page: Page): Promise<{
       jsonStateKeyPaths: [...statePaths].sort().slice(0, 160),
       selectedStateShapes: data ? {
         loyaltyMemberInfo: shape(data.loyaltyMemberInfo, 4),
+        loyaltyFeeChangeDate: {
+          type: Array.isArray(data.loyaltyFeeChangeDate) ? "array" : data.loyaltyFeeChangeDate === null ? "null" : typeof data.loyaltyFeeChangeDate,
+          positive: typeof data.loyaltyFeeChangeDate === "number" && data.loyaltyFeeChangeDate > 0,
+          plausibleEpochMillis: typeof data.loyaltyFeeChangeDate === "number" && data.loyaltyFeeChangeDate >= 946684800000 && data.loyaltyFeeChangeDate <= 4102444800000,
+        },
         paymentMethod: shape(data.paymentMethod, 4),
         paymentMethods: shape(data.paymentMethods, 4),
         wowBenefitUsage: shape(data.wowBenefitUsage, 5),

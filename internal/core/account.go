@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const AccountBenefitsSchemaVersion = 2
+const AccountBenefitsSchemaVersion = 3
 
 type AccountBenefitsRequest struct {
 	MaxCashTransactionPages int `json:"max_cash_transaction_pages,omitempty" jsonschema:"Maximum Coupang Cash transaction pages to inspect,from 1 through 100"`
@@ -59,6 +59,7 @@ type WowMembership struct {
 	IsOnHold             bool                 `json:"is_on_hold"`
 	SubscriptionPlan     string               `json:"subscription_plan,omitempty"`
 	CurrentMonthlyFeeKRW int64                `json:"current_monthly_fee_krw"`
+	SourceFeeChangeDate  string               `json:"source_fee_change_date,omitempty"`
 	FirstJoinDate        string               `json:"first_join_date,omitempty"`
 	CurrentPeriodStart   string               `json:"current_period_start,omitempty"`
 	CurrentPeriodEnd     string               `json:"current_period_end,omitempty"`
@@ -198,6 +199,7 @@ type AccountBenefitsCoverage struct {
 type AccountBenefitDefinitions struct {
 	BenefitSource      string `json:"benefit_source"`
 	CardRewardEvidence string `json:"card_reward_evidence"`
+	MembershipFee      string `json:"membership_fee"`
 	PaymentPrivacy     string `json:"payment_privacy"`
 	NetValue           string `json:"net_value"`
 }

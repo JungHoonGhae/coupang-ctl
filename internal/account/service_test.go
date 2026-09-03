@@ -34,7 +34,7 @@ func TestSnapshotAddsVersionedProgramTermsWithoutInventingPaidFees(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.SchemaVersion != 2 || got.Visibility != "private_local" || got.CardProgram.PublishedAnnualFeeKRW != 20_000 || got.CardProgram.PromotionStatus != "active" {
+	if got.SchemaVersion != core.AccountBenefitsSchemaVersion || got.Visibility != "private_local" || got.CardProgram.PublishedAnnualFeeKRW != 20_000 || got.CardProgram.PromotionStatus != "active" {
 		t.Fatalf("unexpected account envelope: %#v", got)
 	}
 	if got.MembershipCosts.Status != "unavailable" || got.NetValue.ConfirmedMembershipFeeKRW != 0 || got.NetValue.ConfirmedCardAnnualFeeKRW != 0 || got.NetValue.EstimatedNetValueKRW != 0 {
@@ -48,7 +48,7 @@ func TestSnapshotAddsVersionedProgramTermsWithoutInventingPaidFees(t *testing.T)
 func TestSnapshotEstimatesRecentMembershipValueFromObservedWindowAndCurrentFee(t *testing.T) {
 	now := time.Date(2026, 9, 2, 1, 0, 0, 0, time.UTC)
 	service := NewWithCosts(syntheticSource{snapshot: core.AccountBenefitsSnapshot{
-		Membership:   core.WowMembership{FirstJoinDate: "2025-08-01", IsPaidMember: true, CurrentMonthlyFeeKRW: 7_890},
+		Membership:   core.WowMembership{FirstJoinDate: "2025-08-01", IsPaidMember: true, CurrentMonthlyFeeKRW: 7_890, SourceFeeChangeDate: "2026-08-01"},
 		BenefitUsage: core.WowBenefitUsage{TotalObservedSavingsKRW: 210_000, WindowStatus: "observed", WindowKind: "rolling_recent_months", WindowMonths: 3},
 		Coverage:     core.AccountBenefitsCoverage{BenefitUsageObserved: true},
 	}}, syntheticCosts{evidence: core.MembershipCostEvidence{
@@ -69,4 +69,16 @@ func TestSnapshotEstimatesRecentMembershipValueFromObservedWindowAndCurrentFee(t
 	if got.MembershipCosts.Status != "unavailable_no_explicit_membership_order_metadata" {
 		t.Fatalf("zero observed orders were presented as zero historical cost: %#v", got.MembershipCosts)
 	}
+	if !containsString(got.NetValue.Limitations, "the source fee change date is observed, but prior fee amounts and actual charges remain unavailable") {
+		t.Fatalf("fee-change metadata was not kept separate from historical charges: %#v", got.NetValue)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

@@ -104,6 +104,9 @@ func applyMembershipValue(result *core.AccountBenefitsSnapshot) {
 	if result.Membership.CurrentMonthlyFeeKRW <= 0 {
 		value.MissingEvidence = append(value.MissingEvidence, "current_monthly_membership_fee")
 	}
+	if result.Membership.SourceFeeChangeDate != "" {
+		value.Limitations = append(value.Limitations, "the source fee change date is observed, but prior fee amounts and actual charges remain unavailable")
+	}
 	value.MissingEvidence = append(value.MissingEvidence, "actual_membership_payments_for_benefit_window")
 	if result.Coverage.BenefitUsageObserved && result.BenefitUsage.WindowStatus == "observed" && result.BenefitUsage.WindowKind == "rolling_recent_months" && result.BenefitUsage.WindowMonths > 0 && result.Membership.CurrentMonthlyFeeKRW > 0 {
 		value.EstimatedMembershipFeeKRW = result.Membership.CurrentMonthlyFeeKRW * int64(result.BenefitUsage.WindowMonths)

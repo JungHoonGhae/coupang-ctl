@@ -10,6 +10,7 @@ import (
 func TestParseSnapshotDocumentNormalizesMembershipBenefitsAndCardRewards(t *testing.T) {
 	document := []byte(`{
   "membership":{"benefit_window_months":3,"props":{"pageProps":{"data":{
+    "loyaltyFeeChangeDate":1790784000000,
     "loyaltyMemberInfo":{
       "firstJoinDt":1754006400000,"membershipStatus":"ACTIVE","subscriptionPlan":"SYNTHETIC_MONTHLY",
       "membershipInfoVO":{"membershipStartDt":1788192000000,"membershipEndDt":1790784000000},
@@ -48,7 +49,7 @@ func TestParseSnapshotDocumentNormalizesMembershipBenefitsAndCardRewards(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Membership.Status != "ACTIVE" || !got.Membership.IsMember || !got.Membership.IsPaidMember || got.Membership.CurrentMonthlyFeeKRW != 7890 || got.Membership.NextPaymentDate != "2026-10-01" {
+	if got.Membership.Status != "ACTIVE" || !got.Membership.IsMember || !got.Membership.IsPaidMember || got.Membership.CurrentMonthlyFeeKRW != 7890 || got.Membership.SourceFeeChangeDate != "2026-10-01" || got.Membership.NextPaymentDate != "2026-10-01" {
 		t.Fatalf("unexpected membership: %#v", got.Membership)
 	}
 	if got.Membership.BillingMethod.Name != "Synthetic card" || got.Membership.BillingMethod.Type != "CARD" || !got.Membership.BillingMethod.RecurringRegistered || len(got.PaymentMethods) != 2 {

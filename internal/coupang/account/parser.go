@@ -32,10 +32,11 @@ type membershipDocument struct {
 }
 
 type membershipData struct {
-	LoyaltyMemberInfo loyaltyMemberInfo `json:"loyaltyMemberInfo"`
-	PaymentMethod     paymentMethod     `json:"paymentMethod"`
-	PaymentMethods    []paymentMethod   `json:"paymentMethods"`
-	WowBenefitUsage   benefitUsage      `json:"wowBenefitUsage"`
+	LoyaltyMemberInfo    loyaltyMemberInfo `json:"loyaltyMemberInfo"`
+	LoyaltyFeeChangeDate int64             `json:"loyaltyFeeChangeDate"`
+	PaymentMethod        paymentMethod     `json:"paymentMethod"`
+	PaymentMethods       []paymentMethod   `json:"paymentMethods"`
+	WowBenefitUsage      benefitUsage      `json:"wowBenefitUsage"`
 }
 
 type loyaltyMemberInfo struct {
@@ -154,6 +155,7 @@ func ParseSnapshotDocument(document []byte) (core.AccountBenefitsSnapshot, error
 		Definitions: core.AccountBenefitDefinitions{
 			BenefitSource:      "coupang_reported_wow_benefit_usage",
 			CardRewardEvidence: "structured_expected_reward_plus_cash_transactions_classified_by_source_label",
+			MembershipFee:      "current_monthly_fee_and_source_fee_change_date_are_observed_schedule_metadata_not_historical_charges",
 			PaymentPrivacy:     "payment_account_identifiers_are_discarded",
 			NetValue:           "recent-benefit comparison using current monthly fee times the source-observed month window; actual historical charges, card costs, and card rewards stay separate",
 		},
@@ -171,7 +173,8 @@ func ParseSnapshotDocument(document []byte) (core.AccountBenefitsSnapshot, error
 		Status: info.MembershipStatus, IsMember: !info.NotMember,
 		IsPaidMember: info.PaidMember, IsTrialMember: info.TrialMember, IsOnHold: info.MembershipOnHold,
 		SubscriptionPlan: info.SubscriptionPlan, CurrentMonthlyFeeKRW: fee,
-		FirstJoinDate: dateFromMillis(info.FirstJoinDt), CurrentPeriodStart: dateFromMillis(info.MembershipInfoVO.MembershipStartDt),
+		SourceFeeChangeDate: dateFromMillis(data.LoyaltyFeeChangeDate),
+		FirstJoinDate:       dateFromMillis(info.FirstJoinDt), CurrentPeriodStart: dateFromMillis(info.MembershipInfoVO.MembershipStartDt),
 		CurrentPeriodEnd: dateFromMillis(info.MembershipInfoVO.MembershipEndDt), NextPaymentDate: dateFromMillis(nextPayment),
 		MembershipDays: data.WowBenefitUsage.MembershipDays, BillingMethod: normalizePaymentMethod(data.PaymentMethod),
 	}

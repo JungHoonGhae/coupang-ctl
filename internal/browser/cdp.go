@@ -423,6 +423,7 @@ func (s *chromeSession) ReadReceiptResearchMetadata(ctx context.Context, samples
 		const vendorEndpointHints = new Map();
 		const requestStatusEndpointHints = new Map();
 		const requestStatusStateShapes = new Set();
+		const installmentStateShapes = new Set();
 		const inspectSource = (source) => {
 			if (typeof source !== 'string' || source.length === 0) return;
 			for (const match of source.matchAll(/\/(?:ssr\/api\/)?payment-receipt(?:\/[A-Za-z0-9_.-]+)*/g)) {
@@ -487,6 +488,12 @@ func (s *chromeSession) ReadReceiptResearchMetadata(ctx context.Context, samples
 			}
 			for (const match of source.matchAll(/[A-Za-z_$][A-Za-z0-9_$]*(?:installment|Installment)[A-Za-z0-9_$]*/g)) {
 				staticIdentifiers.installment.add(match[0]);
+				const offset = match.index ?? 0;
+				const shape = source.slice(Math.max(0, offset - 220), Math.min(source.length, offset + match[0].length + 260))
+					.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '<string>')
+					.replace(/\b(?:0x[0-9a-f]+|\d+(?:\.\d+)?(?:e[+-]?\d+)?)\b/gi, '<number>')
+					.replace(/\s+/g, ' ').slice(0, 600);
+				if (shape) installmentStateShapes.add(shape);
 				if (staticIdentifiers.installment.size >= 50) break;
 			}
 			for (const match of source.matchAll(/[A-Za-z_$][A-Za-z0-9_$]*(?:transactionStatement|TransactionStatement)[A-Za-z0-9_$]*/g)) {
@@ -622,6 +629,7 @@ func (s *chromeSession) ReadReceiptResearchMetadata(ctx context.Context, samples
 				call_shapes: [...hint.call_shapes].sort().slice(0, 3),
 			})).sort((a, b) => a.path.localeCompare(b.path)),
 			request_status_state_shapes: [...requestStatusStateShapes].sort(),
+			installment_state_shapes: [...installmentStateShapes].sort().slice(0, 20),
 			vendor_order_probe: vendorOrderProbe,
 			script_targets: scriptURLs.map((raw) => {
 				const target = new URL(raw, location.href);

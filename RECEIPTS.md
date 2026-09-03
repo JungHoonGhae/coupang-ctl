@@ -119,8 +119,11 @@ typed core로 정규화합니다. 모든 결과는 `private_local`이며 원문 
 ```
 
 동일한 표시명이 여러 비공개 카드 항목에 쓰이면 표시명별 건수와 금액을
-합산합니다. 그래서 결제수단 행의 provenance는 `derived_from_observed_receipt_summaries`입니다. 서로 같은 실제 카드라고 추론하지 않습니다. 할부 여부는 명시적인 원천 필드가 발견되기
-전까지 항상 `unavailable`입니다.
+합산합니다. 그래서 결제수단 행의 provenance는
+`derived_from_observed_receipt_summaries`입니다. 서로 같은 실제 카드라고 추론하지
+않습니다. 정적 번들에 나타난 할부 관련 이름은 취소·반품 흐름 상태와 기능
+플래그였으며 거래 증거가 아닙니다.
+할부 여부는 명시적인 원천 거래 필드가 발견되기 전까지 항상 `unavailable`입니다.
 
 응답의 `from`과 `to`는 호출자가 요청한 ISO 날짜입니다. 원천 응답이 다른
 기간을 되돌려주면 합계 자체를 숨기지 않고 `warnings`에 불일치를 표시합니다.
