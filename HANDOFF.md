@@ -77,6 +77,12 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   state counts, terminal error codes, and browser-sanitized receipt shapes;
   raw order IDs stay in memory. A fresh live run is still required before this
   broader sampler can change installment or refund-settlement evidence status.
+- On 2026-09-03, the pre-improvement order-metadata probe returned
+  `browser_access_denied` in headless and headed modes. A headed
+  `auth verify` immediately succeeded and rotated the session, but one bounded
+  headless retry remained denied. No response evidence was collected, so this
+  is recorded as a probe read-path blocker rather than an expired-login claim
+  or evidence about refund/installment fields.
 - `receipts download` can save an already-completed history artifact to a new
   private `0600` file. It re-reads the selected history row, keeps the source
   URL in browser memory, validates the final Coupang host and bounded content,
