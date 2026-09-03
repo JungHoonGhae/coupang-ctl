@@ -107,7 +107,7 @@ func presentPhoneLogin(ctx context.Context, executable, profileDir, targetURL, p
 	if err := session.presentPhone(ctx, targetURL, phone, readOTP); err != nil {
 		return err
 	}
-	return session.persistBrowserSession(ctx)
+	return nil
 }
 
 func (s *chromeSession) presentPhone(ctx context.Context, targetURL, phone string, readOTP core.OTPProvider) error {

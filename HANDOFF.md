@@ -219,10 +219,14 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 - Headless verification and sync make one delayed read-only retry after a
   protected-document access-denied response, then use the explicit `--headed`
   fallback when a desktop is available.
-- Authentication state is captured after human-approved login into a private,
-  atomic `0600` session file. A later process restores it into installed Chrome
-  and rotates it only after a successful authenticated read; cookie values are
-  never printed or passed through CLI/MCP outputs.
+- Authentication state remains in Chrome's dedicated persistent profile after
+  human-approved login. Later reads reopen that profile with a validated
+  ephemeral loopback DevTools endpoint; no second cookie/session file is
+  created and cookie values never enter CLI/MCP outputs.
+- `orders sync --current-browser` and MCP `orders_sync_current_browser` provide
+  an experimental extension-free Chrome 144+ path after Chrome's explicit
+  remote-debugging opt-in and approval. It creates only an allowlisted new tab,
+  disconnects without closing Chrome, and does not copy session state.
 - The initial order document bootstraps the authenticated origin. Pagination
   then uses the UI's structured `GET /ssr/api/myorders/model` route with bounded
   `requestYear`, `pageIndex`, and `size` parameters. This fixed the year-boundary
@@ -494,9 +498,9 @@ Clean-profile Linux/Windows validation and Web Store review remain.
 ## Security and compliance
 
 - Never commit credentials or session cookies.
-- The current session file is private mode `0600` and atomically replaced. OS
-  keychain/envelope encryption remains a hardening item; Doppler is for
-  development bootstrap only.
+- Browser authentication state stays in the dedicated Chrome profile and is
+  never exported as a product session file. Doppler is for development
+  bootstrap only.
 - Redact PII and stable identifiers from logs and fixtures.
 - Use synthetic fixtures in tests.
 - No checkout, purchase, payment, cancellation, return, or account-setting mutation without an explicit separately designed confirmation boundary.

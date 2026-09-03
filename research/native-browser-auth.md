@@ -12,24 +12,32 @@ presentations and a separate read-only consumption phase:
    adapter navigates only to the protected order URL, selects the QR tab, and
    polls the final location. It does not read the QR value, verification number,
    cookies, storage, form fields, or network bodies.
-2. `auth login --phone` is fully manual and does **not** enable remote
-   debugging. The user enters their phone number, requests the message, solves
-   any challenge, enters the OTP, and completes login in the browser UI. The
-   CLI waits for the browser to exit and does not inspect the page.
-3. After a successful login, a narrow bridge captures only Coupang cookies into
-   a private atomic `0600` session file. A later `auth status` or read-only sync
-   injects that state into a short-lived dedicated profile with an ephemeral,
+2. `auth login --phone` opens the same dedicated profile in a visible browser.
+   The adapter may enter the supplied phone number, click the visible request
+   button, and enter one OTP supplied interactively by the user. It never calls
+   the send/verify endpoint directly, retries an inconclusive submission, or
+   solves CAPTCHA; any challenge remains a human browser action.
+3. After a successful login, Chrome keeps its own session state inside that
+   dedicated persistent profile. A later `auth status` or read-only sync opens
+   the same profile in a short-lived browser process with an ephemeral,
    loopback-only DevTools port, opens an allowlisted read-only page, extracts
-   documented structured data, rotates the session after success, and shuts
-   down the sync browser. CDP objects, cookies, and response bodies never cross
-   into the typed core.
+   documented structured data, and shuts down the process. `coupangctl` does
+   not export or inject a second cookie/session file. CDP objects, cookies, and
+   response bodies never cross into the typed core.
+4. An explicit `orders sync --current-browser` mode may attach to Chrome 144+
+   only after the user enables remote debugging in Chrome and approves the
+   connection. It creates and closes only its own target, does not close the
+   user's browser, and does not copy browser state. Because Chrome grants a
+   debugger broad profile access, this remains an experimental power-user mode,
+   not an unattended default.
 
-The distributed paths need no Orca, Playwright, accessibility controller, agent skill,
-or user-installed extension at runtime. It also does not claim to make
+The default distributed path needs no Orca, Playwright, accessibility
+controller, agent skill, or user-installed extension at runtime. It also does not claim to make
 automation undetectable. If Coupang rejects the read-only sync browser, the CLI
 must stop with a structured error; it must not add stealth flags, spoof browser
 signals, replay challenge endpoints, or copy session tokens from another
-profile.
+profile. The selected-tab extension is retained only as an optional compatibility
+adapter.
 
 ## Why the profile must be dedicated
 
@@ -130,10 +138,13 @@ user's ordinary Chrome process or profile.
 
 ## Manual challenge boundary
 
-During manual phone login, `coupangctl` must not send CDP `Input`, `Runtime`,
-`Network`, or `Page` commands. It must not record a HAR, screenshot the OTP
-page, observe form values, or decide that a challenge was solved. The browser
-process exit is only a workflow boundary, not proof of authentication.
+During phone login, `coupangctl` may use the narrow page adapter to navigate the
+allowlisted login flow, detect coarse states, fill the supplied phone/OTP values,
+and activate the corresponding visible UI controls. It must not call or replay
+the send/verify endpoints directly, record a HAR, screenshot the OTP page,
+export form values, solve a challenge, or automatically retry an inconclusive
+submission. Authentication succeeds only after the exact protected order page
+and structured document are observed.
 
 The explicit `--qr-output` presentation mode is narrower: it may navigate to
 the allowlisted protected order URL, activate the QR tab, capture the QR page to
@@ -152,9 +163,9 @@ It also makes retries safe. A failed status check must never resend an OTP.
 
 ## CDP constraints and safe use
 
-For read-only sync, launch a dedicated short-lived profile, restore the private
-Coupang session through the browser-level storage protocol, and use
-`--remote-debugging-port=0`. Chromium's API states that port `0` selects an
+For read-only sync, launch a short-lived browser process against the persistent
+dedicated profile and use `--remote-debugging-port=0`; do not export and restore
+session state through a second storage file. Chromium's API states that port `0` selects an
 ephemeral OS port and writes it to a well-known file in the user-data directory.
 The implementation writes the chosen port and browser WebSocket path to
 `DevToolsActivePort`.
@@ -245,10 +256,12 @@ not a cross-platform compatibility result or an authentication test.
 
 ## Acceptance tests implied by this research
 
-- Manual login starts a headed browser without CDP and accepts no phone, OTP,
-  cookie, or credential flags.
-- The everyday browser profile is never discovered, read, attached to, copied,
-  or modified.
+- Phone login starts a headed browser, accepts no phone, OTP, cookie, or
+  credential command-line flags, leaves CAPTCHA to the user, and submits a
+  user-supplied OTP at most once through the visible page UI.
+- The default dedicated mode never discovers, reads, attaches to, copies, or
+  modifies the everyday browser profile. The explicit current-browser mode is
+  unavailable until Chrome's own remote-debugging opt-in and approval succeed.
 - A second `coupangctl` process receives `profile_in_use` without killing the
   first browser.
 - Sync uses headless Chrome with an ephemeral loopback CDP endpoint, rejects stale or malformed

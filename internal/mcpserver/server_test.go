@@ -228,6 +228,43 @@ func TestOrdinaryBrowserOrderSyncToolUsesItsDedicatedTypedProvider(t *testing.T)
 	}
 }
 
+func TestCurrentBrowserOrderSyncToolUsesItsDedicatedTypedProvider(t *testing.T) {
+	ctx := context.Background()
+	current := &capturingOrdinaryOrderProvider{}
+	server := NewWithProviders(Providers{
+		Auth:                 fixedStatusProvider{},
+		Orders:               fixedOrderProvider{},
+		CurrentBrowserOrders: current,
+	}, "v0.1.0-test")
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name: "orders_sync_current_browser", Arguments: map[string]any{"max_pages": 2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(result.StructuredContent)
+	var got core.SyncResult
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Complete || got.PagesProcessed != 2 || current.request.MaxPages != 2 {
+		t.Fatalf("unexpected current-browser sync result: %#v, request=%#v", got, current.request)
+	}
+}
+
 func TestProductToolsExposeNaturalLanguageSearchAndConfirmedCartMutation(t *testing.T) {
 	ctx := context.Background()
 	server := NewWithFeatures(fixedStatusProvider{}, fixedOrderProvider{}, fixedProductProvider{}, "v0.1.0-test")

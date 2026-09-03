@@ -33,12 +33,13 @@ type OrdinaryOrderProvider interface {
 }
 
 type Providers struct {
-	Auth           StatusProvider
-	Orders         OrderProvider
-	OrdinaryOrders OrdinaryOrderProvider
-	Products       ProductProvider
-	Account        AccountProvider
-	Receipts       ReceiptProvider
+	Auth                 StatusProvider
+	Orders               OrderProvider
+	CurrentBrowserOrders OrdinaryOrderProvider
+	OrdinaryOrders       OrdinaryOrderProvider
+	Products             ProductProvider
+	Account              AccountProvider
+	Receipts             ReceiptProvider
 }
 
 type ProductProvider interface {
@@ -108,6 +109,9 @@ func NewWithProviders(providers Providers, version string) *mcp.Server {
 	}
 	if providers.OrdinaryOrders != nil {
 		addOrdinaryOrderTools(server, providers.OrdinaryOrders)
+	}
+	if providers.CurrentBrowserOrders != nil {
+		addCurrentBrowserOrderTools(server, providers.CurrentBrowserOrders)
 	}
 	if providers.Products != nil {
 		addProductTools(server, providers.Products)
@@ -439,6 +443,22 @@ func addOrdinaryOrderTools(server *mcp.Server, provider OrdinaryOrderProvider) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "orders_sync_ordinary_browser",
 		Description: "Refresh the normalized local ledger from the user-selected order-list tab in ordinary Chrome. Before calling, tell the user to keep that tab selected and click the installed coupangctl extension once while this tool is waiting. The extension uses activeTab for this one action, sends only normalized bounded order data through the local native host, and never copies cookies. This changes only the local ledger and never orders or pays.",
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: true, OpenWorldHint: boolPointer(true),
+		},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.SyncRequest) (*mcp.CallToolResult, core.SyncResult, error) {
+		result, err := provider.Sync(ctx, input)
+		if err != nil {
+			return nil, core.SyncResult{}, safeToolError(err)
+		}
+		return nil, result, nil
+	})
+}
+
+func addCurrentBrowserOrderTools(server *mcp.Server, provider OrdinaryOrderProvider) {
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "orders_sync_current_browser",
+		Description: "Refresh the normalized local ledger through a user-approved connection to a running Chrome 144+ browser. The user must first enable remote debugging at chrome://inspect/#remote-debugging and approve Chrome's connection prompt. coupangctl creates and closes only its own tab, never copies browser state, and never closes the user's browser. This changes only the local ledger and never orders or pays.",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: true, OpenWorldHint: boolPointer(true),
 		},

@@ -25,17 +25,19 @@ dependencies of `coupangctl`.
 
 `coupangctl auth login` defaults to QR, launches the installed system Chrome
 with a dedicated `coupangctl` profile, and enters through the protected order
-URL so the login return context is retained. `--phone` opens the manual phone
-fallback.
+URL so the login return context is retained. `--phone` opens a headed phone/OTP
+UI-assistance fallback.
 
-- The CLI does not fill the phone number, solve CAPTCHA, enter OTP, or click the
-  send/login buttons.
-- The user completes the entire challenge in the visible browser.
+- The CLI may fill the supplied phone number, click the visible request button,
+  and enter the OTP supplied interactively by the user through the page UI.
+- It does not call the OTP endpoint directly, replay a request, solve CAPTCHA,
+  or continue while a human challenge remains. The user completes any challenge
+  in the visible browser.
 - The CLI observes only a coarse completion signal, such as leaving the login
   origin or successfully loading a read-only account page.
-- Coupang cookies are captured only from the dedicated login browser into a
-  private atomic `0600` session file. They are never printed, returned in
-  command output, or copied from the user's everyday profile.
+- Coupang cookies remain inside Chrome's dedicated persistent profile. They are
+  never exported to a second session file, printed, returned in command output,
+  or copied from the user's everyday profile.
 - Browser discovery, process launch, profile isolation, completion polling, and
   cleanup are implemented in the distributed `coupangctl` binary.
 - The user needs only `coupangctl` and a supported installed browser; no Orca,
@@ -50,13 +52,23 @@ exports cookies. It is a presentation adapter for a human-approved QR challenge.
 
 ### 2. Existing authenticated dedicated profile
 
-`coupangctl auth status` and read-only sync commands restore the private session
-into a short-lived dedicated profile in headless Chrome. Browser acquisition and
-session injection remain behind narrow adapters; the
+`coupangctl auth status` and read-only sync commands reopen the same persistent
+dedicated profile in a short-lived headless Chrome process. Browser acquisition
+remains behind narrow adapters; the
 typed parser, database, CLI, and MCP layers never receive browser automation
 objects.
 
-### 3. Machine without a usable desktop
+### 3. Existing authenticated ordinary Chrome (explicit power-user mode)
+
+`coupangctl orders sync --current-browser` can use Chrome 144+ only after the
+user enables remote debugging at `chrome://inspect/#remote-debugging` and
+approves Chrome's attachment prompt. It creates and closes only its own
+allowlisted tab, does not close Chrome, and does not copy browser state. Chrome
+grants debugger access across the profile, so this mode is broader than the
+optional selected-tab extension and is neither automatic nor appropriate for
+unattended scheduling.
+
+### 4. Machine without a usable desktop
 
 Authentication is not automated. CAPTCHA and OTP must not be bypassed. A true
 headless renderer is not currently supported for initial login because the live
@@ -99,8 +111,12 @@ FixtureDocumentSource ─┴─> ProtectedDocumentSource ─> typed parser
 ## Required tests
 
 - Login launch never reads the everyday Chrome profile.
-- Login launch never accepts phone numbers or OTPs as command-line flags.
-- CAPTCHA/OTP pages pause for human interaction and are never auto-submitted.
+- Login launch never accepts phone numbers or OTPs as command-line flags; the
+  terminal secret source obtains them interactively or from documented secret
+  names without echoing them.
+- CAPTCHA pages pause for human interaction. A user-supplied OTP may be entered
+  once through the headed page UI, but the protected send/verify endpoints are
+  never replayed directly or retried after an inconclusive result.
 - Logs and structured errors contain no phone number, OTP, cookie, order ID, or
   raw response body.
 - Reusing the dedicated profile can load a read-only account page after login.

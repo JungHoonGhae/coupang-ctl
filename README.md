@@ -44,11 +44,15 @@ go build -o ./bin/coupangctl ./cmd/coupangctl
 
 ./bin/coupangctl doctor
 ./bin/coupangctl auth login
-./bin/coupangctl orders sync
-./bin/coupangctl orders recap --output ./shopping-recap.html
+./bin/coupangctl sync
+./bin/coupangctl recap --output ./shopping-recap.html
 ```
 
-`auth login`은 QR 로그인을 기본으로 엽니다. 휴대폰에서 승인하면 세션을 전용 브라우저 프로필에 연결하고, 이후 읽기는 headless 우선으로 실행합니다. 모든 CLI 명령은 문서화된 JSON 객체를 출력합니다.
+`auth login`은 QR 로그인을 기본으로 엽니다. 휴대폰에서 승인하면 로그인 상태는
+전용 브라우저 프로필 안에 남고, 이후 읽기는 화면 없는 headless 모드로 먼저
+실행합니다. 접근이 거부되고 데스크톱을 쓸 수 있을 때만 같은 전용 프로필의 창을
+한 번 열어 재시도합니다. 확장 프로그램, Node, Playwright, Orca는 기본 실행에
+필요하지 않습니다. 모든 CLI 명령은 문서화된 JSON 객체를 출력합니다.
 
 여섯 플랫폼 아카이브·SBOM·체크섬·GitHub provenance를 만드는 태그 릴리스
 파이프라인은 snapshot으로 검증되어 있지만, 아직 공개 릴리스 태그가 없으므로
@@ -62,8 +66,9 @@ go build -o ./bin/coupangctl ./cmd/coupangctl
 
 | 영역 | 상태 | 할 수 있는 일 |
 | --- | --- | --- |
-| 로그인·세션 | 사용 가능 | QR, 일회성 앱 링크, 수동 SMS 로그인과 세션 검증 |
-| 일반 Chrome 연결 | 실험적 | 기존 로그인 탭을 사용한 최소 권한 주문 동기화; 쿠키 복사 없음 |
+| 로그인·세션 | 사용 가능 | QR, 일회성 앱 링크, 사용자 OTP 기반 SMS 로그인과 세션 검증 |
+| 현재 Chrome 연결 | 실험적 | Chrome의 명시적 승인 뒤 확장 없이 실행 중인 브라우저로 주문 동기화 |
+| 선택 탭 확장 연결 | 실험적 | 현재 Chrome 연결을 쓸 수 없을 때의 선택적 최소 권한 호환 경로 |
 | 주문 기록 | 사용 가능 | 전체 이력 동기화, 이어받기, 목록·내보내기·가져오기 |
 | 소비 분석 | 사용 가능 | 지출, 멤버십 비용 분리, 취소·반품, 시간대, 배송 추세 |
 | 쇼핑 유형·리캡 | 사용 가능 | 근거가 보이는 4축 유형, 배지, 공개형·비공개형 HTML |
@@ -279,7 +284,7 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 대표 도구:
 
 - `auth_status`, `account_benefits`
-- `orders_sync`, `orders_sync_ordinary_browser`, `orders_list`, `orders_spend`, `orders_stats`
+- `orders_sync`, `orders_sync_current_browser`, `orders_sync_ordinary_browser`, `orders_list`, `orders_spend`, `orders_stats`
 - `orders_insights`, `orders_product_insights`, `orders_category_catalog`, `orders_category_stability`, `orders_reorder_candidates`
 - `orders_export`, `orders_enrich_categories`
 - `products_search`, `product_inspect`, `cart_add`
@@ -295,12 +300,31 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 | --- | --- | --- |
 | QR | `coupangctl auth login` | 기본값. 실제 브라우저에서 QR을 열고 휴대폰으로 승인 |
 | 앱 링크 | `coupangctl auth login --link` | QR에서 읽은 일회성 링크와 두 자리 승인번호를 stderr에 한 번 표시 |
-| SMS | `coupangctl auth login --phone` | CAPTCHA와 OTP가 필요한 수동 대안 |
+| SMS | `coupangctl auth login --phone` | 번호 요청과 전달받은 OTP만 UI에 입력하며 CAPTCHA는 사용자가 푸는 대안 |
 | 원격 화면 | `coupangctl auth login --qr-output /secure/path/qr.png` | Xvfb 같은 headed renderer에서 QR 부분만 임시 PNG로 전달 |
 
-로그인은 headed 브라우저에서만 진행합니다. 실측상 보호된 로그인 진입점은 진짜 headless Chrome을 거부할 수 있습니다. 로그인 뒤의 검증과 읽기는 headless 우선이며, 환경이 거부할 때만 설치된 브라우저의 headed 읽기로 한 번 재시도할 수 있습니다.
+로그인은 headed 브라우저에서만 진행합니다. 실측상 보호된 로그인 진입점은 진짜
+headless Chrome을 거부할 수 있습니다. 로그인 뒤의 검증과 읽기는 headless
+우선이며, 환경이 거부할 때만 설치된 브라우저의 headed 읽기로 한 번 재시도할 수
+있습니다. 로그인 상태는 브라우저 소유 전용 프로필에만 남으며 별도 쿠키·세션
+파일로 복사하지 않습니다.
 
-전용 브라우저 컨텍스트가 보호된 주문 읽기를 거부할 때는 실험적인 일반 Chrome 경로를 사용할 수 있습니다.
+Chrome 144 이상에서는 실행 중인 현재 Chrome을 확장 없이 사용하는 실험적 고급
+경로도 있습니다. 먼저 `chrome://inspect/#remote-debugging`에서 원격 디버깅을
+직접 켜고 Chrome의 연결 요청을 승인한 뒤 실행합니다.
+
+```bash
+coupangctl sync --max-pages 1 --current-browser
+```
+
+MCP에서는 `orders_sync_current_browser`를 사용합니다. 이 모드는
+`coupangctl`이 만든 탭만 열고 닫으며 Chrome 자체는 종료하지 않고, 쿠키나 세션
+상태를 복사하지 않습니다. 다만 Chrome의 디버깅 승인은 해당 프로필의 열린 탭,
+쿠키, 저장소까지 접근할 수 있는 넓은 권한입니다. 따라서 자동으로 켜거나 무인
+서버용으로 취급하지 않으며 기본 모드로도 사용하지 않습니다.
+
+전용 브라우저와 승인된 현재 Chrome을 모두 쓰기 어려운 경우에만 선택 탭 확장
+브리지를 호환 경로로 사용할 수 있습니다.
 
 ```bash
 coupangctl browser-bridge install
@@ -308,7 +332,7 @@ coupangctl browser-bridge doctor
 coupangctl orders sync --max-pages 1 --ordinary-browser
 ```
 
-`install`은 실행 중인 바이너리의 절대경로로 사용자 범위 Native Messaging 호스트를 등록하고 검토된 확장 번들을 응답의 `extension_path`에 풉니다. Chrome Web Store 배포 전에는 그 경로를 `chrome://extensions`에서 압축해제된 확장으로 한 번 로드해야 합니다. `doctor`의 `ready`가 `true`인지 확인한 뒤 동기화 명령을 먼저 실행하고, 이미 로그인된 일반 Chrome의 쿠팡 주문목록 탭에서 `coupangctl 일반 브라우저 연결` 확장 버튼을 한 번 누릅니다. 확장은 그 탭에만 임시 접근하며 쿠키를 읽거나 복사하지 않습니다. Chrome은 정확히 허용된 로컬 네이티브 호스트와 통신하고, 호스트는 2분짜리 단일 사용 인증으로 대기 중인 CLI에 연결합니다. MCP에서는 같은 흐름을 `orders_sync_ordinary_browser`로 호출합니다.
+`install`은 실행 중인 바이너리의 절대경로로 사용자 범위 Native Messaging 호스트를 등록하고 검토된 확장 번들을 응답의 `extension_path`에 풉니다. 이 개발자용 압축해제 설치는 일반 사용자의 빠른 시작이 아닙니다. Web Store 배포 전 검증에서만 그 경로를 `chrome://extensions`에 한 번 로드합니다. `doctor`의 `ready`가 `true`인지 확인한 뒤 동기화 명령을 먼저 실행하고, 이미 로그인된 일반 Chrome의 쿠팡 주문목록 탭에서 확장 팝업을 엽니다. 읽을 필드와 로컬 전송 범위를 확인하고 **이 탭 연결**을 눌러야 읽기가 시작됩니다. 확장은 그 탭에만 임시 접근하며 쿠키를 읽거나 복사하지 않습니다. Chrome은 정확히 허용된 로컬 네이티브 호스트와 통신하고, 호스트는 2분짜리 단일 사용 인증으로 대기 중인 CLI에 연결합니다. MCP에서는 같은 흐름을 `orders_sync_ordinary_browser`로 호출합니다.
 
 `browser-bridge uninstall`은 동일 설치가 기록한 번들·매니페스트·등록이 모두 일치할 때만 해당 파일을 제거하며 Chrome 프로필, 쿠키, 확장 데이터, 주문 DB는 건드리지 않습니다. 서버처럼 일반 Chrome을 직접 사용할 수 없는 환경은 `orders export`/`orders import`로 정규화 데이터를 옮깁니다. 자세한 JSON 계약은 [`BROWSER_BRIDGE.md`](BROWSER_BRIDGE.md)에 있습니다.
 
@@ -326,7 +350,7 @@ coupangctl orders sync --max-pages 1 --ordinary-browser
 
 | 데이터 | 처리 원칙 |
 | --- | --- |
-| 쿠키·세션 | 전용 상태 디렉터리의 비공개 파일에 원자적으로 저장하고 출력하지 않음 |
+| 쿠키·세션 | 전용 Chrome 프로필 안에만 유지하고 별도 파일로 복사·출력하지 않음 |
 | OTP·비밀번호·QR 링크 | 저장·로그·구조화 출력 금지 |
 | 카드·영수증 | 카드 식별자·번호·다운로드 URL은 버리고, 다운로드 파일은 새 `0600` 경로에만 저장 |
 | 가격 관찰 | 공개 상품명·옵션 ID·관찰가·시각을 로컬 DB에만 저장하고 별도 확인 명령으로 삭제 |
@@ -344,7 +368,8 @@ coupangctl orders sync --max-pages 1 --ordinary-browser
 cmd/coupangctl
   ├─ CLI adapter ─────┐
   │                   ├─ typed services ─┬─ installed browser adapters
-  └─ MCP stdio adapter┘                  ├─ ordinary Chrome page-source bridge
+  └─ MCP stdio adapter┘                  ├─ approved current-Chrome adapter
+                                        ├─ optional selected-tab extension bridge
                                         └─ SQLite repository
 ```
 
@@ -383,8 +408,11 @@ coupangctl products inspect --product-id ID --no-affiliate
 - [`PRICES.md`](PRICES.md) — 옵션별 가격 이력과 재구매 비교 계약
 - [`PRODUCT_PRINCIPLES.md`](PRODUCT_PRINCIPLES.md) — 증거·개인정보·완료 기준
 - [`BROWSER_BRIDGE.md`](BROWSER_BRIDGE.md) — 일반 Chrome 설치·진단·제거와 MCP 계약
+- [`PRIVACY.md`](PRIVACY.md) — 로컬 데이터 흐름·보관·삭제와 확장 권한 설명
 - [`extension/README.md`](extension/README.md) — 일반 Chrome 연결의 개발자용 등록·검증 방법
+- [`extension/STORE_LISTING.md`](extension/STORE_LISTING.md) — Chrome Web Store 제출 문구와 검증 게이트
 - [`research/ordinary-browser-bridge.md`](research/ordinary-browser-bridge.md) — 일반 Chrome 보호 데이터 브리지의 공식 자료 기반 설계·위협 모델
+- [`research/browser-distribution-alternatives.md`](research/browser-distribution-alternatives.md) — 최신 Chrome·WebDriver·주요 오픈소스의 배포 방식 비교와 기본 구조 결정
 - [`research/endpoint-catalog.md`](research/endpoint-catalog.md) — 가린 비공개 route 목록
 - [`research/README_BENCHMARKS.md`](research/README_BENCHMARKS.md) — 인기 CLI·MCP 저장소를 참고한 README 설계 근거
 

@@ -30,6 +30,8 @@ import (
 	"github.com/JungHoonGhae/coupang-ctl/internal/store"
 )
 
+const orderSyncUsage = "usage: coupangctl orders sync [--max-pages N] [--headed|--current-browser|--ordinary-browser]"
+
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version string) error {
 	if len(args) == 0 {
 		return usage(stderr)
@@ -37,6 +39,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 	if strings.HasPrefix(args[0], "chrome-extension://") {
 		return runChromeNativeHost(ctx, args, os.Stdin, stdout)
 	}
+	args = expandConvenienceCommand(args)
 	if args[0] == "version" {
 		return writeJSON(stdout, map[string]string{"name": "coupangctl", "version": version})
 	}
@@ -76,13 +79,18 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 		}
 		return runBrowserBridge(args[1:], stdout, paths.StateDir, executable)
 	}
+	if conflictingOrderSyncBrowserModes(args) {
+		return errors.New(orderSyncUsage)
+	}
 
 	paths, err := platform.DefaultPaths()
 	if err != nil {
 		return err
 	}
 	browserAdapter := browser.NewNative(paths.ProfileDir)
-	if headedReadRequested(args) {
+	if currentBrowserReadRequested(args) {
+		browserAdapter = browser.NewNativeCurrentBrowser()
+	} else if headedReadRequested(args) {
 		browserAdapter = browser.NewNativeHeadedSync(paths.ProfileDir)
 	}
 	defer browserAdapter.Close()
@@ -142,16 +150,35 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 		productService := productworkflow.NewWithAffiliateAndPrices(coupangproducts.New(browserAdapter), partners.NewFromEnvironment(os.Getenv), ledger)
 		accountService := accountworkflow.NewWithCosts(coupangaccount.New(browserAdapter), ledger)
 		return mcpserver.RunWithProviders(ctx, mcpserver.Providers{
-			Auth:           authService,
-			Orders:         orderworkflow.New(ledger, browserAdapter),
-			OrdinaryOrders: ordinaryBrowserOrderSync{ledger: ledger, stateDir: paths.StateDir},
-			Products:       productService,
-			Account:        accountService,
-			Receipts:       receiptService,
+			Auth:                 authService,
+			Orders:               orderworkflow.New(ledger, browserAdapter),
+			CurrentBrowserOrders: currentBrowserOrderSync{ledger: ledger},
+			OrdinaryOrders:       ordinaryBrowserOrderSync{ledger: ledger, stateDir: paths.StateDir},
+			Products:             productService,
+			Account:              accountService,
+			Receipts:             receiptService,
 		}, version)
 	default:
 		return usage(stderr)
 	}
+}
+
+func expandConvenienceCommand(args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+	var subcommand string
+	switch args[0] {
+	case "sync":
+		subcommand = "sync"
+	case "recap":
+		subcommand = "recap"
+	default:
+		return args
+	}
+	expanded := make([]string, 0, len(args)+1)
+	expanded = append(expanded, "orders", subcommand)
+	return append(expanded, args[1:]...)
 }
 
 func runChromeNativeHost(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) error {
@@ -568,10 +595,19 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 		flags := newFlagSet("orders sync")
 		maxPages := flags.Int("max-pages", 100, "maximum pages to process")
 		headed := flags.Bool("headed", false, "use headed browser fallback")
+		currentBrowser := flags.Bool("current-browser", false, "use a user-approved connection to running Chrome")
 		ordinaryBrowser := flags.Bool("ordinary-browser", false, "use the selected tab in ordinary Chrome")
-		const syncUsage = "usage: coupangctl orders sync [--max-pages N] [--headed|--ordinary-browser]"
-		if err := parseFlags(flags, args[1:], syncUsage); err != nil || (*headed && *ordinaryBrowser) {
-			return errors.New(syncUsage)
+		if err := parseFlags(flags, args[1:], orderSyncUsage); err != nil {
+			return err
+		}
+		selectedBrowserModes := 0
+		for _, selected := range []bool{*headed, *currentBrowser, *ordinaryBrowser} {
+			if selected {
+				selectedBrowserModes++
+			}
+		}
+		if selectedBrowserModes > 1 {
+			return errors.New(orderSyncUsage)
 		}
 		result, err := workflow.Sync(ctx, core.SyncRequest{MaxPages: *maxPages})
 		if err != nil {
@@ -831,7 +867,7 @@ func headedReadRequested(args []string) bool {
 		return false
 	}
 	for _, argument := range args[2:] {
-		if argument == "--headed" {
+		if argument == "--headed" || argument == "--headed=true" {
 			return true
 		}
 	}
@@ -848,6 +884,31 @@ func ordinaryBrowserReadRequested(args []string) bool {
 		}
 	}
 	return false
+}
+
+func currentBrowserReadRequested(args []string) bool {
+	if len(args) < 2 || args[0] != "orders" || args[1] != "sync" {
+		return false
+	}
+	for _, argument := range args[2:] {
+		if argument == "--current-browser" || argument == "--current-browser=true" {
+			return true
+		}
+	}
+	return false
+}
+
+func conflictingOrderSyncBrowserModes(args []string) bool {
+	if len(args) < 2 || args[0] != "orders" || args[1] != "sync" {
+		return false
+	}
+	selected := 0
+	for _, requested := range []bool{headedReadRequested(args), currentBrowserReadRequested(args), ordinaryBrowserReadRequested(args)} {
+		if requested {
+			selected++
+		}
+	}
+	return selected > 1
 }
 
 type resendAssistant interface {
@@ -981,6 +1042,12 @@ func WriteError(w io.Writer, err error) {
 	case errors.Is(err, browser.ErrBrowserNotFound):
 		code = "browser_not_found"
 		message = "install a supported Chrome-family browser or set COUPANGCTL_BROWSER_PATH"
+	case errors.Is(err, browser.ErrCurrentBrowserUnavailable):
+		code = "current_browser_unavailable"
+		message = "in Chrome 144 or newer, enable remote debugging at chrome://inspect/#remote-debugging, keep Chrome running, approve the connection, then retry with --current-browser"
+	case errors.Is(err, browser.ErrProfileInUse):
+		code = "profile_in_use"
+		message = "another coupangctl browser operation is using the dedicated profile; wait for it to finish and retry"
 	case errors.Is(err, browser.ErrAuthenticationRequired):
 		code = "authentication_required"
 		message = "run coupangctl auth login on an interactive desktop first"
@@ -1004,7 +1071,7 @@ func WriteError(w io.Writer, err error) {
 		message = "the product search or detail document did not expose the expected structured fields"
 	case errors.Is(err, browser.ErrBrowserAccessDenied):
 		code = "browser_access_denied"
-		message = "browser access was denied; retry later, or use --headed if the failed read was headless"
+		message = "browser access was denied after the supported browser fallback; retry later or explicitly use --current-browser"
 	case errors.Is(err, browser.ErrOrdinaryRendezvous), errors.Is(err, browser.ErrOrdinaryBrowserUnavailable):
 		code = "ordinary_browser_unavailable"
 		message = "open the Coupang order-history page in ordinary Chrome and click the coupangctl extension before the pairing window expires"

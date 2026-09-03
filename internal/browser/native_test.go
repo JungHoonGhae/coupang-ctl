@@ -128,6 +128,38 @@ func (f *fakeDocumentSession) Close() error {
 	return nil
 }
 
+func TestCurrentBrowserFetchDoesNotRequireOrCreateDedicatedProfile(t *testing.T) {
+	executable := syntheticExecutable(t, "exit 0\n")
+	document := []byte(`{"props":{}}`)
+	session := &fakeDocumentSession{document: document}
+	native := NewNativeCurrentBrowser()
+	native.getenv = func(name string) string {
+		if name == "COUPANGCTL_BROWSER_PATH" {
+			return executable
+		}
+		return ""
+	}
+	factoryCalls := 0
+	native.sessionFactory = func(_ context.Context, gotExecutable, gotProfile string) (documentSession, error) {
+		factoryCalls++
+		if gotExecutable != executable || gotProfile != "" {
+			t.Fatalf("current-browser factory executable=%q profile=%q", gotExecutable, gotProfile)
+		}
+		return session, nil
+	}
+
+	got, err := native.Fetch(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(document) || factoryCalls != 1 {
+		t.Fatalf("current-browser fetch document=%q factory_calls=%d", got, factoryCalls)
+	}
+	if native.requiresProfile || native.headedSessionFactory != nil || native.allowHeadedFallback != nil {
+		t.Fatal("current-browser adapter unexpectedly owns a profile or headed fallback")
+	}
+}
+
 func TestFetchAutomaticallyFallsBackToHeadedAndReusesIt(t *testing.T) {
 	executable := syntheticExecutable(t, "exit 0\n")
 	profile := filepath.Join(t.TempDir(), "browser-profile")
@@ -523,15 +555,18 @@ func TestProductSearchURLUsesObservedNativeSortersAndCategoryPaths(t *testing.T)
 	}
 }
 
-func TestSyncBrowserIsHeadlessWhileManualLoginRemainsHeaded(t *testing.T) {
-	arguments := strings.Join(syncBrowserArguments("/synthetic/profile", 49152, true), " ")
+func TestSyncBrowserIsHeadlessWithBrowserSelectedEphemeralPortWhileManualLoginRemainsHeaded(t *testing.T) {
+	arguments := strings.Join(syncBrowserArguments("/synthetic/profile", true), " ")
 	if !strings.Contains(arguments, "--headless=new") {
 		t.Fatalf("sync browser arguments are not headless: %s", arguments)
 	}
 	if !strings.Contains(arguments, "--remote-debugging-address=127.0.0.1") {
 		t.Fatalf("sync browser control is not restricted to loopback: %s", arguments)
 	}
-	headedArguments := strings.Join(syncBrowserArguments("/synthetic/profile", 49152, false), " ")
+	if !strings.Contains(arguments, "--remote-debugging-port=0") {
+		t.Fatalf("sync browser does not let Chrome choose an ephemeral port: %s", arguments)
+	}
+	headedArguments := strings.Join(syncBrowserArguments("/synthetic/profile", false), " ")
 	if strings.Contains(headedArguments, "--headless") {
 		t.Fatalf("headed fallback unexpectedly contains a headless flag: %s", headedArguments)
 	}

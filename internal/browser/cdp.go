@@ -1,16 +1,18 @@
 package browser
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,17 +21,17 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"github.com/JungHoonGhae/coupang-ctl/internal/browser/sessionbridge"
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
-	sessionstate "github.com/JungHoonGhae/coupang-ctl/internal/session"
 )
 
 const (
-	cdpStartupTimeout       = 15 * time.Second
-	pageLoadTimeout         = 25 * time.Second
-	maxCDPMessageSize       = 10 << 20
-	maxProductDocumentBytes = 3 << 20
-	maxReceiptDownloadBytes = 5 << 20
+	cdpStartupTimeout          = 15 * time.Second
+	pageLoadTimeout            = 25 * time.Second
+	maxCDPMessageSize          = 10 << 20
+	maxProductDocumentBytes    = 3 << 20
+	maxReceiptDownloadBytes    = 5 << 20
+	devToolsActivePortFilename = "DevToolsActivePort"
+	maxDevToolsActivePortBytes = 512
 )
 
 var ErrStructuredOrderDataMissing = errors.New("structured order data missing")
@@ -38,14 +40,21 @@ var ErrStructuredProductDataMissing = errors.New("structured product data missin
 var ErrStructuredAccountBenefitsDataMissing = errors.New("structured account benefits data missing")
 var ErrStructuredReceiptDataMissing = errors.New("structured receipt data missing")
 var ErrBrowserAccessDenied = errors.New("browser access denied")
+var ErrCurrentBrowserUnavailable = errors.New("current Chrome connection unavailable")
+
+type browserProtocol interface {
+	Call(context.Context, string, any, any) error
+	Close() error
+}
 
 type chromeSession struct {
-	command    *exec.Cmd
-	baseURL    string
-	httpClient *http.Client
-	browser    *cdpClient
-	sessions   *sessionbridge.Bridge
-	closeOnce  sync.Once
+	command     *exec.Cmd
+	baseURL     string
+	httpClient  *http.Client
+	browser     browserProtocol
+	ownsBrowser bool
+	profileLock *profileLock
+	closeOnce   sync.Once
 }
 
 type cdpClient struct {
@@ -93,59 +102,59 @@ func newHeadedChromeSession(ctx context.Context, executable, profileDir string) 
 }
 
 func startChromeSession(ctx context.Context, executable, profileDir string, headless bool) (documentSession, error) {
-	port, err := availableLoopbackPort()
-	if err != nil {
-		return nil, fmt.Errorf("allocate local browser control port: %w", err)
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(profileDir, 0o700); err != nil {
+			return nil, fmt.Errorf("secure dedicated browser profile: %w", err)
+		}
 	}
-	command := browserCommand(ctx, executable, syncBrowserArguments(profileDir, port, headless)...)
+	profileLock, err := acquireProfileLock(profileDir)
+	if err != nil {
+		return nil, err
+	}
+	_, baselineWebSocketURL, _ := readDevToolsActivePort(profileDir)
+	command := browserCommand(ctx, executable, syncBrowserArguments(profileDir, headless)...)
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard
 	if err := command.Start(); err != nil {
+		_ = profileLock.release()
 		return nil, fmt.Errorf("start read-only browser session: %w", err)
 	}
 
 	transport := &http.Transport{Proxy: nil}
 	httpClient := &http.Client{Transport: transport, Timeout: 2 * time.Second}
 	session := &chromeSession{
-		command:    command,
-		baseURL:    "http://127.0.0.1:" + strconv.Itoa(port),
-		httpClient: httpClient,
+		command:     command,
+		httpClient:  httpClient,
+		ownsBrowser: true,
+		profileLock: profileLock,
 	}
 	startupCtx, cancel := context.WithTimeout(ctx, cdpStartupTimeout)
 	defer cancel()
-	metadata, err := session.waitForVersion(startupCtx)
+	baseURL, metadata, err := waitForManagedChromeEndpoint(startupCtx, profileDir, baselineWebSocketURL, httpClient)
 	if err != nil {
 		_ = command.Process.Kill()
 		_ = command.Wait()
 		transport.CloseIdleConnections()
+		_ = profileLock.release()
 		return nil, err
 	}
+	session.baseURL = baseURL
 	session.browser, err = dialCDP(startupCtx, metadata.WebSocketDebuggerURL)
 	if err != nil {
 		_ = command.Process.Kill()
 		_ = command.Wait()
 		transport.CloseIdleConnections()
+		_ = profileLock.release()
 		return nil, fmt.Errorf("connect local browser control channel: %w", err)
-	}
-	session.sessions = sessionbridge.New(
-		sessionstate.NewFileStore(filepath.Join(filepath.Dir(profileDir), "session.json")),
-		time.Now,
-	)
-	if err := session.sessions.Restore(startupCtx, session.browser); err != nil {
-		_ = session.browser.Close()
-		_ = command.Process.Kill()
-		_ = command.Wait()
-		transport.CloseIdleConnections()
-		return nil, err
 	}
 	return session, nil
 }
 
-func syncBrowserArguments(profileDir string, port int, headless bool) []string {
+func syncBrowserArguments(profileDir string, headless bool) []string {
 	arguments := []string{
 		"--user-data-dir=" + profileDir,
 		"--remote-debugging-address=127.0.0.1",
-		"--remote-debugging-port=" + strconv.Itoa(port),
+		"--remote-debugging-port=0",
 		"--no-first-run",
 		"--no-default-browser-check",
 		"about:blank",
@@ -204,9 +213,6 @@ func (s *chromeSession) ReadOrderDocument(ctx context.Context, targetURL string)
 			return nil, err
 		}
 	}
-	if err := s.persistBrowserSession(ctx); err != nil {
-		return nil, err
-	}
 	return document, nil
 }
 
@@ -243,9 +249,6 @@ func (s *chromeSession) ReadProductCategoryDocument(ctx context.Context, targetU
 	}
 	document, err := waitForProductCategoryDocument(ctx, page)
 	if err != nil {
-		return nil, err
-	}
-	if err := s.persistBrowserSession(ctx); err != nil {
 		return nil, err
 	}
 	return document, nil
@@ -310,9 +313,6 @@ func (s *chromeSession) ReadAccountBenefitsDocument(ctx context.Context, maxCash
 	}{Membership: membership, CashSummary: cashResult.Summary, CashTransactionPages: cashResult.Pages})
 	if err != nil {
 		return nil, ErrStructuredAccountBenefitsDataMissing
-	}
-	if err := s.persistBrowserSession(ctx); err != nil {
-		return nil, err
 	}
 	return result, nil
 }
@@ -829,9 +829,6 @@ func (s *chromeSession) readReceiptPage(ctx context.Context, expression string) 
 	if err != nil || len(encodedDocument) == 0 || len(encodedDocument) > maxCDPMessageSize || !json.Valid([]byte(encodedDocument)) {
 		return nil, ErrStructuredReceiptDataMissing
 	}
-	if err := s.persistBrowserSession(ctx); err != nil {
-		return nil, err
-	}
 	return []byte(encodedDocument), nil
 }
 
@@ -897,9 +894,6 @@ func (s *chromeSession) readProductPage(ctx context.Context, targetURL string, r
 	}
 	document, err := read(ctx, page)
 	if err != nil {
-		return nil, err
-	}
-	if err := s.persistBrowserSession(ctx); err != nil {
 		return nil, err
 	}
 	return document, nil
@@ -1466,20 +1460,15 @@ func fetchOrderModelDocument(ctx context.Context, page *cdpClient, targetURL str
 	return []byte(result.Body), nil
 }
 
-func (s *chromeSession) persistBrowserSession(ctx context.Context) error {
-	if s.sessions == nil || s.browser == nil {
-		return errors.New("browser session persistence unavailable")
-	}
-	return s.sessions.Capture(ctx, s.browser)
-}
-
 func (s *chromeSession) Close() error {
 	var closeErr error
 	s.closeOnce.Do(func() {
 		if s.browser != nil {
-			closeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			_ = s.browser.Call(closeCtx, "Browser.close", struct{}{}, nil)
-			cancel()
+			if s.ownsBrowser {
+				closeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				_ = s.browser.Call(closeCtx, "Browser.close", struct{}{}, nil)
+				cancel()
+			}
 			_ = s.browser.Close()
 		}
 		if s.command != nil && s.command.Process != nil {
@@ -1498,30 +1487,171 @@ func (s *chromeSession) Close() error {
 				<-done
 			}
 		}
-		s.httpClient.CloseIdleConnections()
+		if s.httpClient != nil {
+			s.httpClient.CloseIdleConnections()
+		}
+		if s.profileLock != nil {
+			if err := s.profileLock.release(); closeErr == nil {
+				closeErr = err
+			}
+		}
 	})
 	return closeErr
 }
 
-func (s *chromeSession) waitForVersion(ctx context.Context) (versionMetadata, error) {
+func waitForManagedChromeEndpoint(ctx context.Context, profileDir, baselineWebSocketURL string, client *http.Client) (string, versionMetadata, error) {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		request, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+"/json/version", nil)
-		response, err := s.httpClient.Do(request)
-		if err == nil {
-			var metadata versionMetadata
-			decodeErr := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&metadata)
-			response.Body.Close()
-			if decodeErr == nil && metadata.WebSocketDebuggerURL != "" {
-				return metadata, nil
+		baseURL, webSocketURL, err := readDevToolsActivePort(profileDir)
+		if err == nil && webSocketURL != baselineWebSocketURL {
+			metadata, versionErr := readChromeVersion(ctx, client, baseURL)
+			if versionErr == nil && metadata.WebSocketDebuggerURL == webSocketURL {
+				return baseURL, metadata, nil
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return versionMetadata{}, errors.New("local browser control channel did not start")
+			return "", versionMetadata{}, errors.New("local browser control channel did not start")
 		case <-ticker.C:
 		}
+	}
+}
+
+func readChromeVersion(ctx context.Context, client *http.Client, baseURL string) (versionMetadata, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/json/version", nil)
+	if err != nil {
+		return versionMetadata{}, err
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return versionMetadata{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return versionMetadata{}, ErrCurrentBrowserUnavailable
+	}
+	var metadata versionMetadata
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&metadata); err != nil || metadata.WebSocketDebuggerURL == "" {
+		return versionMetadata{}, ErrCurrentBrowserUnavailable
+	}
+	return metadata, nil
+}
+
+func readDevToolsActivePort(userDataDir string) (string, string, error) {
+	if !filepath.IsAbs(userDataDir) {
+		return "", "", ErrCurrentBrowserUnavailable
+	}
+	directoryInfo, err := os.Stat(userDataDir)
+	if err != nil || !directoryInfo.IsDir() || (runtime.GOOS != "windows" && directoryInfo.Mode().Perm()&0o077 != 0) {
+		return "", "", ErrCurrentBrowserUnavailable
+	}
+	path := filepath.Join(userDataDir, devToolsActivePortFilename)
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxDevToolsActivePortBytes || (runtime.GOOS != "windows" && info.Mode().Perm()&0o022 != 0) {
+		return "", "", ErrCurrentBrowserUnavailable
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || int64(len(content)) != info.Size() {
+		return "", "", ErrCurrentBrowserUnavailable
+	}
+	lines := bytes.Split(bytes.TrimSpace(content), []byte{'\n'})
+	if len(lines) != 2 {
+		return "", "", ErrCurrentBrowserUnavailable
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(string(lines[0])))
+	pathValue := strings.TrimSpace(string(lines[1]))
+	if err != nil || port < 1 || port > 65535 || !validDevToolsBrowserPath(pathValue) {
+		return "", "", ErrCurrentBrowserUnavailable
+	}
+	baseURL := "http://127.0.0.1:" + strconv.Itoa(port)
+	return baseURL, "ws://127.0.0.1:" + strconv.Itoa(port) + pathValue, nil
+}
+
+func validDevToolsBrowserPath(value string) bool {
+	const prefix = "/devtools/browser/"
+	if !strings.HasPrefix(value, prefix) {
+		return false
+	}
+	token := strings.TrimPrefix(value, prefix)
+	if len(token) < 8 || len(token) > 256 {
+		return false
+	}
+	for _, character := range token {
+		if (character < 'a' || character > 'z') && (character < 'A' || character > 'Z') && (character < '0' || character > '9') && character != '-' && character != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+func newCurrentChromeSession(ctx context.Context, executable, _ string) (documentSession, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, ErrCurrentBrowserUnavailable
+	}
+	userDataDir, err := currentBrowserUserDataDir(runtime.GOOS, executable, home, os.Getenv)
+	if err != nil {
+		return nil, err
+	}
+	baseURL, webSocketURL, err := readDevToolsActivePort(userDataDir)
+	if err != nil {
+		return nil, err
+	}
+	transport := &http.Transport{Proxy: nil}
+	httpClient := &http.Client{Transport: transport, Timeout: 2 * time.Second}
+	metadata, err := readChromeVersion(ctx, httpClient, baseURL)
+	if err != nil || metadata.WebSocketDebuggerURL != webSocketURL {
+		transport.CloseIdleConnections()
+		return nil, ErrCurrentBrowserUnavailable
+	}
+	protocol, err := dialCDP(ctx, webSocketURL)
+	if err != nil {
+		transport.CloseIdleConnections()
+		return nil, ErrCurrentBrowserUnavailable
+	}
+	return &chromeSession{baseURL: baseURL, httpClient: httpClient, browser: protocol}, nil
+}
+
+func currentBrowserUserDataDir(goos, executable, home string, getenv func(string) string) (string, error) {
+	if override := strings.TrimSpace(getenv("COUPANGCTL_CURRENT_BROWSER_USER_DATA_DIR")); override != "" {
+		if !filepath.IsAbs(override) {
+			return "", ErrCurrentBrowserUnavailable
+		}
+		return filepath.Clean(override), nil
+	}
+	normalized := strings.ToLower(strings.ReplaceAll(executable, "\\", "/"))
+	family := ""
+	switch {
+	case strings.Contains(normalized, "google chrome") || strings.Contains(normalized, "google/chrome") || strings.Contains(normalized, "google-chrome"):
+		family = "chrome"
+	case strings.Contains(normalized, "microsoft edge") || strings.Contains(normalized, "microsoft/edge") || strings.Contains(normalized, "microsoft-edge") || strings.HasSuffix(normalized, "/msedge.exe"):
+		family = "edge"
+	case strings.Contains(normalized, "chromium"):
+		family = "chromium"
+	default:
+		return "", ErrCurrentBrowserUnavailable
+	}
+	switch goos {
+	case "darwin":
+		leaf := map[string]string{"chrome": "Google/Chrome", "edge": "Microsoft Edge", "chromium": "Chromium"}[family]
+		return filepath.Join(home, "Library", "Application Support", leaf), nil
+	case "linux":
+		root := strings.TrimSpace(getenv("XDG_CONFIG_HOME"))
+		if root == "" {
+			root = filepath.Join(home, ".config")
+		}
+		leaf := map[string]string{"chrome": "google-chrome", "edge": "microsoft-edge", "chromium": "chromium"}[family]
+		return filepath.Join(root, leaf), nil
+	case "windows":
+		root := strings.TrimRight(strings.TrimSpace(getenv("LOCALAPPDATA")), "\\/")
+		if root == "" {
+			return "", ErrCurrentBrowserUnavailable
+		}
+		leaf := map[string]string{"chrome": `Google\Chrome\User Data`, "edge": `Microsoft\Edge\User Data`, "chromium": `Chromium\User Data`}[family]
+		return root + `\` + leaf, nil
+	default:
+		return "", ErrCurrentBrowserUnavailable
 	}
 }
 
@@ -1939,15 +2069,6 @@ func dialCDP(ctx context.Context, endpoint string) (*cdpClient, error) {
 	}
 	connection.SetReadLimit(maxCDPMessageSize)
 	return &cdpClient{connection: connection}, nil
-}
-
-func availableLoopbackPort() (int, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer listener.Close()
-	return listener.Addr().(*net.TCPAddr).Port, nil
 }
 
 func validateOrderTarget(target string) error {

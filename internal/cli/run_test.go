@@ -516,6 +516,94 @@ func TestOrdersSyncCanUseTheExplicitlySelectedOrdinaryBrowser(t *testing.T) {
 	}
 }
 
+func TestCurrentBrowserReadRequestedOnlyForExplicitOrderSync(t *testing.T) {
+	if !currentBrowserReadRequested([]string{"orders", "sync", "--current-browser"}) {
+		t.Fatal("explicit current-browser order sync was not selected")
+	}
+	if !currentBrowserReadRequested([]string{"orders", "sync", "--current-browser=true"}) {
+		t.Fatal("explicit true current-browser order sync was not selected")
+	}
+	for _, args := range [][]string{
+		{"orders", "sync"},
+		{"orders", "list", "--current-browser"},
+		{"products", "search", "--current-browser"},
+		{"orders", "sync", "--current-browser=false"},
+	} {
+		if currentBrowserReadRequested(args) {
+			t.Fatalf("unexpected current-browser selection for %q", args)
+		}
+	}
+}
+
+func TestConvenienceCommandsExpandWithoutMutatingInput(t *testing.T) {
+	for _, test := range []struct {
+		input []string
+		want  []string
+	}{
+		{[]string{"sync", "--max-pages", "2"}, []string{"orders", "sync", "--max-pages", "2"}},
+		{[]string{"recap", "--output", "recap.html"}, []string{"orders", "recap", "--output", "recap.html"}},
+		{[]string{"orders", "sync"}, []string{"orders", "sync"}},
+	} {
+		original := append([]string(nil), test.input...)
+		got := expandConvenienceCommand(test.input)
+		if strings.Join(got, "\x00") != strings.Join(test.want, "\x00") {
+			t.Fatalf("expandConvenienceCommand(%q) = %q, want %q", test.input, got, test.want)
+		}
+		if strings.Join(test.input, "\x00") != strings.Join(original, "\x00") {
+			t.Fatalf("expandConvenienceCommand mutated input: got %q want %q", test.input, original)
+		}
+	}
+}
+
+func TestOrdersSyncRejectsConflictingBrowserModes(t *testing.T) {
+	for _, args := range [][]string{
+		{"sync", "--headed", "--current-browser"},
+		{"sync", "--headed", "--ordinary-browser"},
+		{"sync", "--current-browser", "--ordinary-browser"},
+	} {
+		err := runOrders(context.Background(), args, io.Discard, nil)
+		if err == nil || !strings.Contains(err.Error(), "--current-browser") {
+			t.Fatalf("runOrders(%q) error = %v", args, err)
+		}
+	}
+}
+
+func TestRunRejectsConflictingBrowserModesBeforeStartingBridge(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
+	err := Run(
+		context.Background(),
+		[]string{"orders", "sync", "--current-browser", "--ordinary-browser"},
+		io.Discard,
+		io.Discard,
+		"test",
+	)
+	if err == nil || err.Error() != orderSyncUsage {
+		t.Fatalf("conflicting browser modes error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "ordinary-browser-rendezvous.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("conflicting modes created a browser rendezvous: %v", err)
+	}
+}
+
+func TestSyncAliasRejectsConflictingBrowserModesBeforeStartingBridge(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
+	err := Run(
+		context.Background(),
+		[]string{"sync", "--current-browser", "--ordinary-browser"},
+		io.Discard,
+		io.Discard,
+		"test",
+	)
+	if err == nil || err.Error() != orderSyncUsage {
+		t.Fatalf("sync alias conflicting browser modes error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "ordinary-browser-rendezvous.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("sync alias created a browser rendezvous: %v", err)
+	}
+}
+
 func TestChromeNativeHostInvocationRejectsEveryOtherExtensionOrigin(t *testing.T) {
 	t.Setenv("COUPANGCTL_STATE_DIR", t.TempDir())
 	var stdout, stderr bytes.Buffer
@@ -889,6 +977,33 @@ func TestWriteErrorUsesStableSanitizedShape(t *testing.T) {
 	}
 	if bytes.Contains(output.Bytes(), []byte("sensitive local path")) {
 		t.Fatalf("error output exposed an internal cause: %s", output.Bytes())
+	}
+}
+
+func TestWriteErrorClassifiesUnavailableCurrentBrowserWithoutLocalDetails(t *testing.T) {
+	var output bytes.Buffer
+	WriteError(&output, errors.Join(browser.ErrCurrentBrowserUnavailable, errors.New("sensitive profile path")))
+	var got core.ErrorResponse
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "current_browser_unavailable" || !strings.Contains(got.Error.Message, "chrome://inspect/#remote-debugging") {
+		t.Fatalf("unexpected current-browser error: %#v", got)
+	}
+	if bytes.Contains(output.Bytes(), []byte("sensitive profile path")) {
+		t.Fatalf("error output exposed an internal cause: %s", output.Bytes())
+	}
+}
+
+func TestWriteErrorClassifiesProfileInUseWithoutLocalDetails(t *testing.T) {
+	var output bytes.Buffer
+	WriteError(&output, errors.Join(browser.ErrProfileInUse, errors.New("sensitive lock path")))
+	var got core.ErrorResponse
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "profile_in_use" || strings.Contains(got.Error.Message, "sensitive") {
+		t.Fatalf("unexpected profile lock error: %#v", got)
 	}
 }
 

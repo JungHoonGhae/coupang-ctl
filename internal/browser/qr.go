@@ -86,7 +86,7 @@ func presentQRLogin(ctx context.Context, executable, profileDir, targetURL, outp
 	if err := session.presentQR(ctx, targetURL, outputPath, presentLink); err != nil {
 		return err
 	}
-	return session.persistBrowserSession(ctx)
+	return nil
 }
 
 func (s *chromeSession) presentQR(ctx context.Context, targetURL, outputPath string, presentLink core.QRLinkPresenter) error {

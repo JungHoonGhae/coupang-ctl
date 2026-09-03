@@ -76,6 +76,7 @@ type phonePresenter func(context.Context, string, string, string, string, core.O
 
 type Native struct {
 	profileDir            string
+	requiresProfile       bool
 	getenv                func(string) string
 	lookPath              func(string) (string, error)
 	sessionFactory        func(context.Context, string, string) (documentSession, error)
@@ -91,6 +92,7 @@ type Native struct {
 func NewNative(profileDir string) *Native {
 	native := &Native{
 		profileDir:           profileDir,
+		requiresProfile:      true,
 		getenv:               os.Getenv,
 		lookPath:             exec.LookPath,
 		sessionFactory:       newChromeSession,
@@ -119,6 +121,18 @@ func NewNativeHeadedSync(profileDir string) *Native {
 	return native
 }
 
+// NewNativeCurrentBrowser connects only to a running Chrome-family browser
+// whose user explicitly enabled Chrome's remote-debugging approval flow. It
+// does not launch, close, or copy session state from that browser.
+func NewNativeCurrentBrowser() *Native {
+	native := NewNative("")
+	native.requiresProfile = false
+	native.sessionFactory = newCurrentChromeSession
+	native.headedSessionFactory = nil
+	native.allowHeadedFallback = nil
+	return native
+}
+
 func (n *Native) Verify(ctx context.Context) error {
 	_, err := n.Fetch(ctx, nil)
 	closeErr := n.Close()
@@ -129,12 +143,8 @@ func (n *Native) Verify(ctx context.Context) error {
 }
 
 func (n *Native) Fetch(ctx context.Context, cursor *core.OrderCursor) ([]byte, error) {
-	present, err := directoryPresent(n.profileDir)
-	if err != nil {
-		return nil, fmt.Errorf("inspect dedicated browser profile: %w", err)
-	}
-	if !present {
-		return nil, ErrAuthenticationRequired
+	if err := n.requireExistingProfile(); err != nil {
+		return nil, err
 	}
 	path, err := n.discover()
 	if err != nil {
@@ -178,12 +188,8 @@ func (n *Native) FetchProductCategory(ctx context.Context, reference core.Produc
 	if !numericReference(reference.ProductID) || !numericReference(reference.VendorItemID) {
 		return nil, errors.New("invalid product category reference")
 	}
-	present, err := directoryPresent(n.profileDir)
-	if err != nil {
-		return nil, fmt.Errorf("inspect dedicated browser profile: %w", err)
-	}
-	if !present {
-		return nil, ErrAuthenticationRequired
+	if err := n.requireExistingProfile(); err != nil {
+		return nil, err
 	}
 	path, err := n.discover()
 	if err != nil {
@@ -293,12 +299,8 @@ func (n *Native) FetchAccountBenefits(ctx context.Context, request core.AccountB
 	if request.MaxCashTransactionPages == 0 {
 		request.MaxCashTransactionPages = 50
 	}
-	present, err := directoryPresent(n.profileDir)
-	if err != nil {
-		return nil, fmt.Errorf("inspect dedicated browser profile: %w", err)
-	}
-	if !present {
-		return nil, ErrAuthenticationRequired
+	if err := n.requireExistingProfile(); err != nil {
+		return nil, err
 	}
 	path, err := n.discover()
 	if err != nil {
@@ -382,12 +384,8 @@ func (n *Native) FetchVendorReceipt(ctx context.Context, request core.VendorRece
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
-	present, err := directoryPresent(n.profileDir)
-	if err != nil {
-		return nil, fmt.Errorf("inspect dedicated browser profile: %w", err)
-	}
-	if !present {
-		return nil, ErrAuthenticationRequired
+	if err := n.requireExistingProfile(); err != nil {
+		return nil, err
 	}
 	path, err := n.discover()
 	if err != nil {
@@ -586,12 +584,8 @@ func (n *Native) FetchReceiptResearchMetadata(ctx context.Context, samples []Rec
 }
 
 func (n *Native) fetchReceiptResearchDocument(ctx context.Context, read func(receiptResearchDocumentSession) ([]byte, error)) ([]byte, error) {
-	present, err := directoryPresent(n.profileDir)
-	if err != nil {
-		return nil, fmt.Errorf("inspect dedicated browser profile: %w", err)
-	}
-	if !present {
-		return nil, ErrAuthenticationRequired
+	if err := n.requireExistingProfile(); err != nil {
+		return nil, err
 	}
 	path, err := n.discover()
 	if err != nil {
@@ -627,12 +621,8 @@ func (n *Native) fetchReceiptResearchDocument(ctx context.Context, read func(rec
 }
 
 func (n *Native) fetchReceiptDocument(ctx context.Context, read func(receiptDocumentSession) ([]byte, error)) ([]byte, error) {
-	present, err := directoryPresent(n.profileDir)
-	if err != nil {
-		return nil, fmt.Errorf("inspect dedicated browser profile: %w", err)
-	}
-	if !present {
-		return nil, ErrAuthenticationRequired
+	if err := n.requireExistingProfile(); err != nil {
+		return nil, err
 	}
 	path, err := n.discover()
 	if err != nil {
@@ -671,8 +661,8 @@ func (n *Native) fetchReceiptDocument(ctx context.Context, read func(receiptDocu
 }
 
 func (n *Native) fetchPublicProductDocument(ctx context.Context, retryMissingRead bool, read func(documentSession) ([]byte, error)) ([]byte, error) {
-	if err := os.MkdirAll(n.profileDir, 0o700); err != nil {
-		return nil, fmt.Errorf("create product browser profile: %w", err)
+	if err := n.ensureProfileDirectory(); err != nil {
+		return nil, err
 	}
 	path, err := n.discover()
 	if err != nil {
@@ -891,4 +881,28 @@ func directoryPresent(path string) (bool, error) {
 		return false, err
 	}
 	return info.IsDir(), nil
+}
+
+func (n *Native) requireExistingProfile() error {
+	if !n.requiresProfile {
+		return nil
+	}
+	present, err := directoryPresent(n.profileDir)
+	if err != nil {
+		return fmt.Errorf("inspect dedicated browser profile: %w", err)
+	}
+	if !present {
+		return ErrAuthenticationRequired
+	}
+	return nil
+}
+
+func (n *Native) ensureProfileDirectory() error {
+	if !n.requiresProfile {
+		return nil
+	}
+	if err := os.MkdirAll(n.profileDir, 0o700); err != nil {
+		return fmt.Errorf("create product browser profile: %w", err)
+	}
+	return nil
 }
