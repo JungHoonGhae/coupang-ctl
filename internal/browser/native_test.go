@@ -46,6 +46,8 @@ type fakeDocumentSession struct {
 	categoryURLs     []string
 	productDocument  []byte
 	productErr       error
+	productErrors    []error
+	productReads     int
 	productURLs      []string
 	receiptDocument  []byte
 	receiptErr       error
@@ -80,6 +82,11 @@ func (f *fakeDocumentSession) ReadProductCategoryDocument(_ context.Context, tar
 
 func (f *fakeDocumentSession) ReadProductSearchDocument(_ context.Context, targetURL string) ([]byte, error) {
 	f.productURLs = append(f.productURLs, targetURL)
+	index := f.productReads
+	f.productReads++
+	if index < len(f.productErrors) {
+		return f.productDocument, f.productErrors[index]
+	}
 	return f.productDocument, f.productErr
 }
 
@@ -155,19 +162,18 @@ func TestCurrentBrowserFetchDoesNotRequireOrCreateDedicatedProfile(t *testing.T)
 	if string(got) != string(document) || factoryCalls != 1 {
 		t.Fatalf("current-browser fetch document=%q factory_calls=%d", got, factoryCalls)
 	}
-	if native.requiresProfile || native.headedSessionFactory != nil || native.allowHeadedFallback != nil {
-		t.Fatal("current-browser adapter unexpectedly owns a profile or headed fallback")
+	if native.requiresProfile {
+		t.Fatal("current-browser adapter unexpectedly owns a profile")
 	}
 }
 
-func TestFetchAutomaticallyFallsBackToHeadedAndReusesIt(t *testing.T) {
-	executable := syntheticExecutable(t, "exit 0\n")
+func TestDefaultFetchNeverOpensAVisibleBrowserFallback(t *testing.T) {
+	executable := syntheticPlaceholderExecutable(t)
 	profile := filepath.Join(t.TempDir(), "browser-profile")
 	if err := os.MkdirAll(profile, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	headless := &fakeDocumentSession{err: ErrBrowserAccessDenied}
-	headed := &fakeDocumentSession{document: []byte(`{"props":{}}`)}
 	native := NewNative(profile)
 	native.getenv = func(name string) string {
 		if name == "COUPANGCTL_BROWSER_PATH" {
@@ -175,39 +181,29 @@ func TestFetchAutomaticallyFallsBackToHeadedAndReusesIt(t *testing.T) {
 		}
 		return ""
 	}
-	native.allowHeadedFallback = func() bool { return true }
 	native.waitBeforeAccessRetry = func(context.Context) error { return nil }
 	primaryCalls := 0
-	fallbackCalls := 0
 	native.sessionFactory = func(context.Context, string, string) (documentSession, error) {
 		primaryCalls++
 		return headless, nil
 	}
-	native.headedSessionFactory = func(context.Context, string, string) (documentSession, error) {
-		fallbackCalls++
-		return headed, nil
-	}
 
-	for attempt := 0; attempt < 2; attempt++ {
-		if _, err := native.Fetch(context.Background(), nil); err != nil {
-			t.Fatal(err)
-		}
+	_, err := native.Fetch(context.Background(), nil)
+	if !errors.Is(err, ErrBrowserAccessDenied) {
+		t.Fatalf("default fetch error = %v, want %v", err, ErrBrowserAccessDenied)
 	}
-	if primaryCalls != 1 || fallbackCalls != 1 {
-		t.Fatalf("session factories called headless=%d headed=%d", primaryCalls, fallbackCalls)
-	}
-	if !headless.closed {
-		t.Fatal("denied headless session was not closed")
+	if primaryCalls != 1 {
+		t.Fatalf("session factory called %d times", primaryCalls)
 	}
 	if len(headless.urls) != 2 {
 		t.Fatalf("headless session reads = %d, want one bounded retry", len(headless.urls))
 	}
-	if len(headed.urls) != 2 {
-		t.Fatalf("headed session reads = %d, want 2", len(headed.urls))
+	if headless.closed {
+		t.Fatal("default read unexpectedly replaced its non-visible session")
 	}
 }
 
-func TestVerifyNeverOpensHeadedFallbackUnlessExplicitlyConfigured(t *testing.T) {
+func TestVerifyUsesOnlyTheDefaultNonVisibleSession(t *testing.T) {
 	executable := syntheticExecutable(t, "exit 0\n")
 	profile := filepath.Join(t.TempDir(), "browser-profile")
 	if err := os.MkdirAll(profile, 0o700); err != nil {
@@ -221,23 +217,17 @@ func TestVerifyNeverOpensHeadedFallbackUnlessExplicitlyConfigured(t *testing.T) 
 		}
 		return ""
 	}
-	native.allowHeadedFallback = func() bool { return true }
 	native.waitBeforeAccessRetry = func(context.Context) error { return nil }
 	native.sessionFactory = func(context.Context, string, string) (documentSession, error) {
 		return headless, nil
-	}
-	fallbackCalls := 0
-	native.headedSessionFactory = func(context.Context, string, string) (documentSession, error) {
-		fallbackCalls++
-		return &fakeDocumentSession{document: []byte(`{"props":{}}`)}, nil
 	}
 
 	err := native.Verify(context.Background())
 	if !errors.Is(err, ErrBrowserAccessDenied) {
 		t.Fatalf("verify error = %v, want %v", err, ErrBrowserAccessDenied)
 	}
-	if fallbackCalls != 0 {
-		t.Fatalf("verify opened headed fallback %d time(s)", fallbackCalls)
+	if len(headless.urls) != 2 || !headless.closed {
+		t.Fatalf("verify read count=%d closed=%t", len(headless.urls), headless.closed)
 	}
 }
 
@@ -264,8 +254,8 @@ func TestBackgroundNativeNeverFallsBackToAVisibleBrowser(t *testing.T) {
 	if !errors.Is(err, ErrBrowserAccessDenied) {
 		t.Fatalf("background fetch error = %v, want %v", err, ErrBrowserAccessDenied)
 	}
-	if native.headedSessionFactory != nil || native.allowHeadedFallback != nil {
-		t.Fatal("background adapter retained a visible fallback")
+	if len(headless.urls) != 2 || headless.closed {
+		t.Fatalf("background read count=%d closed=%t", len(headless.urls), headless.closed)
 	}
 }
 
@@ -289,30 +279,24 @@ func TestFetchRetriesTransientAccessDenialInSameSession(t *testing.T) {
 		waits++
 		return nil
 	}
-	fallbackCalls := 0
 	native.sessionFactory = func(context.Context, string, string) (documentSession, error) { return headless, nil }
-	native.headedSessionFactory = func(context.Context, string, string) (documentSession, error) {
-		fallbackCalls++
-		return &fakeDocumentSession{}, nil
-	}
 
 	got, err := native.Fetch(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != string(document) || waits != 1 || len(headless.urls) != 2 || fallbackCalls != 0 {
-		t.Fatalf("retry result document=%q waits=%d reads=%d fallback_calls=%d", got, waits, len(headless.urls), fallbackCalls)
+	if string(got) != string(document) || waits != 1 || len(headless.urls) != 2 {
+		t.Fatalf("retry result document=%q waits=%d reads=%d", got, waits, len(headless.urls))
 	}
 }
 
-func TestProductCategoryFetchTreatsHeadlessLoginRedirectAsAccessRejection(t *testing.T) {
+func TestProductCategoryFetchNormalizesLoginRedirectWithoutVisibleRetry(t *testing.T) {
 	executable := syntheticExecutable(t, "exit 0\n")
 	profile := filepath.Join(t.TempDir(), "browser-profile")
 	if err := os.MkdirAll(profile, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	headless := &fakeDocumentSession{categoryErr: ErrAuthenticationRequired}
-	headed := &fakeDocumentSession{categoryDocument: []byte(`{"json_ld":[]}`)}
 	native := NewNative(profile)
 	native.getenv = func(name string) string {
 		if name == "COUPANGCTL_BROWSER_PATH" {
@@ -320,31 +304,26 @@ func TestProductCategoryFetchTreatsHeadlessLoginRedirectAsAccessRejection(t *tes
 		}
 		return ""
 	}
-	native.allowHeadedFallback = func() bool { return true }
 	native.sessionFactory = func(context.Context, string, string) (documentSession, error) {
 		return headless, nil
 	}
-	native.headedSessionFactory = func(context.Context, string, string) (documentSession, error) {
-		return headed, nil
-	}
 
 	reference := core.ProductReference{ProductID: "101", VendorItemID: "201"}
-	if _, err := native.FetchProductCategory(context.Background(), reference); err != nil {
-		t.Fatal(err)
+	if _, err := native.FetchProductCategory(context.Background(), reference); !errors.Is(err, core.ErrProductCategoryUnavailable) {
+		t.Fatalf("category fetch error = %v, want typed unavailable", err)
 	}
-	if !headless.closed || len(headed.categoryURLs) != 1 {
-		t.Fatalf("fallback state: headless closed=%t headed reads=%d", headless.closed, len(headed.categoryURLs))
+	if headless.closed || len(headless.categoryURLs) != 1 {
+		t.Fatalf("non-visible category read closed=%t reads=%d", headless.closed, len(headless.categoryURLs))
 	}
 }
 
-func TestProductCategoryFetchReturnsTypedUnavailableAfterHeadedRejection(t *testing.T) {
+func TestProductCategoryFetchReturnsTypedUnavailableAfterAccessRejection(t *testing.T) {
 	executable := syntheticExecutable(t, "exit 0\n")
 	profile := filepath.Join(t.TempDir(), "browser-profile")
 	if err := os.MkdirAll(profile, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	headless := &fakeDocumentSession{categoryErr: ErrBrowserAccessDenied}
-	headed := &fakeDocumentSession{categoryErr: ErrAuthenticationRequired}
 	native := NewNative(profile)
 	native.getenv = func(name string) string {
 		if name == "COUPANGCTL_BROWSER_PATH" {
@@ -352,9 +331,7 @@ func TestProductCategoryFetchReturnsTypedUnavailableAfterHeadedRejection(t *test
 		}
 		return ""
 	}
-	native.allowHeadedFallback = func() bool { return true }
 	native.sessionFactory = func(context.Context, string, string) (documentSession, error) { return headless, nil }
-	native.headedSessionFactory = func(context.Context, string, string) (documentSession, error) { return headed, nil }
 
 	_, err := native.FetchProductCategory(context.Background(), core.ProductReference{ProductID: "101", VendorItemID: "201"})
 	if !errors.Is(err, core.ErrProductCategoryUnavailable) {
@@ -362,11 +339,11 @@ func TestProductCategoryFetchReturnsTypedUnavailableAfterHeadedRejection(t *test
 	}
 }
 
-func TestProductSearchRetriesMissingHeadlessDocumentOnceInHeadedBrowser(t *testing.T) {
+func TestProductSearchRetriesMissingDocumentOnceInSameNonVisibleSession(t *testing.T) {
 	executable := syntheticExecutable(t, "exit 0\n")
 	profile := filepath.Join(t.TempDir(), "browser-profile")
-	headless := &fakeDocumentSession{productErr: ErrStructuredProductDataMissing}
-	headed := &fakeDocumentSession{productDocument: []byte(`{"items":[{"product_id":"101"}]}`)}
+	document := []byte(`{"items":[{"product_id":"101"}]}`)
+	headless := &fakeDocumentSession{productDocument: document, productErrors: []error{ErrStructuredProductDataMissing, nil}}
 	native := NewNative(profile)
 	native.getenv = func(name string) string {
 		if name == "COUPANGCTL_BROWSER_PATH" {
@@ -374,16 +351,14 @@ func TestProductSearchRetriesMissingHeadlessDocumentOnceInHeadedBrowser(t *testi
 		}
 		return ""
 	}
-	native.allowHeadedFallback = func() bool { return true }
 	native.sessionFactory = func(context.Context, string, string) (documentSession, error) { return headless, nil }
-	native.headedSessionFactory = func(context.Context, string, string) (documentSession, error) { return headed, nil }
 
-	document, err := native.FetchProductSearch(context.Background(), core.ProductSearchRequest{Query: "synthetic"})
+	got, err := native.FetchProductSearch(context.Background(), core.ProductSearchRequest{Query: "synthetic"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(document) != string(headed.productDocument) || !headless.closed || len(headless.productURLs) != 1 || len(headed.productURLs) != 1 {
-		t.Fatalf("unexpected product fallback: document=%s closed=%t headless=%#v headed=%#v", document, headless.closed, headless.productURLs, headed.productURLs)
+	if string(got) != string(document) || headless.closed || len(headless.productURLs) != 2 {
+		t.Fatalf("unexpected non-visible product retry: document=%s closed=%t reads=%#v", got, headless.closed, headless.productURLs)
 	}
 }
 
@@ -393,7 +368,7 @@ func TestExplicitHeadedCategoryFetchNormalizesMissingDocument(t *testing.T) {
 	if err := os.MkdirAll(profile, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	native := NewNative(profile)
+	native := NewNativeHeadedSync(profile)
 	native.getenv = func(name string) string {
 		if name == "COUPANGCTL_BROWSER_PATH" {
 			return executable
@@ -403,8 +378,6 @@ func TestExplicitHeadedCategoryFetchNormalizesMissingDocument(t *testing.T) {
 	native.sessionFactory = func(context.Context, string, string) (documentSession, error) {
 		return &fakeDocumentSession{categoryErr: ErrStructuredCategoryDataMissing}, nil
 	}
-	native.headedSessionFactory = nil
-
 	_, err := native.FetchProductCategory(context.Background(), core.ProductReference{ProductID: "101", VendorItemID: "201"})
 	if !errors.Is(err, core.ErrProductCategoryUnavailable) {
 		t.Fatalf("category fetch error = %v, want typed unavailable", err)
@@ -630,7 +603,7 @@ func TestSyncBrowserIsHeadlessWithBrowserSelectedEphemeralPortWhileManualLoginRe
 	}
 	headedArguments := strings.Join(syncBrowserArguments("/synthetic/profile", false), " ")
 	if strings.Contains(headedArguments, "--headless") {
-		t.Fatalf("headed fallback unexpectedly contains a headless flag: %s", headedArguments)
+		t.Fatalf("explicit headed mode unexpectedly contains a headless flag: %s", headedArguments)
 	}
 }
 
@@ -797,6 +770,19 @@ func syntheticExecutable(t *testing.T, body string) string {
 	}
 	path := filepath.Join(t.TempDir(), "synthetic-browser")
 	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func syntheticPlaceholderExecutable(t *testing.T) string {
+	t.Helper()
+	name := "synthetic-browser"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte("synthetic browser placeholder"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	return path

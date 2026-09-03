@@ -80,8 +80,6 @@ type Native struct {
 	getenv                func(string) string
 	lookPath              func(string) (string, error)
 	sessionFactory        func(context.Context, string, string) (documentSession, error)
-	headedSessionFactory  func(context.Context, string, string) (documentSession, error)
-	allowHeadedFallback   func() bool
 	presentQR             qrPresenter
 	presentPhone          phonePresenter
 	waitBeforeAccessRetry func(context.Context) error
@@ -91,14 +89,13 @@ type Native struct {
 
 func NewNative(profileDir string) *Native {
 	native := &Native{
-		profileDir:           profileDir,
-		requiresProfile:      true,
-		getenv:               os.Getenv,
-		lookPath:             exec.LookPath,
-		sessionFactory:       newChromeSession,
-		headedSessionFactory: newHeadedChromeSession,
-		presentQR:            presentQRLogin,
-		presentPhone:         presentPhoneLogin,
+		profileDir:      profileDir,
+		requiresProfile: true,
+		getenv:          os.Getenv,
+		lookPath:        exec.LookPath,
+		sessionFactory:  newChromeSession,
+		presentQR:       presentQRLogin,
+		presentPhone:    presentPhoneLogin,
 		waitBeforeAccessRetry: func(ctx context.Context) error {
 			timer := time.NewTimer(orderAccessRetryDelay)
 			defer timer.Stop()
@@ -110,25 +107,20 @@ func NewNative(profileDir string) *Native {
 			}
 		},
 	}
-	native.allowHeadedFallback = func() bool { return desktopAvailable(native.getenv) }
 	return native
 }
 
 func NewNativeHeadedSync(profileDir string) *Native {
 	native := NewNative(profileDir)
 	native.sessionFactory = newHeadedChromeSession
-	native.headedSessionFactory = nil
 	return native
 }
 
-// NewNativeBackground creates a read adapter for unattended processes. It may
-// retry a transient denial in the same headless session, but it never opens a
-// visible browser fallback.
+// NewNativeBackground names the non-visible adapter used by unattended
+// processes. NewNative has the same visibility contract; a visible browser is
+// available only through the explicit NewNativeHeadedSync constructor.
 func NewNativeBackground(profileDir string) *Native {
-	native := NewNative(profileDir)
-	native.headedSessionFactory = nil
-	native.allowHeadedFallback = nil
-	return native
+	return NewNative(profileDir)
 }
 
 // NewNativeCurrentBrowser connects only to a running Chrome-family browser
@@ -138,13 +130,11 @@ func NewNativeCurrentBrowser() *Native {
 	native := NewNative("")
 	native.requiresProfile = false
 	native.sessionFactory = newCurrentChromeSession
-	native.headedSessionFactory = nil
-	native.allowHeadedFallback = nil
 	return native
 }
 
 func (n *Native) Verify(ctx context.Context) error {
-	_, err := n.fetch(ctx, nil, false)
+	_, err := n.fetch(ctx, nil)
 	closeErr := n.Close()
 	if err != nil {
 		return err
@@ -153,10 +143,10 @@ func (n *Native) Verify(ctx context.Context) error {
 }
 
 func (n *Native) Fetch(ctx context.Context, cursor *core.OrderCursor) ([]byte, error) {
-	return n.fetch(ctx, cursor, true)
+	return n.fetch(ctx, cursor)
 }
 
-func (n *Native) fetch(ctx context.Context, cursor *core.OrderCursor, allowHeadedFallback bool) ([]byte, error) {
+func (n *Native) fetch(ctx context.Context, cursor *core.OrderCursor) ([]byte, error) {
 	if err := n.requireExistingProfile(); err != nil {
 		return nil, err
 	}
@@ -174,16 +164,6 @@ func (n *Native) fetch(ctx context.Context, cursor *core.OrderCursor, allowHeade
 		}
 	}
 	targetURL := orderDocumentURL(cursor)
-	document, err := n.readOrderDocument(ctx, targetURL)
-	if !allowHeadedFallback || !errors.Is(err, ErrBrowserAccessDenied) || n.headedSessionFactory == nil || n.allowHeadedFallback == nil || !n.allowHeadedFallback() {
-		return document, err
-	}
-	_ = n.session.Close()
-	n.session = nil
-	n.session, err = n.headedSessionFactory(ctx, path, n.profileDir)
-	if err != nil {
-		return nil, err
-	}
 	return n.readOrderDocument(ctx, targetURL)
 }
 
@@ -227,20 +207,6 @@ func (n *Native) FetchProductCategory(ctx context.Context, reference core.Produc
 		return categorySession.ReadProductCategoryDocument(ctx, targetURL)
 	}
 	document, err := read()
-	headlessRejected := errors.Is(err, ErrBrowserAccessDenied) || errors.Is(err, ErrAuthenticationRequired)
-	if !headlessRejected || n.headedSessionFactory == nil || n.allowHeadedFallback == nil || !n.allowHeadedFallback() {
-		if productCategoryUnavailable(err) {
-			return nil, core.ErrProductCategoryUnavailable
-		}
-		return document, err
-	}
-	_ = n.session.Close()
-	n.session = nil
-	n.session, err = n.headedSessionFactory(ctx, path, n.profileDir)
-	if err != nil {
-		return nil, err
-	}
-	document, err = read()
 	if productCategoryUnavailable(err) {
 		return nil, core.ErrProductCategoryUnavailable
 	}
@@ -336,16 +302,6 @@ func (n *Native) FetchAccountBenefits(ctx context.Context, request core.AccountB
 		}
 		return session.ReadAccountBenefitsDocument(ctx, request.MaxCashTransactionPages)
 	}
-	document, err := read()
-	if !errors.Is(err, ErrBrowserAccessDenied) || n.headedSessionFactory == nil || n.allowHeadedFallback == nil || !n.allowHeadedFallback() {
-		return document, err
-	}
-	_ = n.session.Close()
-	n.session = nil
-	n.session, err = n.headedSessionFactory(ctx, path, n.profileDir)
-	if err != nil {
-		return nil, err
-	}
 	return read()
 }
 
@@ -416,16 +372,6 @@ func (n *Native) FetchVendorReceipt(ctx context.Context, request core.VendorRece
 	}
 	read := func() ([]byte, error) {
 		return readVendorReceiptFromSession(ctx, n.session, request)
-	}
-	document, err := read()
-	if !errors.Is(err, ErrBrowserAccessDenied) || n.headedSessionFactory == nil || n.allowHeadedFallback == nil || !n.allowHeadedFallback() {
-		return document, err
-	}
-	_ = n.session.Close()
-	n.session = nil
-	n.session, err = n.headedSessionFactory(ctx, path, n.profileDir)
-	if err != nil {
-		return nil, err
 	}
 	return read()
 }
@@ -621,16 +567,6 @@ func (n *Native) fetchReceiptResearchDocument(ctx context.Context, read func(rec
 		}
 		return read(session)
 	}
-	document, err := invoke()
-	if !errors.Is(err, ErrBrowserAccessDenied) || n.headedSessionFactory == nil || n.allowHeadedFallback == nil || !n.allowHeadedFallback() {
-		return document, err
-	}
-	_ = n.session.Close()
-	n.session = nil
-	n.session, err = n.headedSessionFactory(ctx, path, n.profileDir)
-	if err != nil {
-		return nil, err
-	}
 	return invoke()
 }
 
@@ -662,16 +598,7 @@ func (n *Native) fetchReceiptDocument(ctx context.Context, read func(receiptDocu
 	if errors.Is(err, ErrStructuredReceiptDataMissing) {
 		document, err = readCurrent()
 	}
-	if !errors.Is(err, ErrBrowserAccessDenied) || n.headedSessionFactory == nil || n.allowHeadedFallback == nil || !n.allowHeadedFallback() {
-		return document, err
-	}
-	_ = n.session.Close()
-	n.session = nil
-	n.session, err = n.headedSessionFactory(ctx, path, n.profileDir)
-	if err != nil {
-		return nil, err
-	}
-	return readCurrent()
+	return document, err
 }
 
 func (n *Native) fetchPublicProductDocument(ctx context.Context, retryMissingRead bool, read func(documentSession) ([]byte, error)) ([]byte, error) {
@@ -691,17 +618,10 @@ func (n *Native) fetchPublicProductDocument(ctx context.Context, retryMissingRea
 		}
 	}
 	document, err := read(n.session)
-	retryable := errors.Is(err, ErrBrowserAccessDenied) || (retryMissingRead && errors.Is(err, ErrStructuredProductDataMissing))
-	if !retryable || n.headedSessionFactory == nil || n.allowHeadedFallback == nil || !n.allowHeadedFallback() {
-		return document, err
+	if retryMissingRead && errors.Is(err, ErrStructuredProductDataMissing) {
+		document, err = read(n.session)
 	}
-	_ = n.session.Close()
-	n.session = nil
-	n.session, err = n.headedSessionFactory(ctx, path, n.profileDir)
-	if err != nil {
-		return nil, err
-	}
-	return read(n.session)
+	return document, err
 }
 
 func productSearchURL(request core.ProductSearchRequest) (string, error) {

@@ -51,6 +51,20 @@ Benefits and costs with different observation windows remain separate. Never
 sum a short-window membership-benefit total and a longer card-reward history
 into one headline unless their periods are aligned and overlap is excluded.
 
+## Quiet by default
+
+Routine commands should be invisible in normal use. Local analytics and status
+commands must not start a browser. Source reads use the dedicated browser
+profile headlessly and may make only bounded, idempotent retries in that same
+non-visible session.
+
+A visible browser is reserved for initial authentication, renewal, a source
+challenge that needs human action, or an explicit `--headed` request. A failed
+background read returns a typed next action instead of opening a surprise
+window. Current-browser attachment and the ordinary-browser bridge remain
+explicit opt-in modes; no stealth, fingerprint spoofing, or challenge bypass is
+part of the product.
+
 ## Natural language outside, typed evidence inside
 
 People should ask in ordinary language: “10만 원 아래, 후기 많은 맥북 허브

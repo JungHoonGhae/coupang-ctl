@@ -13,8 +13,8 @@ Chrome installation already present on the desktop:
 2. The first authentication or renewal opens that profile in a visible browser
    and leaves every challenge to the user.
 3. Later read-only syncs launch the same profile through a short-lived,
-   loopback-only CDP endpoint. They try headless first where it is accepted and
-   fall back to a visible window with an explicit typed status where it is not.
+   loopback-only CDP endpoint. They remain headless by default and return an
+   explicit typed status when human-visible action may be needed.
 4. Browser session state stays in the browser profile. It is not copied into a
    `coupangctl` cookie file, command output, MCP response, or server export.
 5. The ordinary-browser extension bridge becomes an optional compatibility
@@ -184,7 +184,7 @@ available.
 
 | Mode | User action | Extension | Automation after login | Scope |
 | --- | --- | --- | --- | --- |
-| `dedicated` (default) | Complete first login/renewal in a visible product-owned Chrome profile | No | Yes, headless-first and headed fallback | Only the product-owned profile and allowlisted read adapters |
+| `dedicated` (default) | Complete first login/renewal in a visible product-owned Chrome profile | No | Yes, non-visible reads; headed only when explicitly requested | Only the product-owned profile and allowlisted read adapters |
 | `current` (power user) | Enable Chrome remote debugging once and approve each new attachment | No | Only while the approved debugging connection remains available | Broad access to the selected Chrome profile; disclose prominently |
 | `extension` (compatibility) | Install a signed Web Store extension and explicitly select/connect a tab | Yes | According to the extension's consent and permission tier | Narrow selected-tab access; useful when dedicated Chrome is rejected |
 | `import` (server/browserless) | Transfer a normalized export created by the desktop CLI | No browser on server | Analytics only; no live refresh | Versioned typed records, never browser state |
@@ -230,9 +230,10 @@ support honest:
    application session file.
 3. Add a per-profile lock, browser-family/version metadata, ephemeral CDP port,
    bounded lifecycle, allowlisted navigation, and typed failure codes.
-4. Run headless-first only after authentication exists. On access denial,
-   return a typed result and allow one visible-browser retry; do not add stealth
-   flags, fingerprint spoofing, challenge replay, or unbounded retries.
+4. Run headlessly only after authentication exists. On access denial, return a
+   typed result; a visible-browser attempt requires a separate explicit user
+   request. Do not add stealth flags, fingerprint spoofing, challenge replay,
+   or unbounded retries.
 5. Keep `current` experimental until the official Chrome 144+ auto-connect
    consent flow and repeated order reads pass clean-profile live validation.
    Keep its broad-data warning distinct from the narrower extension disclosure.

@@ -94,11 +94,11 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Test isolated HKCU registration, native-host ping, and profile safety
+      - name: Test isolated HKCU registration, native-host ping, profile safety, and quiet defaults
         shell: pwsh
         run: |
           go test ./internal/browserbridge -run '^TestWindows' -count=1
-          go test ./internal/browser -run '^(TestOrdinaryBrowserNativeHostPing|TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser)' -count=1
+          go test ./internal/browser -run '^(TestOrdinaryBrowserNativeHostPing|TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser|TestDefaultFetchNeverOpensAVisibleBrowserFallback)' -count=1
 
   macos-browser-profile:
     name: macOS browser profile contracts
@@ -114,5 +114,5 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Test native profile lock and browser identity safety
-        run: go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser)' -count=1
+      - name: Test native profile safety and quiet defaults
+        run: go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser|TestDefaultFetchNeverOpensAVisibleBrowserFallback)' -count=1

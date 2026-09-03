@@ -106,11 +106,11 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   was printed.
 - A controlled same-page retry after ten seconds recovered one of two observed
   403 cases, while another remained denied. The native order reader now makes
-  exactly one delayed idempotent retry in the same browser session before its
-  existing headed fallback. Synthetic tests cover transient recovery and the
-  bounded permanent-denial path. A post-change live minimal probe still ended
-  in `browser_access_denied`, so this is explicitly a resilience improvement,
-  not a resolved access claim.
+  exactly one delayed idempotent retry in the same non-visible browser session,
+  then returns a typed failure without opening a window. Synthetic tests cover
+  transient recovery and the bounded permanent-denial path. A post-change live
+  minimal probe still ended in `browser_access_denied`, so this is explicitly a
+  resilience improvement, not a resolved access claim.
 - In a same-account comparison immediately afterward, Orca/computer-use opened
   the protected order list successfully in the user's already-running ordinary
   Google Chrome: the order UI was present, with neither an access-denied marker
@@ -234,8 +234,8 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   it automatically selects the QR tab in the visible browser and returns
   `verified` only after the exact protected order page finishes loading.
 - Headless verification and sync make one delayed read-only retry after a
-  protected-document access-denied response, then use the explicit `--headed`
-  fallback when a desktop is available.
+  protected-document access-denied response and then return a typed failure.
+  A headed attempt is a separate, explicit `--headed` invocation.
 - Authentication state remains in Chrome's dedicated persistent profile after
   human-approved login. Later reads reopen that profile with a validated
   ephemeral loopback DevTools endpoint; no second cookie/session file is
@@ -528,10 +528,11 @@ Clean-profile Linux/Windows validation and Web Store review remain.
   bootstrap only.
 - Passive `auth status` and default `auth verify` checks are headless-only and
   never open a visible fallback. `auth verify --headed` is the explicit
-  interactive verification path; routine data reads remain headless-first with
-  their bounded headed fallback. A denied passive check returns the typed
-  `access_blocked` auth state instead of guessing that the profile is logged
-  out or reporting a generic browser failure.
+  interactive verification path; routine data reads are also non-visible by
+  default and require an explicit `--headed` invocation for a visible attempt.
+  A denied passive check returns the typed `access_blocked` auth state instead
+  of guessing that the profile is logged out or reporting a generic browser
+  failure.
 - Tagged releases wait for native Linux, macOS, and Windows tests of dedicated
   profile locking and browser-family/major-version compatibility. Ordinary CI
   mirrors the missing macOS contract in addition to its full Linux and focused

@@ -241,7 +241,7 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 	switch args[0] {
 	case "status":
 		flags := newFlagSet("receipts status")
-		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		_ = flags.Bool("headed", false, "explicitly use a visible browser")
 		if err := parseFlags(flags, args[1:], "usage: coupangctl receipts status [--headed]"); err != nil {
 			return err
 		}
@@ -255,7 +255,7 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		from := flags.String("from", "", "inclusive YYYY-MM-DD start date")
 		to := flags.String("to", "", "inclusive YYYY-MM-DD end date")
 		maxCards := flags.Int("max-cards", 20, "maximum observed card methods per calendar-year read")
-		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		_ = flags.Bool("headed", false, "explicitly use a visible browser")
 		const commandUsage = "usage: coupangctl receipts overview --from YYYY-MM-DD --to YYYY-MM-DD [--max-cards N] [--headed]"
 		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *from == "" || *to == "" {
 			return errors.New(commandUsage)
@@ -270,7 +270,7 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		kind := flags.String("kind", "", "receipt family: cash or card")
 		page := flags.Int("page", 0, "zero-based request-history page")
 		size := flags.Int("size", 5, "history rows per page")
-		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		_ = flags.Bool("headed", false, "explicitly use a visible browser")
 		const commandUsage = "usage: coupangctl receipts list --kind <cash|card> [--page N] [--size N] [--headed]"
 		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *kind == "" {
 			return errors.New(commandUsage)
@@ -286,7 +286,7 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		from := flags.String("from", "", "inclusive YYYY-MM-DD start date")
 		to := flags.String("to", "", "inclusive YYYY-MM-DD end date")
 		maxCards := flags.Int("max-cards", 20, "maximum observed card methods to summarize")
-		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		_ = flags.Bool("headed", false, "explicitly use a visible browser")
 		const commandUsage = "usage: coupangctl receipts summary --kind <cash|card> --from YYYY-MM-DD --to YYYY-MM-DD [--max-cards N] [--headed]"
 		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *kind == "" || *from == "" || *to == "" {
 			return errors.New(commandUsage)
@@ -304,7 +304,7 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		historyIndex := flags.Int("history-index", -1, "zero-based history row index")
 		downloadIndex := flags.Int("download-index", 0, "zero-based file index within the history row")
 		output := flags.String("output", "", "new private output file path")
-		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		_ = flags.Bool("headed", false, "explicitly use a visible browser")
 		const commandUsage = "usage: coupangctl receipts download --kind <cash|card> --history-index N --output PATH [--download-index N] [--page N] [--size N] [--headed]"
 		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *kind == "" || *historyIndex < 0 || *output == "" {
 			return errors.New(commandUsage)
@@ -326,7 +326,7 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		flags := newFlagSet("receipts vendor")
 		sourceRef := flags.String("source-ref", "", "hashed source_ref returned by orders list")
 		maxPages := flags.Int("max-pages", 1000, "maximum order pages searched in memory")
-		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		_ = flags.Bool("headed", false, "explicitly use a visible browser")
 		const commandUsage = "usage: coupangctl receipts vendor --source-ref HASH [--max-pages N] [--headed]"
 		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *sourceRef == "" {
 			return errors.New(commandUsage)
@@ -383,7 +383,7 @@ func runAccount(ctx context.Context, args []string, stdout io.Writer, workflow a
 	}
 	flags := newFlagSet("account benefits")
 	cashPages := flags.Int("cash-pages", 50, "maximum Coupang Cash transaction pages")
-	_ = flags.Bool("headed", false, "use a headed browser fallback")
+	_ = flags.Bool("headed", false, "explicitly use a visible browser")
 	const commandUsage = "usage: coupangctl account benefits [--cash-pages N] [--headed]"
 	if err := parseFlags(flags, args[1:], commandUsage); err != nil {
 		return err
@@ -431,7 +431,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		includeVariants := flags.Bool("include-variants", false, "return multiple options from the same product page")
 		noAffiliate := flags.Bool("no-affiliate", false, "return canonical Coupang URLs only")
 		sortOrder := flags.String("sort", "relevance", "relevance, coupang_ranking, sales, latest, price_asc, price_desc, rating, or review_count")
-		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		_ = flags.Bool("headed", false, "explicitly use a visible browser")
 		const searchUsage = "usage: coupangctl products search (--query TEXT | --category-id ID) [--limit N] [--max-price KRW] [--min-rating N] [--min-reviews N] [--min-memory-gb N] [--min-storage-gb N] [--exclude-used] [--include-variants] [--rocket] [--free-shipping] [--exclude-sponsored] [--sort ORDER] [--no-affiliate] [--headed]"
 		if err := parseFlags(flags, args[1:], searchUsage); err != nil || (strings.TrimSpace(*query) == "" && *categoryID == "") {
 			return errors.New(searchUsage)
@@ -455,7 +455,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		reviewLimit := flags.Int("review-limit", 5, "maximum sanitized reviews")
 		imageLimit := flags.Int("detail-image-limit", 20, "maximum detailed images")
 		noAffiliate := flags.Bool("no-affiliate", false, "return the canonical Coupang URL only")
-		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		_ = flags.Bool("headed", false, "explicitly use a visible browser")
 		const inspectUsage = "usage: coupangctl products inspect --product-id ID [--item-id ID] [--vendor-item-id ID] [--review-limit N] [--detail-image-limit N] [--no-affiliate] [--headed]"
 		if err := parseFlags(flags, args[1:], inspectUsage); err != nil || *productID == "" {
 			return errors.New(inspectUsage)
@@ -545,7 +545,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		flags := newFlagSet("products watch-refresh")
 		limit := flags.Int("limit", 10, "maximum due watch entries")
 		staleHours := flags.Int("stale-hours", 24, "minimum hours since the last check")
-		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		_ = flags.Bool("headed", false, "explicitly use a visible browser")
 		const watchRefreshUsage = "usage: coupangctl products watch-refresh [--limit N] [--stale-hours N] [--headed]"
 		if err := parseFlags(flags, args[1:], watchRefreshUsage); err != nil {
 			return err
@@ -562,7 +562,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		vendorItemID := flags.String("vendor-item-id", "", "exact vendor item identifier returned by search")
 		quantity := flags.Int("quantity", 1, "quantity to add")
 		confirmed := flags.Bool("confirm-add-to-cart", false, "confirm this external cart change")
-		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		_ = flags.Bool("headed", false, "explicitly use a visible browser")
 		const cartUsage = "usage: coupangctl products cart-add --product-id ID --vendor-item-id ID [--item-id ID] [--quantity N] --confirm-add-to-cart [--headed]"
 		if err := parseFlags(flags, args[1:], cartUsage); err != nil || *productID == "" || *vendorItemID == "" || !*confirmed {
 			return errors.New(cartUsage)
@@ -605,7 +605,7 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 	case "sync":
 		flags := newFlagSet("orders sync")
 		maxPages := flags.Int("max-pages", 100, "maximum pages to process")
-		headed := flags.Bool("headed", false, "use headed browser fallback")
+		headed := flags.Bool("headed", false, "explicitly use a visible browser")
 		currentBrowser := flags.Bool("current-browser", false, "use a user-approved connection to running Chrome")
 		ordinaryBrowser := flags.Bool("ordinary-browser", false, "use the selected tab in ordinary Chrome")
 		if err := parseFlags(flags, args[1:], orderSyncUsage); err != nil {
