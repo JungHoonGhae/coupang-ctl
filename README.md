@@ -364,7 +364,10 @@ headless Chrome을 거부할 수 있습니다. `auth status`와 기본 `auth ver
 눈에 보이는 검증이 필요할 때는 사용자가 명시적으로 `auth verify --headed` 또는
 해당 읽기 명령의 `--headed`를 실행합니다. 조용한 검사가 거부되면
 `auth status`는 이를 로그아웃으로 추측하지 않고 구조화된 `access_blocked`
-상태로 반환합니다. 로그인 상태는 브라우저 소유 전용 프로필에만 남으며 별도
+상태로 반환합니다. 명시적 headed 시도까지 거부되면
+`headed_browser_access_denied`가 반환되며, 이미 사용한 headed 모드를 다시
+권하는 순환 안내나 불필요한 재로그인을 하지 않습니다. 로그인 상태는 브라우저
+소유 전용 프로필에만 남으며 별도
 쿠키·세션 파일로 복사하지 않습니다.
 
 Chrome 144 이상에서는 실행 중인 현재 Chrome을 확장 없이 사용하는 실험적 고급

@@ -1146,6 +1146,27 @@ func TestWriteErrorDoesNotClaimAnAccessDeniedReadWasHeadless(t *testing.T) {
 	}
 }
 
+func TestWriteCommandErrorDoesNotRecommendHeadedModeAfterHeadedDenial(t *testing.T) {
+	var output bytes.Buffer
+	WriteCommandError(&output, []string{"auth", "verify", "--headed"}, browser.ErrBrowserAccessDenied)
+	var got core.ErrorResponse
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "headed_browser_access_denied" || strings.Contains(got.Error.Message, "choose a supported headed") || !strings.Contains(got.Error.Message, "retry later") {
+		t.Fatalf("circular headed access error: %#v", got)
+	}
+
+	output.Reset()
+	WriteCommandError(&output, []string{"auth", "verify"}, browser.ErrBrowserAccessDenied)
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "browser_access_denied" {
+		t.Fatalf("quiet denial lost its generic remediation: %#v", got)
+	}
+}
+
 func TestWriteErrorClassifiesLocalRecapImageRenderFailure(t *testing.T) {
 	var output bytes.Buffer
 	WriteError(&output, browser.ErrLocalPageRenderFailed)

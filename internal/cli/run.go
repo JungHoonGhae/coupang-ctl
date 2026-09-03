@@ -1207,3 +1207,17 @@ func WriteError(w io.Writer, err error) {
 	}
 	_ = writeJSON(w, core.ErrorResponse{Error: core.ErrorBody{Code: code, Message: message}})
 }
+
+// WriteCommandError keeps user-facing remediation consistent with the mode
+// that actually failed. In particular, a denied explicit headed attempt must
+// not recommend selecting headed mode again.
+func WriteCommandError(w io.Writer, args []string, err error) {
+	if errors.Is(err, browser.ErrBrowserAccessDenied) && headedReadRequested(expandConvenienceCommand(args)) {
+		_ = writeJSON(w, core.ErrorResponse{Error: core.ErrorBody{
+			Code:    "headed_browser_access_denied",
+			Message: "the explicit visible browser attempt was also denied; retry later and do not assume the session expired from this result",
+		}})
+		return
+	}
+	WriteError(w, err)
+}
