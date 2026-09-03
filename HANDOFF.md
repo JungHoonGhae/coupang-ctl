@@ -42,6 +42,11 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   verifier rejects a missing target, extra archive content, incomplete SBOM
   set, or mismatched checksum. CI receives no Coupang or Doppler credentials
   and skips explicitly environment-gated live-browser tests.
+- Unix browser identity discovery makes at most two bounded `--version` probes
+  before launch. This absorbs one observed transient Linux runner failure while
+  preserving the caller deadline; terminal errors distinguish an unrecognized
+  family, unavailable version, and invalid major without exposing executable
+  paths or raw version output.
 - The native Windows job also runs isolated real-HKCU bridge registration,
   synthetic native-host ping, profile locking, and browser profile-identity
   contracts.

@@ -9,11 +9,21 @@ import (
 )
 
 func installedBrowserMajorVersion(ctx context.Context, executable string) (int, error) {
-	versionCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(versionCtx, executable, "--version").CombinedOutput()
-	if err != nil {
-		return 0, ErrProfileIncompatible
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		versionCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		output, err := exec.CommandContext(versionCtx, executable, "--version").CombinedOutput()
+		cancel()
+		if err == nil {
+			if major, parseErr := parseBrowserMajorVersion(string(output)); parseErr == nil {
+				return major, nil
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
 	}
-	return parseBrowserMajorVersion(string(output))
+	return 0, ErrProfileIncompatible
 }

@@ -31,11 +31,17 @@ type profileIdentity struct {
 func identifyManagedBrowser(ctx context.Context, executable string) (profileIdentity, error) {
 	family, err := browserFamily(executable)
 	if err != nil {
-		return profileIdentity{}, ErrProfileIncompatible
+		return profileIdentity{}, fmt.Errorf("%w: unrecognized browser family", ErrProfileIncompatible)
 	}
 	major, err := installedBrowserMajorVersion(ctx, executable)
-	if err != nil || major < 1 {
-		return profileIdentity{}, ErrProfileIncompatible
+	if err != nil {
+		if ctx.Err() != nil {
+			return profileIdentity{}, ctx.Err()
+		}
+		return profileIdentity{}, fmt.Errorf("%w: browser version unavailable", ErrProfileIncompatible)
+	}
+	if major < 1 {
+		return profileIdentity{}, fmt.Errorf("%w: browser major version is invalid", ErrProfileIncompatible)
 	}
 	return profileIdentity{SchemaVersion: profileIdentitySchema, Family: family, MajorVersion: major}, nil
 }
