@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/auth"
@@ -255,10 +256,10 @@ func TestCapabilitiesAreStructuredAndOrderedByPriority(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.SchemaVersion != 1 || len(report.Capabilities) < 5 || report.Capabilities[0].Priority != "P0" {
+	if report.SchemaVersion != 2 || len(report.Capabilities) < 5 || report.Capabilities[0].Priority != "P0" {
 		t.Fatalf("unexpected capability report: %#v", report)
 	}
-	if report.Capabilities[0].Status != core.CapabilityAvailable {
+	if report.Capabilities[0].Status != core.CapabilityAvailable || len(report.Capabilities[0].Implemented) == 0 || report.Capabilities[0].NextStepKind == "" {
 		t.Fatalf("unexpected leading capability status: %#v", report.Capabilities[0])
 	}
 }
@@ -673,6 +674,18 @@ func TestWriteErrorUsesTypedProductSourceFailureWithoutLeakingCause(t *testing.T
 	}
 	if bytes.Contains(output.Bytes(), []byte("sensitive upstream detail")) {
 		t.Fatalf("error output exposed an internal cause: %s", output.Bytes())
+	}
+}
+
+func TestWriteErrorDoesNotClaimAnAccessDeniedReadWasHeadless(t *testing.T) {
+	var output bytes.Buffer
+	WriteError(&output, browser.ErrBrowserAccessDenied)
+	var got core.ErrorResponse
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "browser_access_denied" || strings.HasPrefix(got.Error.Message, "headless access") {
+		t.Fatalf("misleading browser access error: %#v", got)
 	}
 }
 

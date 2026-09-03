@@ -8,6 +8,9 @@ Status vocabulary:
 - `planned`: valuable, but the data contract or safe operating boundary is not yet proven.
 
 The machine-readable view is `coupangctl capabilities`.
+Schema v2 also exposes `implemented`, `next_step_kind`, `blocked_by`, and
+`last_verified`. A blocker is an evidence or coordination dependency, not a
+license to guess the missing data or bypass an access control.
 
 | Priority | Capability | Status | Why it matters | Exit criterion / next work |
 | --- | --- | --- | --- | --- |
@@ -19,7 +22,7 @@ The machine-readable view is `coupangctl capabilities`.
 | P0 | Shopping type and recap | available | Turns local aggregates into four explainable axes, achievements, characters, and a public-safe HTML story. | Keep rule versions and thresholds stable; add image export only with a preview of the exact fields shared. |
 | P0 | Private product insights | available | Shows which identified products lead by units, orders, and spend, plus paid-unit and spend-day receipts. | Keep exact names and dates outside shareable output; add current-price comparison only after its source contract is stable. |
 | P0 | Natural-language product discovery | experimental | Lets an AI turn an ordinary Korean shopping request into bounded search filters, then inspect current public product evidence. | Validate more layouts and structured card-benefit coverage; keep unknown fields unknown. |
-| P0 | Source-native product rankings | experimental | Supports product-type and real-category views using separate Coupang ranking, sales, latest, and price controls while labeling local rating/review sorts honestly. | Observed category-label/ID discovery now hands off to category search without guessing; validate current-search availability and selected-option evidence across more layouts. |
+| P0 | Source-native product rankings | experimental | Supports product-type and real-category views using separate Coupang ranking, sales, latest, and price controls while labeling local rating/review sorts honestly. | Observed category-label/ID discovery now hands off to category search without guessing; repeat current-search availability in release checks and validate selected-option evidence across more layouts. |
 | P0 | Transparent affiliate deep links | experimental | Adds an optional operator-owned Partners URL without replacing the canonical product URL, while exposing the definite commission disclosure, price notice, self-purchase exclusion, and opt-out state. | The repository channel and disclosure evidence are registered; await final approval, issue the official API keys, and run a credential-redacted live contract check. |
 | P1 | Explicit cart add | experimental | Completes the useful shopping loop without crossing into purchase or payment. | Run a separately authorized live mutation test; require exact vendor item plus confirmation and never auto-retry an unverified attempt. |
 | P1 | Batch receipts | experimental | Enables accounting, reimbursement, and archive workflows. | Cash/card status, history, summaries, and private completed-archive download are implemented; validate a completed download live and add vendor-receipt reads without implementing request creation. |

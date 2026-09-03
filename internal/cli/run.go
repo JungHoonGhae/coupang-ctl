@@ -844,7 +844,7 @@ func WriteError(w io.Writer, err error) {
 		message = "the product search or detail document did not expose the expected structured fields"
 	case errors.Is(err, browser.ErrBrowserAccessDenied):
 		code = "browser_access_denied"
-		message = "headless access was denied; retry the read-only operation with --headed"
+		message = "browser access was denied; retry later, or use --headed if the failed read was headless"
 	case errors.Is(err, productworkflow.ErrSourceUnavailable):
 		code = "product_source_unavailable"
 		message = "the public product source was temporarily unavailable; the request may be retried"

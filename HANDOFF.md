@@ -16,6 +16,11 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   order queries, spending summaries, cancellation/return statistics,
   purchase/delivery trends, reorder candidates, normalized
   export/import, explicit purge, and the local stdio MCP server are implemented.
+- `coupangctl capabilities` schema v2 lists each capability's concrete
+  `implemented` surfaces separately from `next_step_kind`, `blocked_by`, and
+  `last_verified`. External approval, explicit mutation authorization,
+  missing source evidence, and elapsed-time validation are therefore visible
+  without mislabeling them as unfinished code.
 - CLI and MCP share the same typed authentication and order services. MCP
   exposes authentication status, sync, list, spend, reorder-candidate, and
   normalized-export tools. Destructive purge is intentionally CLI-only.
@@ -205,6 +210,13 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   `salePriceDesc`. Rating/review-count orders are local observed-field sorts.
   Responses preserve the selected scope, provenance, and original page
   position; 판매량순 does not claim an unavailable absolute sales count.
+- A live private-local catalog-to-search pass selected an observed leaf ID
+  without logging it and returned five current category results with category
+  scope, `sales` applied as a source-native sort, and positive source positions.
+  A later rapid multi-layout probe was denied in both headless and
+  CDP-controlled headed Chrome. No bypass was attempted; the detail-layout
+  coverage check remains a later retry, and the sanitized CLI error no longer
+  incorrectly assumes every access denial came from headless mode.
 - Listing options are collapsed by product ID by default. Search-card reviews
   can be product-page-wide, so they are labeled `product_page_observed` and are
   not attributed to a particular CPU/GPU/storage option. Exact vendor-item

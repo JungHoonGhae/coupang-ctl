@@ -69,7 +69,7 @@ go build -o ./bin/coupangctl ./cmd/coupangctl
 | 영수증 일괄 처리 | 실험적 | 현금·카드 요청 상태·이력·기간 합계와 완료된 파일의 비공개 저장 |
 | 주문·결제 | 지원 안 함 | 자동 주문, 결제, 구매 확정은 구현하지 않음 |
 
-현재 구현 상태와 다음 순서는 [`ROADMAP.md`](ROADMAP.md)와 `coupangctl capabilities`에서 확인할 수 있습니다.
+현재 구현 상태와 다음 순서는 [`ROADMAP.md`](ROADMAP.md)와 `coupangctl capabilities`에서 확인할 수 있습니다. capabilities schema v2는 각 항목의 `implemented`, `next_step_kind`, `blocked_by`, `last_verified`를 분리하므로 AI도 “더 구현할 일”과 “외부 승인·사용자 확인·시간 경과가 필요한 검증”을 구별할 수 있습니다.
 
 ## 주문 분석과 리캡
 
