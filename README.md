@@ -274,7 +274,7 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 대표 도구:
 
 - `auth_status`, `account_benefits`
-- `orders_sync`, `orders_list`, `orders_spend`, `orders_stats`
+- `orders_sync`, `orders_sync_ordinary_browser`, `orders_list`, `orders_spend`, `orders_stats`
 - `orders_insights`, `orders_product_insights`, `orders_category_catalog`, `orders_category_stability`, `orders_reorder_candidates`
 - `orders_export`, `orders_enrich_categories`
 - `products_search`, `product_inspect`, `cart_add`
@@ -298,10 +298,14 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 전용 브라우저 컨텍스트가 보호된 주문 읽기를 거부할 때는 실험적인 일반 Chrome 경로를 사용할 수 있습니다.
 
 ```bash
+coupangctl browser-bridge install
+coupangctl browser-bridge doctor
 coupangctl orders sync --max-pages 1 --ordinary-browser
 ```
 
-명령을 먼저 실행한 뒤, 이미 로그인된 일반 Chrome의 쿠팡 주문목록 탭에서 `coupangctl 일반 브라우저 연결` 확장 버튼을 한 번 누릅니다. 확장은 그 탭에만 임시 접근하며 쿠키를 읽거나 복사하지 않습니다. Chrome은 정확히 허용된 로컬 네이티브 호스트와 통신하고, 호스트는 2분짜리 단일 사용 인증으로 대기 중인 CLI에 연결합니다. 현재는 개발자용 압축해제 확장과 네이티브 호스트 등록이 필요하며 자동 설치·진단과 Web Store 배포는 다음 릴리스 게이트입니다. 서버처럼 일반 Chrome을 직접 사용할 수 없는 환경은 `orders export`/`orders import`로 정규화 데이터를 옮깁니다.
+`install`은 실행 중인 바이너리의 절대경로로 사용자 범위 Native Messaging 호스트를 등록하고 검토된 확장 번들을 응답의 `extension_path`에 풉니다. Chrome Web Store 배포 전에는 그 경로를 `chrome://extensions`에서 압축해제된 확장으로 한 번 로드해야 합니다. `doctor`의 `ready`가 `true`인지 확인한 뒤 동기화 명령을 먼저 실행하고, 이미 로그인된 일반 Chrome의 쿠팡 주문목록 탭에서 `coupangctl 일반 브라우저 연결` 확장 버튼을 한 번 누릅니다. 확장은 그 탭에만 임시 접근하며 쿠키를 읽거나 복사하지 않습니다. Chrome은 정확히 허용된 로컬 네이티브 호스트와 통신하고, 호스트는 2분짜리 단일 사용 인증으로 대기 중인 CLI에 연결합니다. MCP에서는 같은 흐름을 `orders_sync_ordinary_browser`로 호출합니다.
+
+`browser-bridge uninstall`은 동일 설치가 기록한 번들·매니페스트·등록이 모두 일치할 때만 해당 파일을 제거하며 Chrome 프로필, 쿠키, 확장 데이터, 주문 DB는 건드리지 않습니다. 서버처럼 일반 Chrome을 직접 사용할 수 없는 환경은 `orders export`/`orders import`로 정규화 데이터를 옮깁니다. 자세한 JSON 계약은 [`BROWSER_BRIDGE.md`](BROWSER_BRIDGE.md)에 있습니다.
 
 `--link` 출력은 짧게 살아 있는 인증 정보이므로 로그로 리디렉션하지 마세요. OTP, 쿠키, QR 링크는 JSON·세션 파일·테스트 fixture·오류 메시지에 넣지 않습니다.
 
@@ -373,6 +377,7 @@ coupangctl products inspect --product-id ID --no-affiliate
 - [`RECEIPTS.md`](RECEIPTS.md) — 영수증 조회·다운로드의 JSON 계약과 안전 경계
 - [`PRICES.md`](PRICES.md) — 옵션별 가격 이력과 재구매 비교 계약
 - [`PRODUCT_PRINCIPLES.md`](PRODUCT_PRINCIPLES.md) — 증거·개인정보·완료 기준
+- [`BROWSER_BRIDGE.md`](BROWSER_BRIDGE.md) — 일반 Chrome 설치·진단·제거와 MCP 계약
 - [`extension/README.md`](extension/README.md) — 일반 Chrome 연결의 개발자용 등록·검증 방법
 - [`research/ordinary-browser-bridge.md`](research/ordinary-browser-bridge.md) — 일반 Chrome 보호 데이터 브리지의 공식 자료 기반 설계·위협 모델
 - [`research/endpoint-catalog.md`](research/endpoint-catalog.md) — 가린 비공개 route 목록

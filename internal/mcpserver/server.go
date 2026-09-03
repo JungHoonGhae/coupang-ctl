@@ -28,6 +28,19 @@ type OrderProvider interface {
 	Export(context.Context, core.OrderFilter) (core.OrderExport, error)
 }
 
+type OrdinaryOrderProvider interface {
+	Sync(context.Context, core.SyncRequest) (core.SyncResult, error)
+}
+
+type Providers struct {
+	Auth           StatusProvider
+	Orders         OrderProvider
+	OrdinaryOrders OrdinaryOrderProvider
+	Products       ProductProvider
+	Account        AccountProvider
+	Receipts       ReceiptProvider
+}
+
 type ProductProvider interface {
 	Search(context.Context, core.ProductSearchRequest) (core.ProductSearchResult, error)
 	Inspect(context.Context, core.ProductInspectRequest) (core.ProductInspection, error)
@@ -52,26 +65,26 @@ type ReceiptProvider interface {
 }
 
 func New(provider StatusProvider, version string) *mcp.Server {
-	return newServer(provider, nil, nil, nil, nil, version)
+	return NewWithProviders(Providers{Auth: provider}, version)
 }
 
 func NewWithOrders(authProvider StatusProvider, orderProvider OrderProvider, version string) *mcp.Server {
-	return newServer(authProvider, orderProvider, nil, nil, nil, version)
+	return NewWithProviders(Providers{Auth: authProvider, Orders: orderProvider}, version)
 }
 
 func NewWithFeatures(authProvider StatusProvider, orderProvider OrderProvider, productProvider ProductProvider, version string) *mcp.Server {
-	return newServer(authProvider, orderProvider, productProvider, nil, nil, version)
+	return NewWithProviders(Providers{Auth: authProvider, Orders: orderProvider, Products: productProvider}, version)
 }
 
 func NewWithAllFeatures(authProvider StatusProvider, orderProvider OrderProvider, productProvider ProductProvider, accountProvider AccountProvider, version string) *mcp.Server {
-	return newServer(authProvider, orderProvider, productProvider, accountProvider, nil, version)
+	return NewWithProviders(Providers{Auth: authProvider, Orders: orderProvider, Products: productProvider, Account: accountProvider}, version)
 }
 
 func NewWithAllFeaturesAndReceipts(authProvider StatusProvider, orderProvider OrderProvider, productProvider ProductProvider, accountProvider AccountProvider, receiptProvider ReceiptProvider, version string) *mcp.Server {
-	return newServer(authProvider, orderProvider, productProvider, accountProvider, receiptProvider, version)
+	return NewWithProviders(Providers{Auth: authProvider, Orders: orderProvider, Products: productProvider, Account: accountProvider, Receipts: receiptProvider}, version)
 }
 
-func newServer(provider StatusProvider, orders OrderProvider, products ProductProvider, account AccountProvider, receipts ReceiptProvider, version string) *mcp.Server {
+func NewWithProviders(providers Providers, version string) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "coupangctl",
 		Version: version,
@@ -84,23 +97,26 @@ func newServer(provider StatusProvider, orders OrderProvider, products ProductPr
 			ReadOnlyHint: true,
 		},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, core.AuthStatus, error) {
-		status, err := provider.Status(ctx)
+		status, err := providers.Auth.Status(ctx)
 		if err != nil {
 			return nil, core.AuthStatus{}, errors.New("browser_unavailable: cannot inspect the dedicated browser profile")
 		}
 		return nil, status, nil
 	})
-	if orders != nil {
-		addOrderTools(server, orders)
+	if providers.Orders != nil {
+		addOrderTools(server, providers.Orders)
 	}
-	if products != nil {
-		addProductTools(server, products)
+	if providers.OrdinaryOrders != nil {
+		addOrdinaryOrderTools(server, providers.OrdinaryOrders)
 	}
-	if account != nil {
-		addAccountTools(server, account)
+	if providers.Products != nil {
+		addProductTools(server, providers.Products)
 	}
-	if receipts != nil {
-		addReceiptTools(server, receipts)
+	if providers.Account != nil {
+		addAccountTools(server, providers.Account)
+	}
+	if providers.Receipts != nil {
+		addReceiptTools(server, providers.Receipts)
 	}
 
 	return server
@@ -124,6 +140,10 @@ func RunWithAllFeatures(ctx context.Context, authProvider StatusProvider, orderP
 
 func RunWithAllFeaturesAndReceipts(ctx context.Context, authProvider StatusProvider, orderProvider OrderProvider, productProvider ProductProvider, accountProvider AccountProvider, receiptProvider ReceiptProvider, version string) error {
 	return NewWithAllFeaturesAndReceipts(authProvider, orderProvider, productProvider, accountProvider, receiptProvider, version).Run(ctx, &mcp.StdioTransport{})
+}
+
+func RunWithProviders(ctx context.Context, providers Providers, version string) error {
+	return NewWithProviders(providers, version).Run(ctx, &mcp.StdioTransport{})
 }
 
 func addReceiptTools(server *mcp.Server, provider ReceiptProvider) {
@@ -403,6 +423,22 @@ func addOrderTools(server *mcp.Server, provider OrderProvider) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "orders_sync", Description: "Refresh the normalized local ledger from the authenticated dedicated browser profile.",
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: true, OpenWorldHint: boolPointer(true),
+		},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.SyncRequest) (*mcp.CallToolResult, core.SyncResult, error) {
+		result, err := provider.Sync(ctx, input)
+		if err != nil {
+			return nil, core.SyncResult{}, safeToolError(err)
+		}
+		return nil, result, nil
+	})
+}
+
+func addOrdinaryOrderTools(server *mcp.Server, provider OrdinaryOrderProvider) {
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "orders_sync_ordinary_browser",
+		Description: "Refresh the normalized local ledger from the user-selected order-list tab in ordinary Chrome. Before calling, tell the user to keep that tab selected and click the installed coupangctl extension once while this tool is waiting. The extension uses activeTab for this one action, sends only normalized bounded order data through the local native host, and never copies cookies. This changes only the local ledger and never orders or pays.",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: true, OpenWorldHint: boolPointer(true),
 		},

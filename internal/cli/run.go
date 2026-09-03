@@ -14,6 +14,7 @@ import (
 	accountworkflow "github.com/JungHoonGhae/coupang-ctl/internal/account"
 	"github.com/JungHoonGhae/coupang-ctl/internal/auth"
 	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
+	"github.com/JungHoonGhae/coupang-ctl/internal/browserbridge"
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 	coupangaccount "github.com/JungHoonGhae/coupang-ctl/internal/coupang/account"
 	coupangproducts "github.com/JungHoonGhae/coupang-ctl/internal/coupang/products"
@@ -55,6 +56,25 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 			return fmt.Errorf("resolve absolute coupangctl executable: %w", err)
 		}
 		return runProductWatchSchedule(args[2:], stdout, executable)
+	}
+	if args[0] == "browser-bridge" {
+		paths, err := platform.DefaultPaths()
+		if err != nil {
+			return err
+		}
+		executable, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("resolve coupangctl executable: %w", err)
+		}
+		executable, err = filepath.Abs(executable)
+		if err != nil {
+			return fmt.Errorf("resolve absolute coupangctl executable: %w", err)
+		}
+		executable, err = filepath.EvalSymlinks(executable)
+		if err != nil {
+			return fmt.Errorf("resolve coupangctl executable symlinks: %w", err)
+		}
+		return runBrowserBridge(args[1:], stdout, paths.StateDir, executable)
 	}
 
 	paths, err := platform.DefaultPaths()
@@ -121,7 +141,14 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 		defer ledger.Close()
 		productService := productworkflow.NewWithAffiliateAndPrices(coupangproducts.New(browserAdapter), partners.NewFromEnvironment(os.Getenv), ledger)
 		accountService := accountworkflow.NewWithCosts(coupangaccount.New(browserAdapter), ledger)
-		return mcpserver.RunWithAllFeaturesAndReceipts(ctx, authService, orderworkflow.New(ledger, browserAdapter), productService, accountService, receiptService, version)
+		return mcpserver.RunWithProviders(ctx, mcpserver.Providers{
+			Auth:           authService,
+			Orders:         orderworkflow.New(ledger, browserAdapter),
+			OrdinaryOrders: ordinaryBrowserOrderSync{ledger: ledger, stateDir: paths.StateDir},
+			Products:       productService,
+			Account:        accountService,
+			Receipts:       receiptService,
+		}, version)
 	default:
 		return usage(stderr)
 	}
@@ -981,6 +1008,9 @@ func WriteError(w io.Writer, err error) {
 	case errors.Is(err, browser.ErrOrdinaryRendezvous), errors.Is(err, browser.ErrOrdinaryBrowserUnavailable):
 		code = "ordinary_browser_unavailable"
 		message = "open the Coupang order-history page in ordinary Chrome and click the coupangctl extension before the pairing window expires"
+	case errors.Is(err, browserbridge.ErrInstallationConflict):
+		code = "browser_bridge_installation_conflict"
+		message = "run coupangctl browser-bridge doctor and resolve the reported local installation conflict"
 	case errors.Is(err, browser.ErrLocalPageRenderFailed):
 		code = "recap_image_render_failed"
 		message = "the installed browser could not render the local recap image"

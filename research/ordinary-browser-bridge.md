@@ -459,6 +459,13 @@ data returned by Coupang or the native host.
 
 ## Verification gates before implementation is called available
 
+Implementation status on 2026-09-03: the macOS per-user host installer and all
+six local doctor checks passed, followed by four consecutive bounded one-page
+reads through the selected ordinary Chrome tab into the typed SQLite sync
+path. Before the fourth run, Chrome's detail page confirmed the installer-
+managed `extension_path` as the loaded bundle location. The test retained only
+counts and cursors. Clean-profile and clean Linux/Windows gates remain open.
+
 - Manifest test asserts the exact permission set and `incognito: not_allowed`;
   forbidden permissions and external listeners fail the build.
 - Packaged-extension test proves there is no remotely hosted executable code,

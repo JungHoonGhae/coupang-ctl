@@ -15,6 +15,7 @@ import (
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/auth"
 	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
+	"github.com/JungHoonGhae/coupang-ctl/internal/browserbridge"
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 	productworkflow "github.com/JungHoonGhae/coupang-ctl/internal/products"
 	receiptworkflow "github.com/JungHoonGhae/coupang-ctl/internal/receipts"
@@ -888,6 +889,23 @@ func TestWriteErrorUsesStableSanitizedShape(t *testing.T) {
 	}
 	if bytes.Contains(output.Bytes(), []byte("sensitive local path")) {
 		t.Fatalf("error output exposed an internal cause: %s", output.Bytes())
+	}
+}
+
+func TestWriteErrorClassifiesBrowserBridgeOwnershipConflictWithoutPath(t *testing.T) {
+	var output bytes.Buffer
+	WriteError(&output, errors.Join(browserbridge.ErrInstallationConflict, errors.New("sensitive local path")))
+	var got struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Error.Code != "browser_bridge_installation_conflict" || strings.Contains(got.Error.Message, "sensitive") {
+		t.Fatalf("unexpected browser bridge error: %#v", got.Error)
 	}
 }
 

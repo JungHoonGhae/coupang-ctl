@@ -134,6 +134,26 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 - Native-host reads now obey context cancellation and a bounded per-operation
   deadline, preventing a disconnected or non-responsive extension port from
   leaving the host blocked indefinitely.
+- `browser-bridge install`, `doctor`, and `uninstall` now package the reviewed
+  extension inside the Go binary and manage a per-user native-host registration
+  on macOS, Linux, and Windows. Installation preflights conflicts, doctor fails
+  closed on changed content without printing it, and uninstall removes only an
+  exact matching ownership record, native registration, and bundle. It never
+  removes Chrome profiles, cookies, extension data, or the order ledger.
+- MCP now exposes `orders_sync_ordinary_browser` through a dedicated typed sync
+  provider. It uses the same normalized order service and SQLite ledger as the
+  CLI while keeping the ordinary-page source separate from the dedicated
+  browser provider.
+- On 2026-09-03, the new macOS host installer completed against the existing
+  exact native registration, and doctor reported all six local checks as
+  healthy. The selected
+  ordinary Chrome tab then completed four consecutive bounded one-page
+  CLI-to-SQLite syncs. Before the fourth run, Chrome's extension detail page
+  confirmed that it had switched from the source directory to the installer's
+  managed `extension_path`; the fourth run succeeded from that bundle. Only
+  page/order/item counts and cursors were observed, and no raw order content
+  was recorded. Clean Chrome profiles and Linux/Windows environments remain
+  separate gates.
 - `receipts download` can save an already-completed history artifact to a new
   private `0600` file. It re-reads the selected history row, keeps the source
   URL in browser memory, validates the final Coupang host and bounded content,
@@ -438,8 +458,10 @@ and repurchase comparison are experimental; the watch command and reviewable
 launchd, systemd, cron, and Windows daily scheduler artifacts are implemented.
 Real longitudinal price-change validation remains.
 The ordinary-browser order bridge is experimental after one redacted live
-first-page success; multi-run repeatability, clean-machine installation,
-doctor/uninstall, Web Store review, and MCP exposure remain.
+first-page success. Cross-platform install/doctor/ownership-checked uninstall
+and the MCP typed sync surface are implemented, and four consecutive managed-
+host macOS reads passed, including one from the managed extension bundle.
+Clean-profile Linux/Windows validation and Web Store review remain.
 
 ## Security and compliance
 

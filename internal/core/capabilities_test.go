@@ -45,6 +45,9 @@ func TestCapabilitiesExposeImplementedStateAndNextEvidence(t *testing.T) {
 	if bridge.Status != core.CapabilityExperimental || bridge.NextStepKind != core.CapabilityNextLiveValidation || bridge.NextWork == "" || bridge.LastVerified == "" {
 		t.Fatalf("ordinary-browser bridge does not expose experimental validation state: %#v", bridge)
 	}
+	if len(bridge.Interface) != 2 || bridge.Interface[0] != "cli" || bridge.Interface[1] != "mcp" {
+		t.Fatalf("ordinary-browser bridge interfaces are stale: %#v", bridge.Interface)
+	}
 	for id, kind := range map[string]core.CapabilityNextStepKind{
 		"transparent_affiliate_deeplinks": core.CapabilityNextExternalDependency,
 		"explicit_cart_add":               core.CapabilityNextUserAuthorization,

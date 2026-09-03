@@ -16,6 +16,10 @@ type fixedStatusProvider struct {
 
 type fixedOrderProvider struct{}
 
+type capturingOrdinaryOrderProvider struct {
+	request core.SyncRequest
+}
+
 type fixedProductProvider struct{}
 
 type fixedAccountProvider struct{}
@@ -87,6 +91,11 @@ func (fixedProductProvider) AddToCart(_ context.Context, request core.CartAddReq
 
 func (fixedOrderProvider) Sync(context.Context, core.SyncRequest) (core.SyncResult, error) {
 	return core.SyncResult{Complete: true}, nil
+}
+
+func (provider *capturingOrdinaryOrderProvider) Sync(_ context.Context, request core.SyncRequest) (core.SyncResult, error) {
+	provider.request = request
+	return core.SyncResult{Complete: true, PagesProcessed: 2}, nil
 }
 
 func (fixedOrderProvider) EnrichCategories(context.Context, core.CategoryEnrichmentRequest) (core.CategoryEnrichmentResult, error) {
@@ -179,6 +188,43 @@ func TestOrdersSpendToolUsesSharedTypedWorkflow(t *testing.T) {
 	}
 	if got.TotalAmount != 42000 || got.OrderCount != 2 {
 		t.Fatalf("unexpected spend result: %#v", got)
+	}
+}
+
+func TestOrdinaryBrowserOrderSyncToolUsesItsDedicatedTypedProvider(t *testing.T) {
+	ctx := context.Background()
+	ordinary := &capturingOrdinaryOrderProvider{}
+	server := NewWithProviders(Providers{
+		Auth:           fixedStatusProvider{},
+		Orders:         fixedOrderProvider{},
+		OrdinaryOrders: ordinary,
+	}, "v0.1.0-test")
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name: "orders_sync_ordinary_browser", Arguments: map[string]any{"max_pages": 2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(result.StructuredContent)
+	var got core.SyncResult
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Complete || got.PagesProcessed != 2 || ordinary.request.MaxPages != 2 {
+		t.Fatalf("unexpected ordinary-browser sync result: %#v, request=%#v", got, ordinary.request)
 	}
 }
 
