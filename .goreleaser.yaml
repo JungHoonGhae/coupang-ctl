@@ -47,6 +47,22 @@ sboms:
   - id: archives
     artifacts: archive
 
+# Dry-run metadata only until the macOS archives are Developer ID signed and
+# notarized. The source-build formula remains the documented beta path.
+homebrew_casks:
+  - name: coupangctl
+    ids:
+      - coupangctl
+    binaries:
+      - coupangctl
+    directory: Casks
+    homepage: https://github.com/JungHoonGhae/coupang-ctl
+    description: Sync and analyze personal Coupang orders locally
+    skip_upload: true
+    repository:
+      owner: JungHoonGhae
+      name: homebrew-tap
+
 changelog:
   use: git
   sort: asc
@@ -60,5 +76,11 @@ changelog:
 
 release:
   draft: true
+  prerelease: auto
+  header: |
+    {{- if .Prerelease }}
+    > [!WARNING]
+    > This is an unsigned prerelease. The macOS binaries are not Developer ID signed or notarized, and the Windows binaries are not Authenticode signed. SHA-256 checksums and GitHub attestations do not replace native publisher trust.
+    {{- end }}
   preflight:
     fail_on_error: true

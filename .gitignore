@@ -14,5 +14,6 @@ test-results/
 /coupangctl
 /coupangctl.exe
 coverage.out
+.gstack/
 login-qr*.png
 coupangctl-qr*.png

@@ -6,17 +6,35 @@ on:
       - "v*"
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  publication-policy:
+    name: Native-signing publication policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Enforce native-signing publication policy
+        run: go run ./cmd/releasepolicy --tag "${GITHUB_REF_NAME}"
+
   browser-profile-contracts:
     name: Browser profile contracts (${{ matrix.os }})
+    needs: publication-policy
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
@@ -26,6 +44,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -66,11 +86,16 @@ jobs:
     needs: browser-profile-contracts
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -84,23 +109,20 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Validate release tag
-        shell: bash
-        run: |
-          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "release tag must be semantic, for example v0.1.0 or v0.1.0-rc.1" >&2
-            exit 1
-          fi
-
       - name: Install probe dependencies
         run: npm ci
 
       - name: Run release tests
         run: |
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color=false
+          go mod verify
           go test ./...
           go vet ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+          npm audit --audit-level=high
           npm run typecheck
           npm run test:extension
+          sh -n ./installers/install.sh
 
       - name: Install Syft
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
@@ -115,6 +137,15 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate future signed Homebrew cask metadata
+        run: |
+          ruby -c dist/homebrew/Casks/coupangctl.rb
+          rg -q '^  binary "coupangctl"$' dist/homebrew/Casks/coupangctl.rb
+          if rg -n 'xattr|^[[:space:]]*zap[[:space:]]+do|^[[:space:]]*(trash|delete)[[:space:]]' dist/homebrew/Casks/coupangctl.rb; then
+            echo "generated cask contains a forbidden trust-bypass or destructive stanza" >&2
+            exit 1
+          fi
 
       - name: Verify release contents and checksums
         run: go run ./cmd/releasecheck --require-sbom ./dist

@@ -34,10 +34,18 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   local directory, never publishes externally, shares Windows artifact names
   with the release contract, and is checked with Ruby/YAML parsing plus native
   Windows portable-alias assertions in CI.
+- The unsigned release policy permits only explicit prerelease tags and rejects
+  stable tags before build with `stable_native_signing_required`. Callers cannot
+  assert signing through a flag or secret-presence boolean. GoReleaser marks
+  prerelease tags accordingly and adds a release warning that native macOS and
+  Windows publisher trust is not yet present; stable enablement requires future
+  cryptographic verifier evidence.
 - The distributed product is now a Go 1.26 module; TypeScript remains limited
   to development probes.
-- GitHub CI runs all synthetic Go tests, `go vet`, research-probe TypeScript
-  type-checking, extension tests, and a CGO-free six-target GoReleaser snapshot
+- GitHub CI pins every action to a full commit SHA, disables checkout credential
+  persistence, runs actionlint and reachable Go vulnerability scanning, then runs
+  all synthetic Go tests, `go vet`, research-probe TypeScript type-checking,
+  extension tests, and a CGO-free six-target GoReleaser snapshot
   covering macOS, Linux, and Windows on amd64 and arm64. A release-contract
   verifier rejects a missing target, extra archive content, incomplete SBOM
   set, or mismatched checksum. CI receives no Coupang or Doppler credentials

@@ -9,7 +9,13 @@ import (
 
 const ProjectName = "coupangctl"
 
-var releaseTagPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
+const (
+	semverNumber               = `(?:0|[1-9][0-9]*)`
+	semverPrereleaseIdentifier = `(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)`
+	semverBuildIdentifier      = `[0-9A-Za-z-]+`
+)
+
+var releaseTagPattern = regexp.MustCompile(`^v` + semverNumber + `\.` + semverNumber + `\.` + semverNumber + `(?:-` + semverPrereleaseIdentifier + `(?:\.` + semverPrereleaseIdentifier + `)*)?(?:\+` + semverBuildIdentifier + `(?:\.` + semverBuildIdentifier + `)*)?$`)
 
 type platform struct {
 	goos           string

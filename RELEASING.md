@@ -6,20 +6,24 @@
 
 ## 자동화된 태그 릴리스
 
-`v0.1.0` 또는 `v0.1.0-rc.1` 같은 SemVer 태그가 원격 저장소에 push되면
-`Release` 워크플로가 다음 순서로 실행됩니다.
+`v0.1.0-rc.1` 같은 SemVer prerelease 태그가 원격 저장소에 push되면 `Release`
+워크플로가 다음 순서로 실행됩니다. 현재 네이티브 서명 단계가 아직 없으므로
+`v0.1.0` 같은 stable 태그는 첫 빌드 전에 정책 검사에서 거부됩니다. credential의
+존재나 수동 boolean은 서명 증거로 인정하지 않으며, stable 공개는 macOS와 Windows
+산출물의 암호학적 서명 검증 adapter가 구현된 뒤에만 열 수 있습니다.
 
-1. Go 테스트·vet, TypeScript 연구 probe typecheck, MV3 확장 계약 테스트
-2. Linux·macOS·Windows의 실제 설치 Chrome을 깨끗한 임시 전용 프로필로 두 번
+1. 타입화된 release policy로 malformed tag와 unsigned stable publication 거부
+2. Go 테스트·vet, TypeScript 연구 probe typecheck, MV3 확장 계약 테스트
+3. Linux·macOS·Windows의 실제 설치 Chrome을 깨끗한 임시 전용 프로필로 두 번
    headless 실행·종료해 발견·프로필 재사용·잠금 해제·정상 종료를 검증
-3. CGO를 끈 macOS·Linux·Windows의 amd64·arm64 바이너리 여섯 개 빌드
-4. macOS·Linux는 `tar.gz`, Windows는 `zip`으로 패키징
-5. 각 아카이브의 SPDX JSON SBOM과 SHA-256 `checksums.txt` 생성
-6. 저장소의 `releasecheck`로 대상 조합, 파일 목록, SBOM 완전성, 모든
+4. CGO를 끈 macOS·Linux·Windows의 amd64·arm64 바이너리 여섯 개 빌드
+5. macOS·Linux는 `tar.gz`, Windows는 `zip`으로 패키징
+6. 각 아카이브의 SPDX JSON SBOM과 SHA-256 `checksums.txt` 생성
+7. 저장소의 `releasecheck`로 대상 조합, 파일 목록, SBOM 완전성, 모든
    체크섬을 재검증
-7. `checksums.txt` 자체와 그 파일에 열거된 열두 산출물 전체에 각각 GitHub
+8. `checksums.txt` 자체와 그 파일에 열거된 열두 산출물 전체에 각각 GitHub
    Actions provenance attestation 생성
-8. 앞 단계가 모두 성공했을 때만 draft 릴리스를 공개
+9. 앞 단계가 모두 성공했을 때만 unsigned 표시가 붙은 GitHub prerelease 공개
 
 릴리스 아카이브의 허용 목록은 다음 네 파일뿐입니다.
 
@@ -39,12 +43,15 @@ payload, 테스트 fixture는 배포물에 들어갈 수 없습니다. 아카이
 ```bash
 go test ./...
 go vet ./...
+go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color=false
+go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 npm ci
 npm run typecheck
 npm run test:extension
 goreleaser check
 goreleaser release --snapshot --clean
 go run ./cmd/releasecheck --require-sbom ./dist
+go run ./cmd/releasepolicy --tag v0.1.0-rc.1
 sh -n ./installers/install.sh
 ```
 
@@ -126,8 +133,17 @@ Windows 아카이브는 `.zip` 파일명을 사용합니다. SHA-256은 다운�
 ## 아직 남은 배포 게이트
 
 - macOS Developer ID 서명·notarization과 Windows Authenticode 서명은 아직
-  구성되지 않았습니다. GitHub provenance를 운영체제 코드 서명으로 표현하면
-  안 됩니다.
+  구성되지 않았습니다. 따라서 stable tag는 `stable_native_signing_required`로
+  fail-closed합니다. GitHub provenance를 운영체제 코드 서명으로 표현하면 안
+  됩니다.
+- 향후 Apple adapter가 사용할 secret 이름은 `MACOS_SIGN_P12`,
+  `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_KEY`, `MACOS_NOTARY_KEY_ID`,
+  `MACOS_NOTARY_ISSUER_ID`로 예약합니다. 값은 문서, fixture, 로그, artifact에
+  넣지 않습니다. Windows는 Artifact Signing과 certificate/PFX 중 방식을 결정한
+  뒤에만 secret 이름을 확정합니다.
+- 언어 기준은 Go 1.26이지만 저장소의 `toolchain` 지시문과 CI 빌드는 보안 수정이
+  반영된 Go 1.26.8을 사용합니다. 새 보안 패치가 나오면 Dependabot과
+  `govulncheck` 결과를 확인해 같은 minor 계열에서 올립니다.
 - 일반 Chrome 확장의 자동 설치는 Chrome Web Store 검토와 배포가 끝나기
   전까지 지원하지 않습니다. 현재 바이너리는 검토된 번들을 풀어 주지만 사용자가
   Chrome에서 그 경로를 직접 로드해야 합니다. 이 확장은 기본 설치나 첫 실행에는

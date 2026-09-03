@@ -353,11 +353,15 @@ Signing 또는 신뢰된 CA의 인증서를 권장하며, EV 인증서도 즉시
    Go contract test와 Windows CI가 portable alias·archive mapping을 확인하고 macOS
    CI가 YAML을 파싱한다. 실제 URL/hash 생성과 Community Repository validation/PR은
    첫 release 이후에 수행한다.
-7. **P1 — signed-build seams**: macOS codesign/notary와 Windows signing 단계를 아직
-   실행하지 않더라도, unsigned release를 명시적으로 표시하고 signing credential이
-   없는 stable release는 실패하도록 opt-in gate를 설계한다. 서명 후 전환할
-   `homebrew_casks` dry run도 이 단계에서 최종 서명 archive를 대상으로 추가한다.
-   secret 이름만 참조하고 값은 fixture, log, artifact에 넣지 않는다.
+7. **부분 완료 — signed-build seams**: typed release policy와 workflow gate는
+   prerelease만 명시적인 unsigned 상태로 허용하고 stable tag를 빌드 전에
+   fail-closed한다. GoReleaser는 prerelease tag를 GitHub prerelease로 표시하고
+   네이티브 서명과 checksum/attestation의 차이를 release header에 고지한다.
+   caller가 signing 상태를 주장하는 입력은 없으며 실제 검증 adapter만 향후 stable
+   gate를 열 수 있다. `homebrew_casks`는 업로드 없이 snapshot으로 생성해 Ruby
+   문법, binary stanza, trust-bypass·destructive stanza 부재를 CI에서 검사한다.
+   남은 일은 macOS codesign/notary와 Windows signing의 실제 검증이다. secret은
+   이름만 문서화하고 값은 fixture, log, artifact에 넣지 않는다.
 
 첫 공개 태그 이후에만 가능한 외부 작업은 tap repository publish, WinGet Community
 Repository PR, 실제 GitHub attestation 조회, macOS notarization, Windows publisher
