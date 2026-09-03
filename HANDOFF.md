@@ -122,6 +122,12 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   Both source-native breadcrumbs and explicit unavailable outcomes occurred in
   live use. The adapter remains experimental until path stability is checked
   over time and on more than one account.
+- `orders category-catalog` and MCP `orders_category_catalog` expose only the
+  category IDs, labels, and path prefixes actually observed in those cached
+  breadcrumbs. Query matching and distinct local-product counts are labeled
+  derived, coverage is explicit, and returned IDs can be passed to
+  `products_search` without inventing a category mapping or calling the
+  browser during catalog lookup.
 - Successful product search and inspection results now append only explicitly
   observed current prices to a local SQLite history. Vendor-item identities are
   separate series, affiliate URLs are never stored, and the CLI supports an

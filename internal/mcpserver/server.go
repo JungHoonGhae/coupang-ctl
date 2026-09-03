@@ -17,6 +17,7 @@ type StatusProvider interface {
 type OrderProvider interface {
 	Sync(context.Context, core.SyncRequest) (core.SyncResult, error)
 	EnrichCategories(context.Context, core.CategoryEnrichmentRequest) (core.CategoryEnrichmentResult, error)
+	CategoryCatalog(context.Context, core.CategoryCatalogRequest) (core.CategoryCatalog, error)
 	List(context.Context, core.OrderFilter) ([]core.Order, error)
 	Spend(context.Context, core.OrderFilter) (core.SpendSummary, error)
 	Stats(context.Context, core.OrderFilter) (core.OrderStats, error)
@@ -316,6 +317,16 @@ func addOrderTools(server *mcp.Server, provider OrderProvider) {
 		result, err := provider.ProductInsights(ctx, input)
 		if err != nil {
 			return nil, core.ProductInsights{}, safeToolError(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "orders_category_catalog", Description: "Find source-native Coupang category IDs and observed breadcrumb paths from the private local order ledger. Use a returned category_id with products_search instead of guessing a taxonomy label or ID. Local observed-product counts are not Coupang popularity.", Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.CategoryCatalogRequest) (*mcp.CallToolResult, core.CategoryCatalog, error) {
+		result, err := provider.CategoryCatalog(ctx, input)
+		if err != nil {
+			return nil, core.CategoryCatalog{}, safeToolError(err)
 		}
 		return nil, result, nil
 	})

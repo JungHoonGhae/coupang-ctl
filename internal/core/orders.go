@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 var ErrInvalidOrderData = errors.New("invalid order data")
@@ -11,6 +12,7 @@ var ErrProductCategoryUnavailable = errors.New("product category unavailable")
 
 const CategorySourceProductJSONLDBreadcrumb = "coupang_product_jsonld_breadcrumb_v1"
 const CategorySourceProductUnavailable = "coupang_product_category_unavailable_v1"
+const CategoryCatalogSchemaVersion = 1
 
 type CommerceKind string
 
@@ -314,6 +316,72 @@ type ProductCategoryNode struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Position int    `json:"position"`
+}
+
+type CategoryCatalogRequest struct {
+	Query string `json:"query,omitempty" jsonschema:"Optional text matched only against observed Coupang category labels"`
+	Limit int    `json:"limit,omitempty" jsonschema:"Maximum category paths from 1 to 200; default 50"`
+}
+
+func (r CategoryCatalogRequest) Validate() error {
+	query := strings.TrimSpace(r.Query)
+	if !utf8.ValidString(query) || len([]rune(query)) > 100 {
+		return errors.New("category query must not exceed 100 characters")
+	}
+	if r.Limit < 0 || r.Limit > 200 {
+		return errors.New("category catalog limit must be between 1 and 200")
+	}
+	return nil
+}
+
+type CategoryCatalog struct {
+	SchemaVersion         int                       `json:"schema_version"`
+	Visibility            string                    `json:"visibility"`
+	Source                string                    `json:"source"`
+	Query                 string                    `json:"query,omitempty"`
+	MatchMethod           string                    `json:"match_method"`
+	Coverage              CategoryCatalogCoverage   `json:"coverage"`
+	TotalCategoryCount    int                       `json:"total_category_count"`
+	MatchedCategoryCount  int                       `json:"matched_category_count"`
+	ReturnedCategoryCount int                       `json:"returned_category_count"`
+	Truncated             bool                      `json:"truncated"`
+	Categories            []CategoryCatalogEntry    `json:"categories"`
+	Definitions           CategoryCatalogDefinition `json:"definitions"`
+	Limitations           []string                  `json:"limitations"`
+	Provenance            CategoryCatalogProvenance `json:"provenance"`
+}
+
+type CategoryCatalogCoverage struct {
+	EligibleProductCount     int     `json:"eligible_product_count"`
+	ClassifiedProductCount   int     `json:"classified_product_count"`
+	UnclassifiedProductCount int     `json:"unclassified_product_count"`
+	ClassifiedProductRate    float64 `json:"classified_product_rate"`
+}
+
+type CategoryCatalogEntry struct {
+	CategoryID                   string                `json:"category_id"`
+	Name                         string                `json:"name"`
+	Position                     int                   `json:"position"`
+	Depth                        int                   `json:"depth"`
+	Role                         string                `json:"role"`
+	Path                         []ProductCategoryNode `json:"path"`
+	ObservedProductCount         int                   `json:"observed_product_count"`
+	ObservedLeafProductCount     int                   `json:"observed_leaf_product_count"`
+	ObservedAncestorProductCount int                   `json:"observed_ancestor_product_count"`
+	MatchKind                    string                `json:"match_kind,omitempty"`
+}
+
+type CategoryCatalogDefinition struct {
+	ProductUnit   string `json:"product_unit"`
+	MatchRule     string `json:"match_rule"`
+	CategoryRole  string `json:"category_role"`
+	SearchHandoff string `json:"search_handoff"`
+}
+
+type CategoryCatalogProvenance struct {
+	CategoryIDLabelAndPath string `json:"category_id_label_and_path"`
+	ProductCounts          string `json:"product_counts"`
+	QueryMatch             string `json:"query_match"`
 }
 
 type CategoryEnrichmentRequest struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
@@ -18,6 +19,7 @@ const (
 	maxPageBudget         = 1000
 	defaultCategoryBudget = 25
 	maxCategoryBudget     = 500
+	defaultCatalogLimit   = 50
 )
 
 var ErrDocumentSource = errors.New("protected document source unavailable")
@@ -153,6 +155,17 @@ func (s *Service) Insights(ctx context.Context, filter core.OrderFilter) (core.S
 
 func (s *Service) ProductInsights(ctx context.Context, filter core.OrderFilter) (core.ProductInsights, error) {
 	return s.ledger.ProductInsights(ctx, filter)
+}
+
+func (s *Service) CategoryCatalog(ctx context.Context, request core.CategoryCatalogRequest) (core.CategoryCatalog, error) {
+	if err := request.Validate(); err != nil {
+		return core.CategoryCatalog{}, err
+	}
+	request.Query = strings.TrimSpace(request.Query)
+	if request.Limit == 0 {
+		request.Limit = defaultCatalogLimit
+	}
+	return s.ledger.CategoryCatalog(ctx, request)
 }
 
 func (s *Service) EnrichCategories(ctx context.Context, request core.CategoryEnrichmentRequest) (core.CategoryEnrichmentResult, error) {

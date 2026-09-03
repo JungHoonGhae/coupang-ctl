@@ -80,6 +80,7 @@ coupangctl orders stats --from 2026-01-01
 coupangctl orders insights
 coupangctl orders products
 coupangctl orders categories --max-products 25
+coupangctl orders category-catalog --query '생활용품'
 coupangctl orders reorder --limit 20
 coupangctl orders recap --output ./shopping-recap.html
 ```
@@ -91,6 +92,14 @@ coupangctl orders recap --output ./shopping-recap.html
 - **추론값**: 원천에 없는 정보를 휴리스틱으로 추정한 값
 
 공개형 리캡은 기간, 표본 수, 분모, 제외 규칙을 함께 보여줍니다. 카테고리는 상품명으로 억지 매핑하지 않고 쿠팡 상품 페이지의 가변 길이 `BreadcrumbList`만 사용하며, 확인하지 못한 상품은 `unknown`으로 남깁니다.
+
+`orders category-catalog`은 그 breadcrumb에서 실제로 관찰한 카테고리
+이름·숫자 ID·경로만 찾습니다. 응답의 `category_id`를
+`products search --category-id ID`에 넘기면 사람이 ID를 외우거나 AI가 분류 체계를 추측할
+필요가 없습니다. `observed_product_count`는 내 주문 원장에서 해당 경로가
+관찰된 distinct 상품 수이며 쿠팡 판매량이나 인기도가 아닙니다. 분류 성공률과
+미분류 상품 수도 항상 함께 반환합니다. 자세한 계약은
+[`CATEGORIES.md`](CATEGORIES.md)에 있습니다.
 
 `orders spend`는 전체 원장 합계와 함께 `product_purchases`, `membership_fees`, `unclassified`를 분리합니다. 명시적인 멤버십 결제를 상품 구매나 연속 구매 기록에 섞지 않습니다.
 
@@ -132,7 +141,7 @@ coupangctl products search \
   --sort sales
 ```
 
-MCP를 쓰면 AI가 “후기 좋은 10만 원 아래 맥북 허브, 광고 제외” 같은 요청을 `products_search`의 typed filter로 바꿉니다. 선택한 후보는 `product_inspect`로 가격, 배송, 이미지, 상세 내용, 관찰된 쿠폰·카드 혜택, 평점과 정제된 후기를 확인할 수 있습니다.
+MCP를 쓰면 AI가 “후기 좋은 10만 원 아래 맥북 허브, 광고 제외” 같은 요청을 `products_search`의 typed filter로 바꿉니다. 실제 카테고리 이름으로 찾고 싶으면 먼저 `orders_category_catalog`에서 관찰된 ID를 고른 뒤 `products_search.category_id`로 넘깁니다. 선택한 후보는 `product_inspect`로 가격, 배송, 이미지, 상세 내용, 관찰된 쿠폰·카드 혜택, 평점과 정제된 후기를 확인할 수 있습니다.
 
 정렬 의미는 섞지 않습니다.
 
@@ -242,7 +251,7 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 
 - `auth_status`, `account_benefits`
 - `orders_sync`, `orders_list`, `orders_spend`, `orders_stats`
-- `orders_insights`, `orders_product_insights`, `orders_reorder_candidates`
+- `orders_insights`, `orders_product_insights`, `orders_category_catalog`, `orders_reorder_candidates`
 - `orders_export`, `orders_enrich_categories`
 - `products_search`, `product_inspect`, `cart_add`
 - `product_price_history`

@@ -68,8 +68,8 @@ func CurrentCapabilities() CapabilityReport {
 		},
 		{
 			ID: "source_native_product_rankings", Priority: "P0", Status: CapabilityExperimental,
-			UserValue: "product-type or real-category rankings with separate Coupang ranking, sales, latest, price, rating, and review semantics",
-			Interface: []string{"cli", "mcp"}, NextWork: "discover source-native category labels without requiring callers to supply a numeric category ID and validate selected-option evidence across layouts", LastVerified: "2026-09-02",
+			UserValue: "product-type or observed real-category rankings with label-to-ID discovery and separate Coupang ranking, sales, latest, price, rating, and review semantics",
+			Interface: []string{"cli", "mcp"}, NextWork: "validate current category-search availability and selected-option evidence across more layouts", LastVerified: "2026-09-03",
 		},
 		{
 			ID: "transparent_affiliate_deeplinks", Priority: "P0", Status: CapabilityExperimental,
@@ -93,8 +93,8 @@ func CurrentCapabilities() CapabilityReport {
 		},
 		{
 			ID: "product_categories", Priority: "P1", Status: CapabilityExperimental,
-			UserValue: "source-native category totals with explicit coverage and no product-name guessing",
-			Interface: []string{"cli", "mcp"}, NextWork: "validate breadcrumb-path stability over time and across more accounts", LastVerified: "2026-09-02",
+			UserValue: "source-native category totals and a searchable observed label/ID catalog with explicit coverage and no product-name guessing",
+			Interface: []string{"cli", "mcp"}, NextWork: "validate breadcrumb-path stability over time and across more accounts", LastVerified: "2026-09-03",
 		},
 		{
 			ID: "price_and_repurchase", Priority: "P2", Status: CapabilityExperimental,

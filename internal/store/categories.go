@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
@@ -136,6 +137,191 @@ func (s *SQLite) SaveUnavailableProductCategory(ctx context.Context, reference c
 		return fmt.Errorf("save unavailable product category: %w", err)
 	}
 	return nil
+}
+
+func (s *SQLite) CategoryCatalog(ctx context.Context, request core.CategoryCatalogRequest) (core.CategoryCatalog, error) {
+	if err := request.Validate(); err != nil {
+		return core.CategoryCatalog{}, err
+	}
+	request.Query = strings.TrimSpace(request.Query)
+	if request.Limit == 0 {
+		request.Limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx, `WITH products AS (
+		SELECT DISTINCT vendor_item_id
+		FROM order_items
+		WHERE COALESCE(product_id, '') != '' AND COALESCE(vendor_item_id, '') != ''
+	)
+	SELECT COALESCE(categories.source, ''), COALESCE(categories.breadcrumb_json, '[]')
+	FROM products LEFT JOIN product_categories categories
+		ON categories.product_key = 'vendor:' || products.vendor_item_id
+	ORDER BY products.vendor_item_id`)
+	if err != nil {
+		return core.CategoryCatalog{}, fmt.Errorf("load category catalog products: %w", err)
+	}
+	defer rows.Close()
+
+	result := core.CategoryCatalog{
+		SchemaVersion: core.CategoryCatalogSchemaVersion,
+		Visibility:    "private_local",
+		Source:        core.CategorySourceProductJSONLDBreadcrumb,
+		Query:         request.Query,
+		MatchMethod:   "unfiltered_observed_labels",
+		Categories:    []core.CategoryCatalogEntry{},
+		Definitions: core.CategoryCatalogDefinition{
+			ProductUnit:   "distinct vendor_item_id values from locally synchronized order products",
+			MatchRule:     "case-insensitive exact, prefix, then substring matching over the observed category label only",
+			CategoryRole:  "always_leaf, sometimes_leaf, or never_leaf according to all local products observed on the exact path prefix",
+			SearchHandoff: "pass an observed category_id to products_search; the live search response remains authoritative for current result order and availability",
+		},
+		Limitations: []string{
+			"the catalog includes only source-native breadcrumb categories observed on products in this local order ledger",
+			"observed_product_count is local distinct-product coverage, not Coupang sales volume or popularity",
+			"upstream category labels and paths may change; a current product search can still return no results",
+		},
+		Provenance: core.CategoryCatalogProvenance{
+			CategoryIDLabelAndPath: "observed",
+			ProductCounts:          "derived",
+			QueryMatch:             "derived",
+		},
+	}
+	if request.Query != "" {
+		result.MatchMethod = "case_insensitive_label_exact_prefix_substring"
+	}
+
+	type catalogCandidate struct {
+		entry     core.CategoryCatalogEntry
+		matchRank int
+		key       string
+	}
+	candidates := map[string]*catalogCandidate{}
+	for rows.Next() {
+		var source, encodedPath string
+		if err := rows.Scan(&source, &encodedPath); err != nil {
+			return core.CategoryCatalog{}, fmt.Errorf("scan category catalog product: %w", err)
+		}
+		result.Coverage.EligibleProductCount++
+		if source != core.CategorySourceProductJSONLDBreadcrumb {
+			continue
+		}
+		var path []core.ProductCategoryNode
+		if err := json.Unmarshal([]byte(encodedPath), &path); err != nil || !validCatalogPath(path) {
+			continue
+		}
+		result.Coverage.ClassifiedProductCount++
+		for index, node := range path {
+			matchKind, matchRank := categoryLabelMatch(node.Name, request.Query)
+			prefix := append([]core.ProductCategoryNode(nil), path[:index+1]...)
+			encodedPrefix, err := json.Marshal(prefix)
+			if err != nil {
+				return core.CategoryCatalog{}, fmt.Errorf("encode category catalog path: %w", err)
+			}
+			key := string(encodedPrefix)
+			candidate := candidates[key]
+			if candidate == nil {
+				candidate = &catalogCandidate{
+					entry: core.CategoryCatalogEntry{
+						CategoryID: node.ID, Name: node.Name, Position: node.Position,
+						Depth: index + 1, Path: prefix, MatchKind: matchKind,
+					},
+					matchRank: matchRank,
+					key:       key,
+				}
+				candidates[key] = candidate
+			}
+			candidate.entry.ObservedProductCount++
+			if index == len(path)-1 {
+				candidate.entry.ObservedLeafProductCount++
+			} else {
+				candidate.entry.ObservedAncestorProductCount++
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return core.CategoryCatalog{}, fmt.Errorf("iterate category catalog products: %w", err)
+	}
+
+	result.Coverage.UnclassifiedProductCount = result.Coverage.EligibleProductCount - result.Coverage.ClassifiedProductCount
+	result.Coverage.ClassifiedProductRate = ratio(result.Coverage.ClassifiedProductCount, result.Coverage.EligibleProductCount)
+	result.TotalCategoryCount = len(candidates)
+	ordered := make([]catalogCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if request.Query != "" && candidate.matchRank == 0 {
+			continue
+		}
+		ordered = append(ordered, *candidate)
+	}
+	result.MatchedCategoryCount = len(ordered)
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].matchRank != ordered[j].matchRank {
+			return ordered[i].matchRank > ordered[j].matchRank
+		}
+		if ordered[i].entry.ObservedProductCount != ordered[j].entry.ObservedProductCount {
+			return ordered[i].entry.ObservedProductCount > ordered[j].entry.ObservedProductCount
+		}
+		if ordered[i].entry.Name != ordered[j].entry.Name {
+			return ordered[i].entry.Name < ordered[j].entry.Name
+		}
+		if ordered[i].entry.CategoryID != ordered[j].entry.CategoryID {
+			return ordered[i].entry.CategoryID < ordered[j].entry.CategoryID
+		}
+		return ordered[i].key < ordered[j].key
+	})
+	if len(ordered) > request.Limit {
+		ordered = ordered[:request.Limit]
+		result.Truncated = true
+	}
+	for _, candidate := range ordered {
+		candidate.entry.Role = categoryCatalogRole(candidate.entry)
+		result.Categories = append(result.Categories, candidate.entry)
+	}
+	result.ReturnedCategoryCount = len(result.Categories)
+	return result, nil
+}
+
+func categoryCatalogRole(entry core.CategoryCatalogEntry) string {
+	switch {
+	case entry.ObservedLeafProductCount > 0 && entry.ObservedAncestorProductCount > 0:
+		return "sometimes_leaf"
+	case entry.ObservedLeafProductCount > 0:
+		return "always_leaf"
+	default:
+		return "never_leaf"
+	}
+}
+
+func validCatalogPath(path []core.ProductCategoryNode) bool {
+	if len(path) == 0 || len(path) > 12 {
+		return false
+	}
+	lastPosition := 0
+	for index := range path {
+		path[index].ID = strings.TrimSpace(path[index].ID)
+		path[index].Name = strings.TrimSpace(path[index].Name)
+		if !core.NumericProductIdentifier(path[index].ID) || path[index].Name == "" || len([]rune(path[index].Name)) > 100 || path[index].Position <= lastPosition {
+			return false
+		}
+		lastPosition = path[index].Position
+	}
+	return true
+}
+
+func categoryLabelMatch(label, query string) (string, int) {
+	if query == "" {
+		return "", 1
+	}
+	label = strings.ToLower(strings.TrimSpace(label))
+	query = strings.ToLower(strings.TrimSpace(query))
+	switch {
+	case label == query:
+		return "exact_label", 3
+	case strings.HasPrefix(label, query):
+		return "prefix_label", 2
+	case strings.Contains(label, query):
+		return "substring_label", 1
+	default:
+		return "", 0
+	}
 }
 
 func (s *SQLite) CategoryBreakdown(ctx context.Context, filter core.OrderFilter) (core.CategoryBreakdown, error) {

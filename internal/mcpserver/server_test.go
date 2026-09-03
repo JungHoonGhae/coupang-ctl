@@ -82,6 +82,17 @@ func (fixedOrderProvider) EnrichCategories(context.Context, core.CategoryEnrichm
 	return core.CategoryEnrichmentResult{Complete: true}, nil
 }
 
+func (fixedOrderProvider) CategoryCatalog(_ context.Context, request core.CategoryCatalogRequest) (core.CategoryCatalog, error) {
+	return core.CategoryCatalog{
+		SchemaVersion: core.CategoryCatalogSchemaVersion,
+		Visibility:    "private_local",
+		Query:         request.Query,
+		Categories: []core.CategoryCatalogEntry{{
+			CategoryID: "200", Name: "Synthetic category", ObservedProductCount: 2,
+		}},
+	}, nil
+}
+
 func (fixedOrderProvider) List(context.Context, core.OrderFilter) ([]core.Order, error) {
 	return []core.Order{}, nil
 }
@@ -331,6 +342,38 @@ func TestOrdersProductInsightsToolUsesSharedTypedWorkflow(t *testing.T) {
 	}
 	if got.Visibility != "private_local" || got.TopBySpend.Name != "Synthetic private product" || got.TopBySpend.TotalPaidAmount != 42000 {
 		t.Fatalf("unexpected product insight result: %#v", got)
+	}
+}
+
+func TestOrdersCategoryCatalogToolReturnsObservedSearchHandoff(t *testing.T) {
+	ctx := context.Background()
+	server := NewWithOrders(fixedStatusProvider{}, fixedOrderProvider{}, "v0.1.0-test")
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name: "orders_category_catalog", Arguments: map[string]any{"query": "Synthetic"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(result.StructuredContent)
+	var got core.CategoryCatalog
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Visibility != "private_local" || got.Query != "Synthetic" || len(got.Categories) != 1 || got.Categories[0].CategoryID != "200" {
+		t.Fatalf("unexpected category catalog: %#v", got)
 	}
 }
 
