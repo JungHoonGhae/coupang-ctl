@@ -239,6 +239,11 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   an experimental extension-free Chrome 144+ path after Chrome's explicit
   remote-debugging opt-in and approval. It creates only an allowlisted new tab,
   disconnects without closing Chrome, and does not copy session state.
+- CLI `current-browser status` and MCP `current_browser_status` are passive
+  preflights: they validate only private loopback version metadata and never
+  connect to CDP, trigger Chrome approval, enumerate tabs, or reveal the local
+  port, debugger token, or profile path. Consequently they never claim that
+  connection approval has been verified.
 - The initial order document bootstraps the authenticated origin. Pagination
   then uses the UI's structured `GET /ssr/api/myorders/model` route with bounded
   `requestYear`, `pageIndex`, and `size` parameters. This fixed the year-boundary

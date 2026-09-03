@@ -49,6 +49,9 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 		}
 		return writeJSON(stdout, core.CurrentCapabilities())
 	}
+	if args[0] == "current-browser" {
+		return runCurrentBrowser(ctx, args[1:], stdout, nativeCurrentBrowserStatusProvider{})
+	}
 	if len(args) >= 2 && args[0] == "products" && args[1] == "watch-schedule" {
 		executable, err := os.Executable()
 		if err != nil {
@@ -154,6 +157,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 		return mcpserver.RunWithProviders(ctx, mcpserver.Providers{
 			Auth:                 authService,
 			Orders:               orderworkflow.New(ledger, browserAdapter),
+			CurrentBrowserStatus: nativeCurrentBrowserStatusProvider{},
 			CurrentBrowserOrders: currentBrowserOrderSync{ledger: ledger},
 			OrdinaryOrders:       ordinaryBrowserOrderSync{ledger: ledger, stateDir: paths.StateDir},
 			Products:             productService,

@@ -2,13 +2,71 @@ package browser
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
+
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
+
+func TestCurrentBrowserStatusChecksEndpointWithoutAttachingOrCreatingATab(t *testing.T) {
+	requests := 0
+	var webSocketURL string
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requests++
+		if request.Method != http.MethodGet || request.URL.Path != "/json/version" {
+			t.Fatalf("unexpected passive status request: %s %s", request.Method, request.URL.Path)
+		}
+		_ = json.NewEncoder(response).Encode(map[string]string{"webSocketDebuggerUrl": webSocketURL})
+	}))
+	defer server.Close()
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(parsed.Port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	webSocketURL = "ws://127.0.0.1:" + strconv.Itoa(port) + "/devtools/browser/synthetic-token"
+	userDataDir := t.TempDir()
+	if err := os.Chmod(userDataDir, 0o700); err != nil && runtime.GOOS != "windows" {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userDataDir, devToolsActivePortFilename), []byte(strconv.Itoa(port)+"\n/devtools/browser/synthetic-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	executable := syntheticExecutable(t, "exit 0\n")
+	native := NewNativeCurrentBrowser()
+	native.getenv = func(name string) string {
+		switch name {
+		case "COUPANGCTL_BROWSER_PATH":
+			return executable
+		case "COUPANGCTL_CURRENT_BROWSER_USER_DATA_DIR":
+			return userDataDir
+		default:
+			return ""
+		}
+	}
+
+	got, err := native.CurrentBrowserStatus(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SchemaVersion != core.CurrentBrowserStatusSchemaVersion || got.State != core.CurrentBrowserEndpointAvailable || !got.EndpointAvailable || got.ConnectionApprovalVerified {
+		t.Fatalf("unexpected current-browser status: %#v", got)
+	}
+	if requests != 1 {
+		t.Fatalf("passive status HTTP requests = %d, want 1", requests)
+	}
+}
 
 func TestReadDevToolsActivePortAcceptsOnlyPrivateLoopbackEndpoint(t *testing.T) {
 	userDataDir := t.TempDir()

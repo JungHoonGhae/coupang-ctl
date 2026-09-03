@@ -65,6 +65,14 @@ type fixedDoctorAuthStatus struct {
 	err    error
 }
 
+type fixedCurrentBrowserStatusProvider struct {
+	status core.CurrentBrowserStatus
+}
+
+func (f fixedCurrentBrowserStatusProvider) Status(context.Context) (core.CurrentBrowserStatus, error) {
+	return f.status, nil
+}
+
 func (f fixedDoctorAuthStatus) Status(context.Context) (core.AuthStatus, error) {
 	return f.status, f.err
 }
@@ -1225,6 +1233,29 @@ func TestDoctorReportsVerifiedBackgroundSessionAsReady(t *testing.T) {
 		if check.Status != core.CheckOK {
 			t.Fatalf("unexpected failed check: %#v", check)
 		}
+	}
+}
+
+func TestCurrentBrowserStatusWritesPassiveTypedReadiness(t *testing.T) {
+	want := core.CurrentBrowserStatus{
+		SchemaVersion:              core.CurrentBrowserStatusSchemaVersion,
+		State:                      core.CurrentBrowserEndpointAvailable,
+		Browser:                    "Synthetic Chrome",
+		EndpointAvailable:          true,
+		ConnectionApprovalVerified: false,
+		CheckedAt:                  time.Date(2026, time.September, 3, 9, 0, 0, 0, time.UTC),
+		NextAction:                 "run `coupangctl sync --current-browser` and approve Chrome's connection prompt",
+	}
+	var output bytes.Buffer
+	if err := runCurrentBrowser(context.Background(), []string{"status"}, &output, fixedCurrentBrowserStatusProvider{status: want}); err != nil {
+		t.Fatal(err)
+	}
+	var got core.CurrentBrowserStatus
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("status = %#v, want %#v", got, want)
 	}
 }
 

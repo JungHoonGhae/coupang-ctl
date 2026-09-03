@@ -32,9 +32,14 @@ type OrdinaryOrderProvider interface {
 	Sync(context.Context, core.SyncRequest) (core.SyncResult, error)
 }
 
+type CurrentBrowserStatusProvider interface {
+	Status(context.Context) (core.CurrentBrowserStatus, error)
+}
+
 type Providers struct {
 	Auth                 StatusProvider
 	Orders               OrderProvider
+	CurrentBrowserStatus CurrentBrowserStatusProvider
 	CurrentBrowserOrders OrdinaryOrderProvider
 	OrdinaryOrders       OrdinaryOrderProvider
 	Products             ProductProvider
@@ -104,6 +109,19 @@ func NewWithProviders(providers Providers, version string) *mcp.Server {
 		}
 		return nil, status, nil
 	})
+	if providers.CurrentBrowserStatus != nil {
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        "current_browser_status",
+			Description: "Passively check whether a running Chrome 144+ browser exposes its private loopback debugging endpoint. This does not connect to the debugger, trigger Chrome's approval prompt, inspect tabs, create a tab, or expose the port, token, or profile path.",
+			Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, core.CurrentBrowserStatus, error) {
+			status, err := providers.CurrentBrowserStatus.Status(ctx)
+			if err != nil {
+				return nil, core.CurrentBrowserStatus{}, errors.New("current_browser_unavailable: cannot inspect current-browser readiness")
+			}
+			return nil, status, nil
+		})
+	}
 	if providers.Orders != nil {
 		addOrderTools(server, providers.Orders)
 	}

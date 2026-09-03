@@ -49,6 +49,9 @@ zero-configuration or unattended-consumer requirement.
 The product exposes this experimentally as `orders sync --current-browser` with
 the following truthful contract:
 
+- `current-browser status` and MCP `current_browser_status` passively validate
+  only the private endpoint metadata, without a WebSocket attach or approval
+  prompt;
 - no extension install;
 - one-time Chrome remote-debugging opt-in;
 - Chrome-controlled approval when attaching;
@@ -246,7 +249,8 @@ support honest:
 - macOS, Windows, and Linux reject concurrent use of the profile with a stable
   `profile_in_use` result.
 - Headless rejection, challenge, reauthentication, disabled remote debugging,
-  and unsupported Chrome versions have distinct structured errors.
+  and unsupported Chrome versions have distinct structured errors or readiness
+  states.
 - `current` mode cannot attach before Chrome's own opt-in and approval and
   never implies unattended operation.
 - The default distribution contains no Playwright, Node, ChromeDriver, Chrome

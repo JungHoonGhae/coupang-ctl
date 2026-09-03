@@ -294,7 +294,7 @@ MCP 서버는 장시간 백그라운드에서 실행되는 프로세스이므로
 
 대표 도구:
 
-- `auth_status`, `account_benefits`
+- `auth_status`, `current_browser_status`, `account_benefits`
 - `orders_sync`, `orders_sync_current_browser`, `orders_sync_ordinary_browser`, `orders_list`, `orders_spend`, `orders_stats`
 - `orders_insights`, `orders_product_insights`, `orders_category_catalog`, `orders_category_stability`, `orders_reorder_candidates`
 - `orders_export`, `orders_enrich_categories`
@@ -326,11 +326,18 @@ headless Chrome을 거부할 수 있습니다. `auth status`와 기본 `auth ver
 
 Chrome 144 이상에서는 실행 중인 현재 Chrome을 확장 없이 사용하는 실험적 고급
 경로도 있습니다. 먼저 `chrome://inspect/#remote-debugging`에서 원격 디버깅을
-직접 켜고 Chrome의 연결 요청을 승인한 뒤 실행합니다.
+직접 켭니다. 연결이나 탭 생성 없이 로컬 endpoint 준비 상태만 먼저 확인할 수
+있습니다.
 
 ```bash
+coupangctl current-browser status
 coupangctl sync --max-pages 1 --current-browser
 ```
+
+`current-browser status`는 `not_enabled` 또는 `endpoint_available`만 반환하며 로컬
+포트, debugger token, 프로필 경로를 출력하지 않습니다. 또한 Chrome 승인 팝업을
+띄우지 않으므로 `connection_approval_verified`는 항상 `false`입니다. 실제 sync를
+시작한 뒤 Chrome의 연결 요청을 승인해야 합니다.
 
 MCP에서는 `orders_sync_current_browser`를 사용합니다. 이 모드는
 `coupangctl`이 만든 탭만 열고 닫으며 Chrome 자체는 종료하지 않고, 쿠키나 세션

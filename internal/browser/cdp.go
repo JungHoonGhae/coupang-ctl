@@ -1622,6 +1622,45 @@ func newCurrentChromeSession(ctx context.Context, executable, _ string) (documen
 	return &chromeSession{baseURL: baseURL, httpClient: httpClient, browser: protocol}, nil
 }
 
+// CurrentBrowserStatus passively checks Chrome's private loopback metadata. It
+// deliberately does not open the browser WebSocket, trigger an approval prompt,
+// inspect tabs, or create a target.
+func (n *Native) CurrentBrowserStatus(ctx context.Context) (core.CurrentBrowserStatus, error) {
+	status := core.CurrentBrowserStatus{
+		SchemaVersion: core.CurrentBrowserStatusSchemaVersion,
+		State:         core.CurrentBrowserNotEnabled,
+		CheckedAt:     time.Now().UTC(),
+		NextAction:    "enable remote debugging at chrome://inspect/#remote-debugging, keep Chrome running, then retry",
+	}
+	executable, err := n.discover()
+	if err != nil {
+		return core.CurrentBrowserStatus{}, err
+	}
+	status.Browser = filepath.Base(executable)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return core.CurrentBrowserStatus{}, ErrCurrentBrowserUnavailable
+	}
+	userDataDir, err := currentBrowserUserDataDir(runtime.GOOS, executable, home, n.getenv)
+	if err != nil {
+		return status, nil
+	}
+	baseURL, webSocketURL, err := readDevToolsActivePort(userDataDir)
+	if err != nil {
+		return status, nil
+	}
+	transport := &http.Transport{Proxy: nil}
+	defer transport.CloseIdleConnections()
+	metadata, err := readChromeVersion(ctx, &http.Client{Transport: transport, Timeout: 2 * time.Second}, baseURL)
+	if err != nil || metadata.WebSocketDebuggerURL != webSocketURL {
+		return status, nil
+	}
+	status.State = core.CurrentBrowserEndpointAvailable
+	status.EndpointAvailable = true
+	status.NextAction = "run `coupangctl sync --current-browser` and approve Chrome's connection prompt"
+	return status, nil
+}
+
 func currentBrowserUserDataDir(goos, executable, home string, getenv func(string) string) (string, error) {
 	if override := strings.TrimSpace(getenv("COUPANGCTL_CURRENT_BROWSER_USER_DATA_DIR")); override != "" {
 		if !filepath.IsAbs(override) {

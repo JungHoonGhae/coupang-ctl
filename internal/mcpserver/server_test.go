@@ -14,6 +14,14 @@ type fixedStatusProvider struct {
 	status core.AuthStatus
 }
 
+type fixedCurrentBrowserStatusProvider struct {
+	status core.CurrentBrowserStatus
+}
+
+func (f fixedCurrentBrowserStatusProvider) Status(context.Context) (core.CurrentBrowserStatus, error) {
+	return f.status, nil
+}
+
 type fixedOrderProvider struct{}
 
 type capturingOrdinaryOrderProvider struct {
@@ -262,6 +270,51 @@ func TestCurrentBrowserOrderSyncToolUsesItsDedicatedTypedProvider(t *testing.T) 
 	}
 	if !got.Complete || got.PagesProcessed != 2 || current.request.MaxPages != 2 {
 		t.Fatalf("unexpected current-browser sync result: %#v, request=%#v", got, current.request)
+	}
+}
+
+func TestCurrentBrowserStatusToolReturnsPassiveTypedReadiness(t *testing.T) {
+	ctx := context.Background()
+	want := core.CurrentBrowserStatus{
+		SchemaVersion:              core.CurrentBrowserStatusSchemaVersion,
+		State:                      core.CurrentBrowserNotEnabled,
+		Browser:                    "Synthetic Chrome",
+		EndpointAvailable:          false,
+		ConnectionApprovalVerified: false,
+		CheckedAt:                  time.Date(2026, time.September, 3, 9, 0, 0, 0, time.UTC),
+		NextAction:                 "enable remote debugging at chrome://inspect/#remote-debugging, keep Chrome running, then retry",
+	}
+	server := NewWithProviders(Providers{
+		Auth:                 fixedStatusProvider{},
+		CurrentBrowserStatus: fixedCurrentBrowserStatusProvider{status: want},
+	}, "v0.1.0-test")
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: "current_browser_status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("tool returned an error: %#v", result.Content)
+	}
+	encoded, _ := json.Marshal(result.StructuredContent)
+	var got core.CurrentBrowserStatus
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("status = %#v, want %#v", got, want)
 	}
 }
 
