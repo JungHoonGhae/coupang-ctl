@@ -58,9 +58,10 @@ func (s *SQLite) FinishSync(ctx context.Context, runID int64, result core.SyncRe
 		status = "failed"
 	}
 	databaseResult, err := s.db.ExecContext(ctx, `UPDATE sync_runs SET completed_at = ?, status = ?,
-		pages_processed = ?, records_upserted = ?, error_code = ? WHERE id = ? AND status = 'running'`,
+		pages_processed = ?, records_upserted = ?, error_code = ?, history_complete = ?
+		WHERE id = ? AND status = 'running'`,
 		time.Now().UTC().Format(time.RFC3339Nano), status, result.PagesProcessed,
-		result.OrdersSeen, nullIfEmpty(errorCode), runID)
+		result.OrdersSeen, nullIfEmpty(errorCode), result.Complete && errorCode == "", runID)
 	if err != nil {
 		return fmt.Errorf("finish sync run: %w", err)
 	}

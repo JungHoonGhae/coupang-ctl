@@ -53,7 +53,6 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 	}
 	defer browserAdapter.Close()
 	authService := auth.NewService(browserAdapter)
-	accountService := accountworkflow.New(coupangaccount.New(browserAdapter))
 	receiptService := receiptworkflow.New(coupangreceipts.New(browserAdapter))
 
 	switch args[0] {
@@ -77,6 +76,12 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 		productService := productworkflow.NewWithAffiliateAndPrices(coupangproducts.New(browserAdapter), partners.NewFromEnvironment(os.Getenv), ledger)
 		return runProducts(ctx, args[1:], stdout, productService)
 	case "account":
+		ledger, err := store.Open(ctx, paths.Database)
+		if err != nil {
+			return err
+		}
+		defer ledger.Close()
+		accountService := accountworkflow.NewWithCosts(coupangaccount.New(browserAdapter), ledger)
 		return runAccount(ctx, args[1:], stdout, accountService)
 	case "receipts":
 		return runReceipts(ctx, args[1:], stdout, receiptService)
@@ -90,6 +95,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 		}
 		defer ledger.Close()
 		productService := productworkflow.NewWithAffiliateAndPrices(coupangproducts.New(browserAdapter), partners.NewFromEnvironment(os.Getenv), ledger)
+		accountService := accountworkflow.NewWithCosts(coupangaccount.New(browserAdapter), ledger)
 		return mcpserver.RunWithAllFeaturesAndReceipts(ctx, authService, orderworkflow.New(ledger, browserAdapter), productService, accountService, receiptService, version)
 	default:
 		return usage(stderr)

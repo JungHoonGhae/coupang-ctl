@@ -150,6 +150,7 @@ func (s *SQLite) migrate(ctx context.Context) error {
 		{"order_items", "product_type", "TEXT"},
 		{"order_items", "division_type", "TEXT"},
 		{"order_items", "commerce_kind", "TEXT NOT NULL DEFAULT 'product_purchase'"},
+		{"sync_runs", "history_complete", "INTEGER NOT NULL DEFAULT 0 CHECK (history_complete IN (0, 1))"},
 	}
 	for _, column := range columns {
 		if err := s.ensureColumn(ctx, column.table, column.name, column.definition); err != nil {
@@ -252,11 +253,15 @@ func (s *SQLite) migrate(ctx context.Context) error {
 		VALUES (10, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`); err != nil {
 		return fmt.Errorf("record product price watchlist migration: %w", err)
 	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+		VALUES (11, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`); err != nil {
+		return fmt.Errorf("record complete-history evidence migration: %w", err)
+	}
 	return nil
 }
 
 func (s *SQLite) ensureColumn(ctx context.Context, table, column, definition string) error {
-	if table != "orders" && table != "order_items" && table != "product_categories" {
+	if table != "orders" && table != "order_items" && table != "product_categories" && table != "sync_runs" {
 		return fmt.Errorf("migrate sqlite: unsupported table")
 	}
 	rows, err := s.db.QueryContext(ctx, "PRAGMA table_info("+table+")")

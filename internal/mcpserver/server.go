@@ -164,7 +164,7 @@ func addReceiptTools(server *mcp.Server, provider ReceiptProvider) {
 func addAccountTools(server *mcp.Server, provider AccountProvider) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "account_benefits",
-		Description: "Read the authenticated user's current WOW membership state, Coupang-reported benefit savings, registered payment-method brands, expected WOW Card rewards, and monthly observed WOW Card cash rewards. Order-payment and lump-sum/installment statistics explicitly remain unavailable until transaction evidence is adopted. Account identifiers and raw transaction descriptions are discarded. This never changes membership, payment, or card state.",
+		Description: "Read the authenticated user's current WOW membership state, Coupang-reported recent benefit savings, explicit membership-payment evidence when available, registered payment-method brands, and WOW Card reward aggregates. When the source UI exposes a recent-month window, the comparison uses current monthly fee times that month count only as an inferred estimate; it never presents missing order metadata as zero paid or the estimate as confirmed net value. Card rewards and card fees stay separate. Order-payment and installment statistics remain unavailable until transaction evidence is adopted. Account identifiers and raw transaction descriptions are discarded. This never changes membership, payment, or card state.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPointer(true)},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.AccountBenefitsRequest) (*mcp.CallToolResult, core.AccountBenefitsSnapshot, error) {
 		result, err := provider.Snapshot(ctx, input)

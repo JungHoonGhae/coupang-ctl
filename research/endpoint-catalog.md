@@ -49,6 +49,13 @@ being listed as `researched` does not make it a supported product API.
   benefit aggregates, payment-method brand/type/issuer, and monthly WOW Card
   reward aggregates. Payment account identifiers and raw cash transaction text
   are discarded before the typed core response.
+- A headed metadata-only check observed that the membership page labels the
+  displayed savings as a recent-three-month window. The normalized response
+  preserves that UI window separately from the amount. A complete live order
+  history exposed no membership-specific product/division enum, so order rows
+  cannot currently prove historical membership fees. Official Coupang guidance
+  directs membership-fee cash receipts to the PC receipt screen; receipt
+  evidence remains the required source for exact paid-history adoption.
 - Three redacted live product samples returned one JSON-LD breadcrumb each,
   with 5, 6, and 5 list items. The source does not name fixed
   large/middle/small fields, so the adapter preserves every category ID, label,
@@ -94,7 +101,8 @@ being listed as `researched` does not make it a supported product API.
 ## Next discovery queue
 
 1. Validate one already-completed receipt artifact with metadata-only output,
-   and research the vendor-receipt read contract. Do not trigger request creation.
+   research whether its cash-receipt rows can identify membership fees, and
+   research the vendor-receipt read contract. Do not trigger request creation.
 2. Capture a redacted sales-slip detail shape and adopt installments only if an
    explicit installment-month field exists.
 3. Validate category breadcrumb stability across time and across more accounts.

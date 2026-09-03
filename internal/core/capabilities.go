@@ -43,8 +43,8 @@ func CurrentCapabilities() CapabilityReport {
 		},
 		{
 			ID: "account_membership_benefits", Priority: "P0", Status: CapabilityExperimental,
-			UserValue: "current WOW state and fee, Coupang-reported benefit usage, registered payment-method brands, and observed monthly WOW Card cash rewards",
-			Interface: []string{"cli", "mcp"}, NextWork: "adopt historical membership-payment evidence before computing lifetime fees or net value", LastVerified: "2026-09-02",
+			UserValue: "current WOW state and fee, source-labeled recent benefit usage, an explicitly inferred current-fee comparison, registered payment-method brands, and observed monthly WOW Card cash rewards",
+			Interface: []string{"cli", "mcp"}, NextWork: "adopt membership-fee receipt evidence for exact historical costs; the complete live order history has no membership-specific item metadata", LastVerified: "2026-09-03",
 		},
 		{
 			ID: "purchase_delivery_trends", Priority: "P0", Status: CapabilityAvailable,

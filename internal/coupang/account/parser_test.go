@@ -9,7 +9,7 @@ import (
 
 func TestParseSnapshotDocumentNormalizesMembershipBenefitsAndCardRewards(t *testing.T) {
 	document := []byte(`{
-  "membership":{"props":{"pageProps":{"data":{
+  "membership":{"benefit_window_months":3,"props":{"pageProps":{"data":{
     "loyaltyMemberInfo":{
       "firstJoinDt":1754006400000,"membershipStatus":"ACTIVE","subscriptionPlan":"SYNTHETIC_MONTHLY",
       "membershipInfoVO":{"membershipStartDt":1788192000000,"membershipEndDt":1790784000000},
@@ -57,10 +57,13 @@ func TestParseSnapshotDocumentNormalizesMembershipBenefitsAndCardRewards(t *test
 	if got.BenefitUsage.TotalObservedSavingsKRW != 210000 || got.BenefitUsage.FreeDeliveryTotalKRW != 90000 || got.BenefitUsage.EatsOrderCount != 3 {
 		t.Fatalf("unexpected benefit usage: %#v", got.BenefitUsage)
 	}
+	if got.BenefitUsage.WindowStatus != "observed" || got.BenefitUsage.WindowKind != "rolling_recent_months" || got.BenefitUsage.WindowMonths != 3 {
+		t.Fatalf("unexpected benefit window: %#v", got.BenefitUsage)
+	}
 	if !got.CardRewards.UsageObserved || got.CardRewards.ExpectedAccumulationKRW != 12000 || got.CardRewards.ExpectedThisMonthKRW != 7000 || got.CardRewards.ObservedTransactionCount != 2 || got.CardRewards.ObservedAccumulationKRW != 7000 || len(got.CardRewards.Monthly) != 2 {
 		t.Fatalf("unexpected card rewards: %#v", got.CardRewards)
 	}
-	if got.Coverage.CashTransactionPagesRead != 1 || got.Coverage.CashTransactionHasMore || got.Coverage.MembershipPaymentsObserved || got.NetValue.Status != "partial_missing_cost_evidence" {
+	if got.Coverage.CashTransactionPagesRead != 1 || got.Coverage.CashTransactionHasMore || got.Coverage.MembershipPaymentsObserved || got.NetValue.Status != "not_computed_unaligned_windows" {
 		t.Fatalf("unexpected evidence coverage: coverage=%#v net=%#v", got.Coverage, got.NetValue)
 	}
 	if got.OrderPayments.Status != "unavailable" || got.OrderPayments.Source != "credit_card_sales_slip" || got.OrderPayments.ObservedPaymentCount != 0 || len(got.OrderPayments.Limitations) != 2 {

@@ -19,8 +19,9 @@ type snapshotDocument struct {
 }
 
 type membershipDocument struct {
-	Data  membershipData `json:"data"`
-	Props struct {
+	Data                membershipData `json:"data"`
+	BenefitWindowMonths int            `json:"benefit_window_months"`
+	Props               struct {
 		PageProps struct {
 			Data membershipData `json:"data"`
 		} `json:"pageProps"`
@@ -154,7 +155,7 @@ func ParseSnapshotDocument(document []byte) (core.AccountBenefitsSnapshot, error
 			BenefitSource:      "coupang_reported_wow_benefit_usage",
 			CardRewardEvidence: "structured_expected_reward_plus_cash_transactions_classified_by_source_label",
 			PaymentPrivacy:     "payment_account_identifiers_are_discarded",
-			NetValue:           "observed_benefits_minus_confirmed_membership_payments_minus_confirmed_card_annual_fees",
+			NetValue:           "recent-benefit comparison using current monthly fee times the source-observed month window; actual historical charges, card costs, and card rewards stay separate",
 		},
 	}
 	info := data.LoyaltyMemberInfo
@@ -185,7 +186,7 @@ func ParseSnapshotDocument(document []byte) (core.AccountBenefitsSnapshot, error
 	}
 	benefit := data.WowBenefitUsage
 	result.BenefitUsage = core.WowBenefitUsage{
-		Source: "coupang_wow_management", TotalObservedSavingsKRW: benefit.TotalAmount,
+		Source: "coupang_wow_management", WindowStatus: "unavailable", TotalObservedSavingsKRW: benefit.TotalAmount,
 		RocketFreeDeliveryKRW: benefit.RocketFreeDeliveryAmount, DawnAndSameDayDeliveryKRW: benefit.DawnAndSamedayDeliveryAmount,
 		FreshDeliveryKRW: benefit.FreshDeliveryAmount, FreeDeliveryTotalKRW: benefit.FreeDeliveryTotalAmount,
 		WowOnlyDiscountKRW: benefit.WowOnlyDiscountAmount, FreeReturnKRW: benefit.FreeReturnAmount,
@@ -196,6 +197,11 @@ func ParseSnapshotDocument(document []byte) (core.AccountBenefitsSnapshot, error
 		FreeReturnCount: benefit.FreeReturnCount, JikguFreeShippingCount: benefit.JikguFreeShippingCount,
 		EatsOrderCount: benefit.Improved.NumbersOrderEats,
 	}
+	if membership.BenefitWindowMonths == 3 {
+		result.BenefitUsage.WindowStatus = "observed"
+		result.BenefitUsage.WindowKind = "rolling_recent_months"
+		result.BenefitUsage.WindowMonths = 3
+	}
 	result.Coverage.MembershipStateObserved = true
 	result.Coverage.BenefitUsageObserved = benefit.TotalAmount > 0 || benefit.MembershipDays > 0
 	result.Coverage.PaymentMethodsObserved = len(result.PaymentMethods) > 0 || result.Membership.BillingMethod.Type != ""
@@ -203,11 +209,14 @@ func ParseSnapshotDocument(document []byte) (core.AccountBenefitsSnapshot, error
 	parseCashTransactions(raw.CashTransactionPages, &result)
 	result.NetValue = core.MembershipNetValue{
 		ObservedBenefitKRW: result.BenefitUsage.TotalObservedSavingsKRW,
-		Status:             "partial_missing_cost_evidence",
-		MissingEvidence:    []string{"historical_membership_payments", "charged_card_annual_fees"},
+		Status:             "not_computed_unaligned_windows",
+		Provenance:         "not_computed",
+		WindowBasis:        "benefit and actual membership-payment windows are not both available",
+		MissingEvidence:    []string{"benefit_window", "actual_membership_payments_for_benefit_window"},
+		Limitations:        []string{"card rewards and card fees are excluded from membership-only value"},
 	}
 	result.Warnings = append(result.Warnings,
-		"historical membership payments were not exposed by this source, so total fees paid and net value are not inferred",
+		"the account source does not expose historical membership payments; only separate explicit membership orders from the private local ledger can supply that cost evidence",
 		"order-level payment method and lump-sum versus installment statistics remain unavailable until card sales-slip evidence is adopted",
 	)
 	return result, nil

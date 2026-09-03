@@ -24,6 +24,20 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   reported benefit aggregates, registered payment-method brand/type/issuer,
   and expected plus monthly observed WOW Card reward aggregates. Account
   identifiers and raw cash transaction text are discarded.
+- The same account response joins a separate local-ledger cost provider. It
+  accepts only membership-only orders with explicit normalized metadata and
+  never classifies by product name or amount. A complete 73-page live sync
+  contained only the source enum pairs `SKU/GOODS` and `NORMAL/GOODS`, so zero
+  matching rows is returned as `unavailable_no_explicit_membership_order_metadata`,
+  not as zero fees paid.
+- A headed, metadata-only live probe verified that the membership UI labels
+  its displayed savings as `recent 3 months`. Schema v2 exposes that observed
+  window. Its membership-only comparison uses current monthly fee times three
+  only as an `inferred` estimate; pauses, refunds, free periods, and fee changes
+  remain explicit limitations. Confirmed net value remains unset, and card
+  rewards/card fees stay outside the comparison. Official Coupang guidance
+  points membership-fee cash receipts to the PC receipt screen, making receipt
+  evidence the next path for exact historical costs.
 - `receipts status`, `receipts list`, and `receipts summary` now expose typed
   `private_local` cash/card receipt reads through both CLI and MCP. Live,
   metadata-only checks verified status, empty history pagination, aggregate

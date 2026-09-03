@@ -94,6 +94,25 @@ coupangctl orders recap --output ./shopping-recap.html
 
 `orders spend`는 전체 원장 합계와 함께 `product_purchases`, `membership_fees`, `unclassified`를 분리합니다. 명시적인 멤버십 결제를 상품 구매나 연속 구매 기록에 섞지 않습니다.
 
+## WOW 멤버십 비용과 혜택
+
+```bash
+coupangctl orders sync
+coupangctl account benefits
+```
+
+`membership_costs`는 상품명이나 결제액으로 추정하지 않고, 쿠팡 원천
+metadata에서 멤버십으로 명시된 주문만 합산합니다. 결제 횟수·gross·취소 제외
+금액·최초/최근 결제일과 함께 전체 주문 동기화가 끝났는지도 표시합니다.
+
+쿠팡 화면이 혜택 총액을 `최근 3개월`로 표시하는 경우 그 기간도 관찰값으로
+반환합니다. 실제 과거 회비가 없으면 현재 월회비×3을 비교용 비용으로만 사용해
+`estimated_net_value_krw`를 계산합니다. 이 값은 `inferred`이며
+`confirmed_net_value_krw`는 0으로 남습니다. 멤버십 중지·환불·무료기간·기간 중
+요금 변경은 이 추정에 반영되지 않습니다. 와우카드 적립과 공개된 카드 연회비도
+기간 중복을 증명할 수 없어 멤버십 비교에서 분리합니다. 응답 계약은
+[`ACCOUNT.md`](ACCOUNT.md)에 있습니다.
+
 ## 자연어로 상품 찾기
 
 CLI는 관찰 가능한 조건을 그대로 받습니다.

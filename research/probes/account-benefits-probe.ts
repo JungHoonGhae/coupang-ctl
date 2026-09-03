@@ -62,8 +62,20 @@ try {
   const observations: unknown[] = [];
   const home = await inspectPage(context, "https://mc.coupang.com/ssr/desktop/order/list");
   observations.push(home.summary);
-  const discovered = home.relevantLinks
+  const accountSeeds = [
+    "https://loyalty.coupang.com/loyalty/management/home",
+    "https://cash.coupang.com/coupang-cash/home",
+  ];
+  const seedResults = [];
+  for (const url of accountSeeds) {
+    const inspected = await inspectPage(context, url);
+    seedResults.push(inspected);
+    observations.push(inspected.summary);
+  }
+  const discovered = [...new Set([home, ...seedResults]
+    .flatMap((result) => result.relevantLinks)
     .filter((link) => allowedAccountURL(link))
+    .filter((link) => !accountSeeds.includes(link)))]
     .slice(0, 8);
   for (const url of discovered) observations.push((await inspectPage(context, url)).summary);
 
@@ -91,10 +103,19 @@ async function inspectPage(context: BrowserContext, targetURL: string): Promise<
 }> {
   const page = await context.newPage();
   const calls: NetworkObservation[] = [];
+  const loadedScripts = new Set<string>();
+  const scriptRouteShapes = new Set<string>();
   const tasks: Promise<void>[] = [];
   page.on("response", (response) => {
     const request = response.request();
     const contentType = response.headers()["content-type"] ?? "";
+    if (request.resourceType() === "script") {
+      loadedScripts.add(response.url());
+      tasks.push(observeScriptRoutes(response).then((routes) => {
+        for (const route of routes) scriptRouteShapes.add(route);
+      }));
+      return;
+    }
     if (!["xhr", "fetch"].includes(request.resourceType()) && !contentType.includes("json")) return;
     tasks.push(observeResponse(response).then((entry) => {
       calls.push(entry);
@@ -115,16 +136,39 @@ async function inspectPage(context: BrowserContext, targetURL: string): Promise<
         finalPath: redactPath(finalURL.pathname),
         redirectedToLogin: finalURL.hostname === "login.coupang.com",
         domSignals: dom.signals,
-        relevantSnippets: dom.relevantSnippets,
         jsonStateKeyPaths: dom.jsonStateKeyPaths,
         selectedStateShapes: dom.selectedStateShapes,
         relevantLinkShapes: dom.relevantLinks.map(safeURL),
+        scriptSources: [...new Set([...dom.scriptSources, ...loadedScripts])].map(safeURL).slice(0, 80),
+        scriptRouteShapes: [...scriptRouteShapes].sort().slice(0, 160),
         network: uniqueCalls(calls),
       },
       relevantLinks: dom.relevantLinks,
     };
   } finally {
     await page.close();
+  }
+}
+
+async function observeScriptRoutes(response: Response): Promise<string[]> {
+  if (response.status() !== 200) return [];
+  try {
+    const text = await response.text();
+    if (text.length > 8_000_000) return [];
+    const routes = new Set<string>();
+    const pattern = /["'](\/[^"'\\\s]{2,180})["']/g;
+    for (const match of text.matchAll(pattern)) {
+      const candidate = match[1];
+      if (!/membership|loyalty|subscription|billing|payment|renew|fee|history|invoice|charge/i.test(candidate)) continue;
+      try {
+        const parsed = new URL(candidate, response.url());
+        if (!/(^|\.)coupang\.com$/.test(parsed.hostname)) continue;
+        routes.add(`${parsed.origin}${redactPath(parsed.pathname)}${parsed.searchParams.size > 0 ? `?<${[...parsed.searchParams.keys()].sort().join(",")}>` : ""}`);
+      } catch {}
+    }
+    return [...routes];
+  } catch {
+    return [];
   }
 }
 
@@ -154,7 +198,7 @@ async function observeResponse(response: Response): Promise<NetworkObservation> 
 async function inspectDOM(page: Page): Promise<{
   signals: Record<string, boolean | number>;
   relevantLinks: string[];
-  relevantSnippets: string[];
+  scriptSources: string[];
   jsonStateKeyPaths: string[];
   selectedStateShapes: Record<string, unknown>;
 }> {
@@ -171,6 +215,7 @@ async function inspectDOM(page: Page): Promise<{
       coupangCash: /쿠팡\\s*캐시|적립/i,
       benefit: /혜택|무료\\s*배송|무료\\s*반품/i,
       savings: /절약|아낀|배송비|반품비/i,
+      benefitThreeMonthWindow: /(?:최근|지난)\\s*3개월|3개월\\s*누적/i,
     };
     const relevantLinks = [...document.querySelectorAll("a[href]")]
       .filter((anchor) => /와우|멤버십|결제\\s*수단|쿠페이|쿠팡\\s*캐시|적립|혜택/i.test(anchor.textContent ?? ""))
@@ -179,21 +224,12 @@ async function inspectDOM(page: Page): Promise<{
         catch { return ""; }
       })
       .filter(Boolean);
-    const sanitize = (value) => value
-      .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/g, "<email>")
-      .replace(/(?:\\+?82[- ]?)?0?1[016789][- ]?\\d{3,4}[- ]?\\d{4}/g, "<phone>")
-      .replace(/[A-Za-z0-9_-]{12,}/g, "<opaque>")
-      .replace(/\\d+/g, "<n>")
-      .replace(/\\s+/g, " ")
-      .trim();
-    const relevantSnippets = [...document.querySelectorAll("body *")]
-      .filter((element) => element.children.length <= 3)
-      .map((element) => (element.textContent ?? "").trim())
-      .filter((value) => value.length > 0 && value.length <= 220)
-      .filter((value) => /와우|멤버십|월회비|결제\\s*예정|결제\\s*수단|쿠페이|쿠팡\\s*캐시|적립|절약|배송비|반품비/i.test(value))
-      .map(sanitize)
-      .filter((value, index, all) => all.indexOf(value) === index)
-      .slice(0, 80);
+    const scriptSources = [...document.querySelectorAll("script[src]")]
+      .map((script) => {
+        try { return new URL(script.getAttribute("src") ?? "", location.href).href; }
+        catch { return ""; }
+      })
+      .filter(Boolean);
     const statePaths = new Set();
     let nextState = null;
     const walk = (value, path, depth) => {
@@ -230,7 +266,7 @@ async function inspectDOM(page: Page): Promise<{
         relevantAnchorCount: relevantLinks.length,
       },
       relevantLinks: [...new Set(relevantLinks)].slice(0, 20),
-      relevantSnippets,
+      scriptSources: [...new Set(scriptSources)].slice(0, 40),
       jsonStateKeyPaths: [...statePaths].sort().slice(0, 160),
       selectedStateShapes: data ? {
         loyaltyMemberInfo: shape(data.loyaltyMemberInfo, 4),

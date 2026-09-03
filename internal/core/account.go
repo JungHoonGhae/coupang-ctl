@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const AccountBenefitsSchemaVersion = 1
+const AccountBenefitsSchemaVersion = 2
 
 type AccountBenefitsRequest struct {
 	MaxCashTransactionPages int `json:"max_cash_transaction_pages,omitempty" jsonschema:"Maximum Coupang Cash transaction pages to inspect,from 1 through 100"`
@@ -19,19 +19,20 @@ func (r AccountBenefitsRequest) Validate() error {
 }
 
 type AccountBenefitsSnapshot struct {
-	SchemaVersion  int                       `json:"schema_version"`
-	Visibility     string                    `json:"visibility"`
-	FetchedAt      time.Time                 `json:"fetched_at"`
-	Membership     WowMembership             `json:"membership"`
-	BenefitUsage   WowBenefitUsage           `json:"benefit_usage"`
-	CardRewards    WowCardRewardSummary      `json:"wow_card_rewards"`
-	CardProgram    WowCardProgramTerms       `json:"wow_card_program"`
-	PaymentMethods []PaymentMethodSummary    `json:"payment_methods"`
-	OrderPayments  OrderPaymentStatistics    `json:"order_payments"`
-	NetValue       MembershipNetValue        `json:"net_value"`
-	Coverage       AccountBenefitsCoverage   `json:"coverage"`
-	Warnings       []string                  `json:"warnings"`
-	Definitions    AccountBenefitDefinitions `json:"definitions"`
+	SchemaVersion   int                       `json:"schema_version"`
+	Visibility      string                    `json:"visibility"`
+	FetchedAt       time.Time                 `json:"fetched_at"`
+	Membership      WowMembership             `json:"membership"`
+	MembershipCosts MembershipCostEvidence    `json:"membership_costs"`
+	BenefitUsage    WowBenefitUsage           `json:"benefit_usage"`
+	CardRewards     WowCardRewardSummary      `json:"wow_card_rewards"`
+	CardProgram     WowCardProgramTerms       `json:"wow_card_program"`
+	PaymentMethods  []PaymentMethodSummary    `json:"payment_methods"`
+	OrderPayments   OrderPaymentStatistics    `json:"order_payments"`
+	NetValue        MembershipNetValue        `json:"net_value"`
+	Coverage        AccountBenefitsCoverage   `json:"coverage"`
+	Warnings        []string                  `json:"warnings"`
+	Definitions     AccountBenefitDefinitions `json:"definitions"`
 }
 
 type WowCardProgramTerms struct {
@@ -104,6 +105,9 @@ type PaymentMethodUsage struct {
 
 type WowBenefitUsage struct {
 	Source                     string `json:"source"`
+	WindowStatus               string `json:"window_status"`
+	WindowKind                 string `json:"window_kind,omitempty"`
+	WindowMonths               int    `json:"window_months"`
 	TotalObservedSavingsKRW    int64  `json:"total_observed_savings_krw"`
 	RocketFreeDeliveryKRW      int64  `json:"rocket_free_delivery_krw"`
 	DawnAndSameDayDeliveryKRW  int64  `json:"dawn_and_same_day_delivery_krw"`
@@ -147,10 +151,37 @@ type MonthlyCardReward struct {
 type MembershipNetValue struct {
 	ObservedBenefitKRW        int64    `json:"observed_benefit_krw"`
 	ConfirmedMembershipFeeKRW int64    `json:"confirmed_membership_fee_krw"`
+	EstimatedMembershipFeeKRW int64    `json:"estimated_membership_fee_krw"`
 	ConfirmedCardAnnualFeeKRW int64    `json:"confirmed_card_annual_fee_krw"`
 	ConfirmedNetValueKRW      int64    `json:"confirmed_net_value_krw"`
+	EstimatedNetValueKRW      int64    `json:"estimated_net_value_krw"`
+	ComparisonFrom            string   `json:"comparison_from,omitempty"`
+	ComparisonTo              string   `json:"comparison_to,omitempty"`
+	Provenance                string   `json:"provenance"`
+	WindowBasis               string   `json:"window_basis"`
 	Status                    string   `json:"status"`
 	MissingEvidence           []string `json:"missing_evidence"`
+	Limitations               []string `json:"limitations"`
+}
+
+// MembershipCostEvidence contains only orders whose normalized source
+// metadata explicitly classifies every item as a membership charge. Product
+// names and amount-pattern guesses are deliberately excluded.
+type MembershipCostEvidence struct {
+	Status                          string   `json:"status"`
+	Source                          string   `json:"source"`
+	Provenance                      string   `json:"provenance"`
+	ObservedPaymentCount            int      `json:"observed_payment_count"`
+	ObservedGrossAmountKRW          int64    `json:"observed_gross_amount_krw"`
+	ObservedNonCanceledPaymentCount int      `json:"observed_non_canceled_payment_count"`
+	ObservedPaidAmountKRW           int64    `json:"observed_paid_amount_krw"`
+	FirstObservedPaymentDate        string   `json:"first_observed_payment_date,omitempty"`
+	LastObservedPaymentDate         string   `json:"last_observed_payment_date,omitempty"`
+	FirstObservedOrderDate          string   `json:"first_observed_order_date,omitempty"`
+	LastObservedOrderDate           string   `json:"last_observed_order_date,omitempty"`
+	LastCompleteHistorySyncAt       string   `json:"last_complete_history_sync_at,omitempty"`
+	CompleteHistorySync             bool     `json:"complete_history_sync"`
+	Limitations                     []string `json:"limitations"`
 }
 
 type AccountBenefitsCoverage struct {

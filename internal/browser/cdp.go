@@ -1302,20 +1302,22 @@ func waitForMembershipData(ctx context.Context, page *cdpClient) ([]byte, error)
 			data,
 			loginForm: document.querySelector('input[type="password"]') !== null,
 			challenge: /captcha|보안문자|자동입력방지/i.test(body),
-			accessDenied: /access denied|접근.{0,8}(거부|제한)|비정상.{0,8}접근/i.test(body)
+			accessDenied: /access denied|접근.{0,8}(거부|제한)|비정상.{0,8}접근/i.test(body),
+			benefitWindowMonths: /(?:최근|지난)\s*3개월|3개월\s*누적/i.test(body) ? 3 : 0
 		});
 	})()`
 	for {
 		encoded, err := evaluateBrowserString(waitCtx, page, expression, false)
 		if err == nil {
 			var state struct {
-				Href         string          `json:"href"`
-				Ready        string          `json:"ready"`
-				Status       int             `json:"status"`
-				Data         json.RawMessage `json:"data"`
-				LoginForm    bool            `json:"loginForm"`
-				Challenge    bool            `json:"challenge"`
-				AccessDenied bool            `json:"accessDenied"`
+				Href                string          `json:"href"`
+				Ready               string          `json:"ready"`
+				Status              int             `json:"status"`
+				Data                json.RawMessage `json:"data"`
+				LoginForm           bool            `json:"loginForm"`
+				Challenge           bool            `json:"challenge"`
+				AccessDenied        bool            `json:"accessDenied"`
+				BenefitWindowMonths int             `json:"benefitWindowMonths"`
 			}
 			if json.Unmarshal([]byte(encoded), &state) == nil {
 				if state.Status == http.StatusForbidden || state.AccessDenied || state.Challenge {
@@ -1332,8 +1334,9 @@ func waitForMembershipData(ctx context.Context, page *cdpClient) ([]byte, error)
 					}
 					if json.Unmarshal(state.Data, &member) == nil && member.LoyaltyMemberInfo.MembershipStatus != "" {
 						return json.Marshal(struct {
-							Data json.RawMessage `json:"data"`
-						}{Data: state.Data})
+							Data                json.RawMessage `json:"data"`
+							BenefitWindowMonths int             `json:"benefit_window_months"`
+						}{Data: state.Data, BenefitWindowMonths: state.BenefitWindowMonths})
 					}
 				}
 			}
