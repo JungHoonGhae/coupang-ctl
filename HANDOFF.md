@@ -361,9 +361,9 @@ multi-layout selected-option coverage are available.
 Source-native purchase-category enrichment is also experimental while its
 stability is validated. Cash/card and vendor-receipt reads are experimental;
 completed artifact validation remains. Exact-option local price history
-and repurchase comparison are experimental; the scheduler-ready watch command
-is implemented. Longitudinal threshold validation and optional platform-specific
-scheduler installers are next.
+and repurchase comparison are experimental; the watch command and reviewable
+launchd, systemd, cron, and Windows daily scheduler artifacts are implemented.
+Real longitudinal price-change validation remains.
 
 ## Security and compliance
 
