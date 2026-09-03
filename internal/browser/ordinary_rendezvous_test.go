@@ -16,7 +16,9 @@ import (
 
 func TestOrdinaryBridgeRendezvousRelaysOneAuthenticatedBrowserConnection(t *testing.T) {
 	stateDir := t.TempDir()
-	now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
+	// The captured value keeps validation deterministic, while remaining a real
+	// future socket deadline for the duration of this test.
+	now := time.Now().UTC()
 	bridge, err := startOrdinaryBridgeRendezvous(
 		stateDir,
 		func() time.Time { return now },
