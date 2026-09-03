@@ -1,6 +1,8 @@
 // receipt-contract-metadata prints browser-sanitized receipt page key paths,
-// control kinds, and same-origin static endpoint paths only. It performs no
-// click, POST, request creation, or receipt download.
+// control kinds, same-origin static endpoint paths, and bounded representative
+// vendor-receipt shapes only. It performs no click, POST, request creation, or
+// receipt download. Raw order identifiers remain in browser memory and are
+// never emitted.
 package main
 
 import (
@@ -15,16 +17,50 @@ import (
 	"time"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	coupangorders "github.com/JungHoonGhae/coupang-ctl/internal/coupang/orders"
 	"github.com/JungHoonGhae/coupang-ctl/internal/platform"
 )
+
+const (
+	maxOrderSamplePages = 100
+	maxOrderSamples     = 20
+)
+
+type orderDocumentSource interface {
+	Fetch(context.Context, *core.OrderCursor) ([]byte, error)
+}
+
+type orderSampleOptions struct {
+	MaxPages   int
+	MaxSamples int
+	PageDelay  time.Duration
+}
+
+type orderSampleMetadata struct {
+	Status              string         `json:"status"`
+	PagesScanned        int            `json:"pages_scanned"`
+	OrdersScanned       int            `json:"orders_scanned"`
+	Completed           bool           `json:"completed"`
+	StoppedAtPageLimit  bool           `json:"stopped_at_page_limit"`
+	TerminalError       string         `json:"terminal_error,omitempty"`
+	SelectedCount       int            `json:"selected_count"`
+	SelectedStateCounts map[string]int `json:"selected_state_counts"`
+	MaximumPages        int            `json:"maximum_pages"`
+	MaximumSamples      int            `json:"maximum_samples"`
+}
 
 func main() {
 	headed := flag.Bool("headed", false, "force visible installed Chrome instead of headless-first mode")
 	skipOrderSamples := flag.Bool("skip-order-samples", false, "skip order lookup and per-order vendor reads")
+	maxSamplePages := flag.Int("max-order-pages", 20, "maximum authenticated order pages scanned for representative receipt samples")
+	maxSamples := flag.Int("max-order-samples", 12, "maximum representative order receipt reads")
+	orderPageDelay := flag.Duration("order-page-delay", 300*time.Millisecond, "pause between order pages while selecting receipt samples")
 	timeout := flag.Duration("timeout", 90*time.Second, "overall read-only probe timeout")
 	flag.Parse()
-	if *timeout <= 0 || *timeout > 5*time.Minute {
-		fail("invalid timeout")
+	if *timeout <= 0 || *timeout > 5*time.Minute || *maxSamplePages < 1 || *maxSamplePages > maxOrderSamplePages ||
+		*maxSamples < 1 || *maxSamples > maxOrderSamples || *orderPageDelay < 0 || *orderPageDelay > 5*time.Second {
+		fail("invalid_probe_bounds")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
@@ -40,9 +76,14 @@ func main() {
 	}
 	defer source.Close()
 	var orderSamples []browser.ReceiptResearchOrderSample
-	orderSampleStatus := "skipped"
+	orderSampleMetadata := orderSampleMetadata{
+		Status: "skipped", SelectedStateCounts: map[string]int{},
+		MaximumPages: *maxSamplePages, MaximumSamples: *maxSamples,
+	}
 	if !*skipOrderSamples {
-		orderSamples, orderSampleStatus = sampleOrders(ctx, source)
+		orderSamples, orderSampleMetadata = sampleOrders(ctx, source, orderSampleOptions{
+			MaxPages: *maxSamplePages, MaxSamples: *maxSamples, PageDelay: *orderPageDelay,
+		})
 	}
 	document, err := source.FetchReceiptResearchMetadata(ctx, orderSamples)
 	if err != nil {
@@ -56,7 +97,8 @@ func main() {
 		fail("invalid_sanitized_metadata")
 	}
 	result["browser_mode"] = map[bool]string{true: "headed", false: "headless_first"}[*headed]
-	result["order_sample_status"] = orderSampleStatus
+	result["order_sample_status"] = orderSampleMetadata.Status
+	result["order_sample_metadata"] = orderSampleMetadata
 	encoded, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		fail("metadata_encoding_failed")
@@ -64,62 +106,147 @@ func main() {
 	fmt.Println(string(encoded))
 }
 
-func sampleOrders(ctx context.Context, source *browser.Native) ([]browser.ReceiptResearchOrderSample, string) {
-	document, err := source.Fetch(ctx, nil)
-	if err != nil {
-		return nil, safeErrorCode(err)
-	}
-	root, err := decodeRoot(document)
-	if err != nil {
-		return nil, "order_shape_unavailable"
-	}
-	domain := root
-	for _, key := range []string{"props", "pageProps", "domains", "desktopOrder"} {
-		next, ok := domain[key].(map[string]any)
-		if !ok {
-			if _, modelOK := root["orderList"]; modelOK {
-				domain = root
-				break
-			}
-			return nil, "order_shape_unavailable"
-		}
-		domain = next
-	}
-	orders, ok := domain["orderList"].([]any)
-	if !ok {
-		return nil, "order_shape_unavailable"
+func sampleOrders(ctx context.Context, source orderDocumentSource, options orderSampleOptions) ([]browser.ReceiptResearchOrderSample, orderSampleMetadata) {
+	metadata := orderSampleMetadata{
+		Status: "no_order_samples", SelectedStateCounts: map[string]int{},
+		MaximumPages: options.MaxPages, MaximumSamples: options.MaxSamples,
 	}
 	seen := map[string]bool{}
-	result := make([]browser.ReceiptResearchOrderSample, 0, 5)
-	for _, raw := range orders {
-		order, ok := raw.(map[string]any)
-		if !ok {
-			continue
+	buckets := map[string][]browser.ReceiptResearchOrderSample{}
+	seenCursors := map[string]bool{}
+	var cursor *core.OrderCursor
+	for metadata.PagesScanned < options.MaxPages {
+		cursorKey := "initial"
+		if cursor != nil {
+			cursorKey = fmt.Sprintf("%d/%d", cursor.Year, cursor.Page)
 		}
-		var orderID string
-		switch value := order["orderId"].(type) {
-		case string:
-			orderID = value
-		case json.Number:
-			orderID = value.String()
-		case float64:
-			if value == float64(int64(value)) {
-				orderID = fmt.Sprintf("%.0f", value)
+		if seenCursors[cursorKey] {
+			metadata.TerminalError = "pagination_cycle_detected"
+			break
+		}
+		seenCursors[cursorKey] = true
+		document, err := source.Fetch(ctx, cursor)
+		if err != nil {
+			metadata.TerminalError = safeErrorCode(err)
+			break
+		}
+		page, err := coupangorders.ParseOrderDocument(document)
+		if err != nil {
+			metadata.TerminalError = "order_shape_unavailable"
+			break
+		}
+		root, err := decodeRoot(document)
+		if err != nil {
+			metadata.TerminalError = "order_shape_unavailable"
+			break
+		}
+		domain := root
+		for _, key := range []string{"props", "pageProps", "domains", "desktopOrder"} {
+			next, ok := domain[key].(map[string]any)
+			if !ok {
+				if _, modelOK := root["orderList"]; modelOK {
+					domain = root
+					break
+				}
+				metadata.TerminalError = "order_shape_unavailable"
+				break
+			}
+			domain = next
+		}
+		if metadata.TerminalError != "" {
+			break
+		}
+		orders, ok := domain["orderList"].([]any)
+		if !ok {
+			metadata.TerminalError = "order_shape_unavailable"
+			break
+		}
+		metadata.PagesScanned++
+		metadata.OrdersScanned += len(orders)
+		for _, raw := range orders {
+			order, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			orderID := receiptResearchOrderID(order["orderId"])
+			if orderID == "" || seen[orderID] {
+				continue
+			}
+			seen[orderID] = true
+			state := classifyOrderState(order)
+			if len(buckets[state]) < options.MaxSamples {
+				buckets[state] = append(buckets[state], browser.ReceiptResearchOrderSample{OrderID: orderID, State: state})
 			}
 		}
-		if orderID == "" || seen[orderID] {
-			continue
+		cursor = page.Next
+		if cursor == nil {
+			metadata.Completed = true
+			break
 		}
-		seen[orderID] = true
-		result = append(result, browser.ReceiptResearchOrderSample{OrderID: orderID, State: classifyOrderState(order)})
-		if len(result) == 5 {
+		if options.PageDelay > 0 {
+			timer := time.NewTimer(options.PageDelay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				metadata.TerminalError = "timeout"
+			case <-timer.C:
+			}
+			if metadata.TerminalError != "" {
+				break
+			}
+		}
+	}
+	metadata.StoppedAtPageLimit = !metadata.Completed && metadata.TerminalError == "" && metadata.PagesScanned >= options.MaxPages
+	result := selectOrderSamples(buckets, options.MaxSamples)
+	metadata.SelectedCount = len(result)
+	for _, sample := range result {
+		metadata.SelectedStateCounts[sample.State]++
+	}
+	if len(result) > 0 {
+		metadata.Status = "sampled_in_memory"
+		if metadata.TerminalError != "" {
+			metadata.Status = "partial_in_memory"
+		}
+	} else if metadata.TerminalError != "" {
+		metadata.Status = metadata.TerminalError
+	}
+	return result, metadata
+}
+
+func receiptResearchOrderID(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case json.Number:
+		return typed.String()
+	case float64:
+		if typed == float64(int64(typed)) {
+			return fmt.Sprintf("%.0f", typed)
+		}
+	}
+	return ""
+}
+
+func selectOrderSamples(buckets map[string][]browser.ReceiptResearchOrderSample, limit int) []browser.ReceiptResearchOrderSample {
+	states := []string{"fully_canceled", "canceled_and_returned_units", "returned_units", "canceled_units", "ordinary"}
+	result := make([]browser.ReceiptResearchOrderSample, 0, limit)
+	for round := 0; len(result) < limit; round++ {
+		added := false
+		for _, state := range states {
+			if round >= len(buckets[state]) {
+				continue
+			}
+			result = append(result, buckets[state][round])
+			added = true
+			if len(result) == limit {
+				break
+			}
+		}
+		if !added {
 			break
 		}
 	}
-	if len(result) == 0 {
-		return nil, "no_order_samples"
-	}
-	return result, "sampled_in_memory"
+	return result
 }
 
 func classifyOrderState(order map[string]any) string {

@@ -71,6 +71,12 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 - A follow-up static-shape inspection found installment-named identifiers in
   cancellation/return-flow state and feature flags, not receipt transaction
   fields. They were not promoted into the typed contract.
+- The receipt metadata probe can now scan a bounded multi-page order window
+  and select a bounded round-robin sample that prioritizes explicit canceled
+  and returned states over ordinary orders. Its output contains only page and
+  state counts, terminal error codes, and browser-sanitized receipt shapes;
+  raw order IDs stay in memory. A fresh live run is still required before this
+  broader sampler can change installment or refund-settlement evidence status.
 - `receipts download` can save an already-completed history artifact to a new
   private `0600` file. It re-reads the selected history row, keeps the source
   URL in browser memory, validates the final Coupang host and bounded content,

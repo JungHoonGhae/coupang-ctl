@@ -151,7 +151,8 @@ being listed as `researched` does not make it a supported product API.
    and research whether its cash-receipt rows can identify membership fees. Do
    not trigger request creation.
 2. Capture a redacted sales-slip detail shape and adopt installments only if an
-   explicit installment-month field exists.
+   explicit installment-month field exists. The bounded multi-page receipt
+   sampler is ready; rerun it when the protected order walk is accepted.
 3. Broaden the same-product category recheck sample and validate across more
    consenting accounts; preserve changed paths rather than overwriting their
    evidence.
