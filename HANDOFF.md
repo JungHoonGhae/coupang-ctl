@@ -234,10 +234,11 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 - A live private-local catalog-to-search pass selected an observed leaf ID
   without logging it and returned five current category results with category
   scope, `sales` applied as a source-native sort, and positive source positions.
-  A later rapid multi-layout probe was denied in both headless and
-  CDP-controlled headed Chrome. No bypass was attempted; the detail-layout
-  coverage check remains a later retry, and the sanitized CLI error no longer
-  incorrectly assumes every access denial came from headless mode.
+  A 2026-09-03 follow-up succeeded through both headed and default
+  headless-first reads across hub, assembled-PC, MacBook, and TV layouts.
+  `sales`, `price_asc`, and `coupang_ranking` all preserved their requested
+  source-native order and exact result positions. Product discovery and
+  source-native rankings are therefore available rather than experimental.
 - Listing options are collapsed by product ID by default. Search-card reviews
   can be product-page-wide, so they are labeled `product_page_observed` and are
   not attributed to a particular CPU/GPU/storage option. Exact vendor-item
@@ -245,6 +246,20 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 - Computer memory, storage, CPU, GPU, OS, and explicit used/refurbished/display
   condition markers can be normalized from the observed option title. The
   evidence source remains `observed_product_title`; no missing part is guessed.
+- A live assembled-PC title exposed both `512GB` and CPU model `R3-3200G`.
+  The generic capacity parser initially misread the CPU suffix as 3200GB; it
+  now excludes capacity tokens overlapping an observed CPU-model span and has
+  a synthetic regression fixture.
+- Product inspection now waits for non-empty selected-option text instead of
+  stopping when an empty picker container first appears. The same MacBook
+  option returned two selected rows and a 16GB/512GB normalized option in both
+  headed and default headless-first verification.
+- A metadata-only headed probe found that the optional `quantity-info` request
+  currently returns HTTP 403 with `text/html` on the sampled product. The page
+  remained HTTP 200; coupon, promotion, cashback, delivery, image, and review
+  evidence still came from other observed product-page/read sources. Four
+  inspected layouts had no card-benefit text, so `card_benefit` remains an
+  honest unavailable field rather than a generic promotion claim.
 - `https://www.coupang.com/next-api/review` returns structured review data when replayed with a valid anonymous web session.
 - Product detail pages expose JSON endpoints for review summaries, paged reviews, quantity/price/delivery, promotions, inquiries, related products, recommendations, banners, and brand data.
 - `https://reco.coupang.com/recommend/widget` exposes rich product metadata including identifiers, images, prices, discounts, delivery badges, rating counts, and rating averages.
@@ -314,9 +329,9 @@ rest of the product.
 See `ROADMAP.md` or run `coupangctl capabilities`. P0 order-history and local
 analytics, explainable shopping types, achievements, and a public-safe local
 HTML recap, private local product receipts, and experimental membership-benefit
-snapshots are implemented. Product-type/category rankings and computer-title
-spec normalization are experimental; category-label discovery and
-selected-option coverage across layouts are the next search tasks.
+snapshots are implemented. Natural-language product discovery, product-type
+and observed-category rankings, computer-title spec normalization, and
+multi-layout selected-option coverage are available.
 Source-native purchase-category enrichment is also experimental while its
 stability is validated. Cash/card and vendor-receipt reads are experimental;
 completed artifact validation remains. Exact-option local price history

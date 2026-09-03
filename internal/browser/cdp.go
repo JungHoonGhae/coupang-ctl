@@ -1043,7 +1043,10 @@ func extractProductInspection(ctx context.Context, page *cdpClient, request core
 		};
 		const unique = (values, limit) => [...new Set(values.filter(Boolean))].slice(0, limit);
 		for (let attempt = 0; attempt < 25; attempt++) {
-			if (document.querySelector('.option-picker-container, .option-picker-select .select-item.selected')) break;
+			const picker = document.querySelector('.option-picker-container, .option-picker-select');
+			const selected = [...document.querySelectorAll('.option-picker-select .select-item.selected')];
+			if (selected.some((element) => cleanText(element.textContent, 300).length > 0)) break;
+			if (!picker && attempt >= 5) break;
 			await new Promise((resolve) => setTimeout(resolve, 100));
 		}
 		const jsonLD = [];

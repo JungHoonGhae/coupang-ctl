@@ -24,7 +24,7 @@ being listed as `researched` does not make it a supported product API.
 | P1 | `GET https://www.coupang.com/vp/products/<id>` | optional `vendorItemId` | HTML with JSON-LD `BreadcrumbList`; category nodes contain `position:number`, `name:string`, and `item:https://www.coupang.com/np/categories/<id>` | session restored when available | read | experimental behind the product-category adapter |
 | P0 | `GET https://www.coupang.com/np/search` or `/np/categories/<id>` | search `q`; optional `sorter` | server-rendered bounded product cards with public identity links, name, image, current/original price, rating, review count, source position, and delivery/promotion badges when present | not required for some sampled public products | read | experimental behind the product-search document adapter |
 | P0 | `GET https://www.coupang.com/vp/products/<id>` | optional `itemId`, `vendorItemId` | HTML with product JSON-LD plus bounded public description, specification, gallery, and detail-image fallbacks | not required for sampled public products | read | experimental behind the product-inspection adapter |
-| P0 | `GET https://www.coupang.com/next-api/products/quantity-info` | `productId`, `vendorItemId` | array item with price/price-list, shipping, delivery, subscription, cashback, coupon, and discount key families | not required for sampled public products | read | experimental; normalized inside product inspection |
+| P0 | `GET https://www.coupang.com/next-api/products/quantity-info` | `productId`, `vendorItemId` | historically observed array item with price/price-list, shipping, delivery, subscription, cashback, coupon, and discount key families | optional; a 2026-09-03 headed sample returned `403 text/html` while the product page remained available | read | optional narrow read; unavailable does not fail inspection |
 | P0 | `GET https://www.coupang.com/next-api/review` | product and bounded pagination/filter names | `rData` with bounded paging contents, review total, and rating-summary fields | not required for sampled public products | read | experimental; author identity is discarded and content PII is redacted |
 | P1 | Product-page cart control | exact public product/item/vendor-item identity and bounded quantity | verified add result or explicit attempted-but-unverified result; no raw cart response retained | profile session when available | reversible write | implemented with synthetic contracts; no live mutation executed during verification |
 
@@ -114,6 +114,15 @@ being listed as `researched` does not make it a supported product API.
   observed on one layout and remains a bounded fallback; when absent, option
   identity stays with the exact search card and vendor-item ID rather than
   being inferred from a page-wide review total.
+- A 2026-09-03 metadata-only recheck found `quantity-info` returning HTTP 403
+  with `text/html` on a headed installed-Chrome sample while the enclosing
+  product page returned 200. No response body was retained. The inspected page
+  exposed two non-empty selected-option rows; the production extractor now
+  waits for their text instead of treating an empty picker shell as ready.
+- Four live product layouts (hub, assembled PC, MacBook, and TV) verified
+  structured price, delivery, images, bounded reviews, and honest field
+  coverage. No card-benefit text was present in those samples, so generic
+  promotion text was not relabeled as a card benefit.
 - A later bounded live pass reached zero pending product references without
   guessing missing categories. Both valid breadcrumb documents and explicit
   unavailable outcomes were observed; account-specific counts and labels were
@@ -130,6 +139,5 @@ being listed as `researched` does not make it a supported product API.
 2. Capture a redacted sales-slip detail shape and adopt installments only if an
    explicit installment-month field exists.
 3. Validate category breadcrumb stability across time and across more accounts.
-4. Validate exact structured card-benefit and delivery-badge fields across
-   more public product layouts without translating generic promotion text into
-   a card claim.
+4. Continue sampling exact card-benefit fields when a source-positive product
+   is encountered; do not translate generic promotion text into a card claim.

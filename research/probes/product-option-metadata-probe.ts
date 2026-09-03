@@ -60,14 +60,24 @@ try {
     ...(cookie.session || !cookie.expires || cookie.expires <= 0 ? {} : { expires: cookie.expires }),
   })));
   const page = await context.newPage();
-  let quantityShape: unknown = null;
+  let quantityObservation: unknown = null;
   page.on("response", async (response) => {
     const parsed = new URL(response.url());
     if (parsed.hostname !== "www.coupang.com" || parsed.pathname !== "/next-api/products/quantity-info") return;
+    const contentType = response.headers()["content-type"] ?? "";
     try {
-      quantityShape = shape(await response.json());
+      const body = await response.body();
+      if (body.length > 1_000_000) {
+        quantityObservation = { status: response.status(), contentType, bodyBytes: body.length, tooLarge: true };
+        return;
+      }
+      const parsedBody = JSON.parse(body.toString("utf8")) as unknown;
+      quantityObservation = {
+        status: response.status(), contentType, bodyBytes: body.length, jsonReadable: true,
+        shape: shape(parsedBody),
+      };
     } catch {
-      quantityShape = { unreadable: true };
+      quantityObservation = { status: response.status(), contentType, jsonReadable: false };
     }
   });
   const response = await page.goto(
@@ -75,23 +85,57 @@ try {
     { waitUntil: "domcontentloaded", timeout: 25_000 },
   );
   await page.waitForTimeout(2_000);
-  if (quantityShape === null) {
-    const fetched = await page.evaluate(async ({ productID, vendorItemID }) => {
+  if (quantityObservation === null || (quantityObservation as { jsonReadable?: boolean }).jsonReadable === false) {
+    quantityObservation = await page.evaluate(async ({ productID, vendorItemID }) => {
       const response = await fetch(
         `/next-api/products/quantity-info?productId=${encodeURIComponent(productID)}&vendorItemId=${encodeURIComponent(vendorItemID)}`,
         { credentials: "include", headers: { accept: "application/json" } },
       );
-      return response.ok ? await response.json() : null;
+      const text = (await response.text()).slice(0, 1_000_001);
+      let parsedBody: unknown = null;
+      let jsonReadable = false;
+      try {
+        parsedBody = JSON.parse(text) as unknown;
+        jsonReadable = true;
+      } catch {}
+      let responseShape: unknown = null;
+      if (jsonReadable) {
+        if (Array.isArray(parsedBody)) {
+          const first = parsedBody.length > 0 ? parsedBody[0] : undefined;
+          responseShape = {
+            type: "array",
+            length: parsedBody.length,
+            itemType: Array.isArray(first) ? "array" : first === null ? "null" : typeof first,
+          };
+        } else if (parsedBody !== null && typeof parsedBody === "object") {
+          responseShape = { type: "object", keys: Object.keys(parsedBody as Record<string, unknown>).sort().slice(0, 100) };
+        } else {
+          responseShape = parsedBody === null ? "null" : typeof parsedBody;
+        }
+      }
+      return {
+        status: response.status,
+        contentType: response.headers.get("content-type") ?? "",
+        bodyBytes: text.length,
+        truncated: text.length > 1_000_000,
+        jsonReadable,
+        shape: responseShape,
+      };
     }, { productID, vendorItemID });
-    quantityShape = shape(fetched);
   }
   const optionDocumentShape = await page.evaluate(() => {
     const candidates = [...document.querySelectorAll<HTMLElement>('[class*="option" i], [class*="selected" i], [data-vendor-item-id]')];
     return candidates.slice(0, 120).map((element) => {
       const text = (element.textContent ?? "").replace(/\s+/g, " ").trim();
+      const ancestorClasses: string[] = [];
+      let ancestor = element.parentElement;
+      for (let depth = 0; ancestor && depth < 5; depth++, ancestor = ancestor.parentElement) {
+        ancestorClasses.push(...ancestor.classList);
+      }
       return {
         tag: element.tagName,
         classes: [...element.classList].sort(),
+        ancestorClasses: [...new Set(ancestorClasses)].sort().slice(0, 100),
         attributeNames: element.getAttributeNames().filter((name) => name !== "style").sort(),
         childCount: element.children.length,
         textLength: text.length,
@@ -101,13 +145,33 @@ try {
       };
     });
   });
+  const benefitDocumentSignals = await page.evaluate(() => {
+    const bodyText = (document.body?.innerText ?? "").replace(/\s+/g, " ");
+    const candidates = [...document.querySelectorAll<HTMLElement>("div,span,p,li,strong,button")]
+      .filter((element) => {
+        const text = (element.textContent ?? "").replace(/\s+/g, " ").trim();
+        return text.length >= 2 && text.length <= 300 && /카드.{0,24}(?:할인|혜택)|카드할인/.test(text);
+      });
+    const tags: Record<string, number> = {};
+    for (const element of candidates) tags[element.tagName] = (tags[element.tagName] ?? 0) + 1;
+    return {
+      bodyHasCardBenefitText: /카드.{0,24}(?:할인|혜택)|카드할인/.test(bodyText),
+      cardSignalCount: candidates.length,
+      cardSignalTags: tags,
+      cardSignalClassTokens: [...new Set(candidates.flatMap((element) => [...element.classList]))].sort().slice(0, 100),
+      currentCardSelectorCount: document.querySelectorAll('[class*="cardBenefit"]').length,
+      couponClassSelectorCount: document.querySelectorAll('[class*="coupon"]').length,
+      promotionClassSelectorCount: document.querySelectorAll('[class*="promotion"]').length,
+    };
+  });
   process.stdout.write(`${JSON.stringify({
     probe: "product_option_metadata",
     browser: headed ? "installed_chrome_headed" : "installed_chrome_headless",
     status: response?.status() ?? 0,
     finalHost: new URL(page.url()).hostname,
-    quantityInfoShape: quantityShape,
+    quantityInfo: quantityObservation,
     optionDocumentShape,
+    benefitDocumentSignals,
   }, null, 2)}\n`);
 } finally {
   await browser.close();

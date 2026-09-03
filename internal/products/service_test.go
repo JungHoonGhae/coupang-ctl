@@ -256,6 +256,7 @@ func TestComputerSpecificationParserRecognizesCommonKoreanListingSpellings(t *te
 		gpu  string
 	}{
 		{name: "Synthetic desktop R5 5500GT, 라데온 Vega 7, 16GB, 512GB", cpu: "R5 5500GT", gpu: "라데온 Vega 7"},
+		{name: "Synthetic desktop 512GB, 16GB, 라데온 VEGA8, R3-3200G", cpu: "R3-3200G", gpu: "라데온 VEGA8"},
 		{name: "Synthetic desktop [AMD] 라이젠5-9600X RTX 5060 16GB 512GB", cpu: "라이젠5-9600X", gpu: "RTX 5060"},
 		{name: "Synthetic notebook 인텔 코어Ultra5 16GB 512GB", cpu: "인텔 코어Ultra5"},
 		{name: "Synthetic notebook Ultra5 16GB 512GB", cpu: "Ultra5"},

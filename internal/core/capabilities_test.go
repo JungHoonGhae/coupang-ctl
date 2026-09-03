@@ -49,4 +49,10 @@ func TestReceiptCapabilitiesExposeImplementedStateAndNextEvidence(t *testing.T) 
 			t.Fatalf("capability %q does not expose its blocker class: %#v", id, capability)
 		}
 	}
+	for _, id := range []string{"natural_language_product_discovery", "source_native_product_rankings"} {
+		capability := byID[id]
+		if capability.Status != core.CapabilityAvailable || capability.NextStepKind != core.CapabilityNextMaintenance || len(capability.BlockedBy) != 0 || capability.LastVerified == "" {
+			t.Fatalf("validated product capability %q is not available: %#v", id, capability)
+		}
+	}
 }

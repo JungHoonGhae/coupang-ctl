@@ -622,9 +622,13 @@ func parseComputerSpecifications(name string) *core.ComputerSpecifications {
 	if match := explicitStoragePattern.FindStringSubmatch(name); len(match) == 2 {
 		specs.StorageGB, _ = strconv.Atoi(match[1])
 	}
-	for _, match := range computerCapacityPattern.FindAllStringSubmatch(name, -1) {
-		amount, _ := strconv.Atoi(match[1])
-		if strings.EqualFold(match[2], "TB") {
+	cpuRanges := cpuPattern.FindAllStringIndex(name, -1)
+	for _, match := range computerCapacityPattern.FindAllStringSubmatchIndex(name, -1) {
+		if len(match) < 6 || overlapsAnyRange(match[0], match[1], cpuRanges) {
+			continue
+		}
+		amount, _ := strconv.Atoi(name[match[2]:match[3]])
+		if strings.EqualFold(name[match[4]:match[5]], "TB") {
 			amount *= 1024
 		}
 		if amount >= 128 && amount > specs.StorageGB {
@@ -660,6 +664,15 @@ func parseComputerSpecifications(name string) *core.ComputerSpecifications {
 		return nil
 	}
 	return &specs
+}
+
+func overlapsAnyRange(start, end int, ranges [][]int) bool {
+	for _, candidate := range ranges {
+		if len(candidate) == 2 && start < candidate[1] && candidate[0] < end {
+			return true
+		}
+	}
+	return false
 }
 
 func collapseListingVariants(items []core.ProductCard) ([]core.ProductCard, int) {

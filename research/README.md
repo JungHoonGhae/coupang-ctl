@@ -59,6 +59,10 @@ The probes default to `http://127.0.0.1:9223`. Override with `COUPANG_CDP_URL` w
   discover WOW membership, payment-method, card, cash, and benefit surfaces.
   It emits only URL shapes, response shapes, and boolean DOM signals; cookie
   values, card identifiers, account text, and response bodies are discarded.
+- `product-option-metadata-probe.ts`: loads one public product through an
+  installed Chrome session and emits only page/quantity-response status and
+  key/type shapes plus option/benefit DOM signal metadata. Product IDs are
+  public inputs; cookies and response values are never emitted.
 - `order-shape/`: prints only order response keys/types, array lengths, and
   sanitized normalization status.
 - `order-refund-metadata/`: scans bounded authenticated order pages for
