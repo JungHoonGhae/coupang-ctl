@@ -49,6 +49,16 @@ func (b *loginModeBrowser) Login(ctx context.Context, request core.LoginRequest)
 
 func (b *loginModeBrowser) Verify(context.Context) error { return nil }
 
+type blockedStatusBrowser struct{}
+
+func (blockedStatusBrowser) Inspect(context.Context) (auth.BrowserStatus, error) {
+	return auth.BrowserStatus{Name: "Synthetic Chrome", ProfilePresent: true}, nil
+}
+
+func (blockedStatusBrowser) Login(context.Context, core.LoginRequest) error { return nil }
+
+func (blockedStatusBrowser) Verify(context.Context) error { return core.ErrBrowserAccessDenied }
+
 type noopResendAssistant struct{}
 
 func (noopResendAssistant) Resend(context.Context) (core.OTPResendResult, error) {
@@ -1120,6 +1130,21 @@ func TestAuthLoginDefaultsToQRAndAcceptsPhoneFallback(t *testing.T) {
 				t.Fatalf("result mode = %q, want %q", result.Mode, test.want)
 			}
 		})
+	}
+}
+
+func TestAuthStatusWritesBackgroundAccessBlockAsTypedJSON(t *testing.T) {
+	service := auth.NewService(blockedStatusBrowser{})
+	var output bytes.Buffer
+	if err := runAuth(context.Background(), []string{"status"}, &output, io.Discard, service, noopResendAssistant{}, &fixedLoginSecrets{}); err != nil {
+		t.Fatal(err)
+	}
+	var got core.AuthStatus
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.State != core.AuthAccessBlocked || !got.ProfilePresent || got.Browser != "Synthetic Chrome" {
+		t.Fatalf("unexpected auth status: %#v", got)
 	}
 }
 

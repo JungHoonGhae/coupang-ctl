@@ -79,6 +79,24 @@ func TestStatusReportsExpiredStoredSessionWithoutClaimingSuccess(t *testing.T) {
 	}
 }
 
+func TestStatusReportsBackgroundAccessBlockWithoutOpeningLogin(t *testing.T) {
+	browser := &fakeBrowser{
+		status: BrowserStatus{Name: "Chrome", ProfilePresent: true},
+		verify: core.ErrBrowserAccessDenied,
+	}
+	service := NewService(browser)
+	got, err := service.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != core.AuthAccessBlocked || !got.ProfilePresent {
+		t.Fatalf("unexpected status: %#v", got)
+	}
+	if got.NextAction != "retry later, or explicitly run `coupangctl auth verify --headed` when an interactive check is acceptable" {
+		t.Fatalf("next_action = %q", got.NextAction)
+	}
+}
+
 func TestVerifyReportsAuthenticatedOnlyAfterReadOnlyCheck(t *testing.T) {
 	browser := &fakeBrowser{status: BrowserStatus{Name: "Chrome", ProfilePresent: true}}
 	service := NewService(browser)

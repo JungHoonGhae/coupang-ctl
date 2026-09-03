@@ -510,7 +510,9 @@ Clean-profile Linux/Windows validation and Web Store review remain.
 - Passive `auth status` and default `auth verify` checks are headless-only and
   never open a visible fallback. `auth verify --headed` is the explicit
   interactive verification path; routine data reads remain headless-first with
-  their bounded headed fallback.
+  their bounded headed fallback. A denied passive check returns the typed
+  `access_blocked` auth state instead of guessing that the profile is logged
+  out or reporting a generic browser failure.
 - Tagged releases wait for native Linux, macOS, and Windows tests of dedicated
   profile locking and browser-family/major-version compatibility. Ordinary CI
   mirrors the missing macOS contract in addition to its full Linux and focused

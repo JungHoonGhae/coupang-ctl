@@ -93,7 +93,7 @@ func NewWithProviders(providers Providers, version string) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        authStatusTool,
-		Description: "Inspect whether coupangctl has a dedicated local browser profile. This does not expose cookies or credentials.",
+		Description: "Quietly verify the dedicated profile's background read readiness without opening a visible browser or exposing cookies or credentials.",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint: true,
 		},

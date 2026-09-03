@@ -17,6 +17,7 @@ const (
 var ErrInvalidLoginMode = errors.New("invalid login mode")
 var ErrInvalidLoginRequest = errors.New("invalid login request")
 var ErrAuthenticationRequired = errors.New("authenticated session required")
+var ErrBrowserAccessDenied = errors.New("browser access denied")
 
 type LoginRequest struct {
 	Mode          LoginMode       `json:"mode"`
@@ -74,6 +75,7 @@ const (
 	AuthNotConfigured AuthState = "not_configured"
 	AuthUnverified    AuthState = "unverified"
 	AuthVerified      AuthState = "verified"
+	AuthAccessBlocked AuthState = "access_blocked"
 )
 
 type AuthStatus struct {

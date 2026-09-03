@@ -1074,7 +1074,7 @@ func WriteError(w io.Writer, err error) {
 		message = "the product search or detail document did not expose the expected structured fields"
 	case errors.Is(err, browser.ErrBrowserAccessDenied):
 		code = "browser_access_denied"
-		message = "browser access was denied after the supported browser fallback; retry later or explicitly use --current-browser"
+		message = "browser access was denied; retry later or explicitly choose a supported headed or current-browser mode"
 	case errors.Is(err, browser.ErrOrdinaryRendezvous), errors.Is(err, browser.ErrOrdinaryBrowserUnavailable):
 		code = "ordinary_browser_unavailable"
 		message = "open the Coupang order-history page in ordinary Chrome and click the coupangctl extension before the pairing window expires"

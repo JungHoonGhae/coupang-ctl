@@ -546,11 +546,11 @@ func TestOrdersCategoryStabilityToolReturnsTypedEvidence(t *testing.T) {
 func TestAuthStatusToolReturnsTypedCoreResponse(t *testing.T) {
 	ctx := context.Background()
 	want := core.AuthStatus{
-		State:          core.AuthUnverified,
+		State:          core.AuthAccessBlocked,
 		Browser:        "Synthetic Chrome",
 		ProfilePresent: true,
 		CheckedAt:      time.Date(2026, time.September, 1, 3, 0, 0, 0, time.UTC),
-		NextAction:     "the dedicated profile exists; read-only session verification is not implemented yet",
+		NextAction:     "retry later, or explicitly run `coupangctl auth verify --headed` when an interactive check is acceptable",
 	}
 	server := New(fixedStatusProvider{status: want}, "v0.1.0-test")
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()

@@ -39,7 +39,7 @@ var ErrStructuredCategoryDataMissing = errors.New("structured category data miss
 var ErrStructuredProductDataMissing = errors.New("structured product data missing")
 var ErrStructuredAccountBenefitsDataMissing = errors.New("structured account benefits data missing")
 var ErrStructuredReceiptDataMissing = errors.New("structured receipt data missing")
-var ErrBrowserAccessDenied = errors.New("browser access denied")
+var ErrBrowserAccessDenied = core.ErrBrowserAccessDenied
 var ErrCurrentBrowserUnavailable = errors.New("current Chrome connection unavailable")
 
 type browserProtocol interface {
