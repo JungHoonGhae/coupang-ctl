@@ -190,6 +190,68 @@ try {
       },
     }];
   }));
+
+  const blockedRequestDryRuns: Array<Record<string, unknown>> = [];
+  await page.route("**/ssr/api/payment-receipt/**", async (route) => {
+    const request = route.request();
+    const target = new URL(request.url());
+    if (request.method() !== "POST" || target.origin !== "https://mc.coupang.com") {
+      await route.continue();
+      return;
+    }
+    blockedRequestDryRuns.push({
+      method: request.method(),
+      origin: target.origin,
+      path: target.pathname.replace(/\d{5,}/g, "<redacted>"),
+      queryNames: [...new Set(target.searchParams.keys())].sort(),
+      contentType: request.headers()["content-type"]?.split(";")[0] ?? "",
+      bodyShape: safeRequestBodyShape(request.postData(), request.headers()["content-type"] ?? ""),
+      blockedBeforeSend: true,
+    });
+    await route.abort("blockedbyclient");
+  });
+  const requestButtonKinds = await page.getByRole("button").evaluateAll((buttons) => buttons.flatMap((button) => {
+	const text = (button.textContent ?? "").replace(/\s+/g, " ").trim();
+	if (!/신청|요청|발급/.test(text)) return [];
+	return [
+	  /신청\s*내역/.test(text) ? "request_history"
+		: /신청\s*하기|발급\s*신청|다운로드\s*신청/.test(text) ? "request_submit"
+		: "request_other",
+	];
+  }));
+  const requestButton = page.getByRole("button", { name: /신청\s*내역|신청\s*하기|발급\s*신청|다운로드\s*신청/ }).last();
+  let requestDryRunOpened = false;
+	let requestUIShape: unknown = [];
+  if (await requestButton.count()) {
+    requestDryRunOpened = await requestButton.click({ timeout: 5_000 }).then(() => true).catch(() => false);
+    await page.waitForTimeout(500);
+	requestUIShape = await page.locator('button,label,input,select,option,[role="dialog"],[role="button"]').evaluateAll((elements) => elements.flatMap((element) => {
+	  const node = element as HTMLElement;
+	  if (!node.offsetParent && getComputedStyle(node).position !== "fixed") return [];
+	  const text = (node.textContent ?? "").replace(/\s+/g, " ").trim();
+	  const kind = /취소|닫기/.test(text) ? "cancel"
+		: /확인/.test(text) ? "confirm"
+		: /신청|요청|발급/.test(text) ? "request"
+		: /다운로드|내려받기/.test(text) ? "download"
+		: /기간|날짜|년|월|일/.test(text) ? "period"
+		: /현금/.test(text) ? "cash"
+		: /카드|전표/.test(text) ? "card"
+		: "other";
+	  return [{
+		tag: node.tagName.toLowerCase(), role: node.getAttribute("role") ?? "",
+		type: node.getAttribute("type") ?? "", name: node.getAttribute("name") ?? "",
+		kind, label: text.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "<email>").replace(/\d+/g, "<n>").slice(0, 120),
+		disabled: (node as HTMLButtonElement).disabled === true || node.getAttribute("aria-disabled") === "true",
+	  }];
+	}));
+    if (blockedRequestDryRuns.length === 0) {
+      const finalButton = page.locator('[role="dialog"] button').filter({ hasText: /확인|신청|요청|발급/ }).last();
+      if (await finalButton.count()) {
+        await finalButton.click({ timeout: 5_000 }).catch(() => undefined);
+        await page.waitForTimeout(500);
+      }
+    }
+  }
   const endpointPaths = new Set<string>();
   const endpointLiterals = new Set<string>();
   const scriptURLs = await page.evaluate(() => [...new Set([
@@ -226,6 +288,10 @@ try {
     popupTarget,
     pageStateShape,
     safeReadShapes,
+	requestDryRunOpened,
+	requestButtonKinds,
+	requestUIShape,
+	blockedRequestDryRuns,
     endpointPaths: [...endpointPaths].sort(),
     endpointLiterals: [...endpointLiterals].sort(),
     scriptTargets: scriptURLs.map(safeTarget),
@@ -239,6 +305,18 @@ try {
     });
   }
   await rm(profile, { recursive: true, force: true });
+}
+
+function safeRequestBodyShape(body: string | null, contentType: string): unknown {
+  if (!body) return { present: false };
+  if (contentType.includes("application/json")) {
+    try { return describe(JSON.parse(body), 5); }
+    catch { return { present: true, parseable: false, bytes: Buffer.byteLength(body) }; }
+  }
+  if (contentType.includes("application/x-www-form-urlencoded")) {
+    return { present: true, keys: [...new Set(new URLSearchParams(body).keys())].sort() };
+  }
+  return { present: true, bytes: Buffer.byteLength(body) };
 }
 
 function observeSafeReceiptCalls(page: Page, calls: SafeCall[]): void {

@@ -42,6 +42,11 @@ being listed as `researched` does not make it a supported product API.
   request creation is an external write and remains excluded. The credit-card
   summary exposes selected card metadata, period, amount, and count but no
   installment-month field, so installments remain explicitly unavailable.
+- The live receipt UI exposed only cash/card request-history controls, refresh,
+  pagination, period inputs, and summary query controls. A probe installed a
+  route-level POST block before opening request history; no creation POST or
+  submit control appeared. Request payloads therefore remain unadopted rather
+  than being guessed from a route name.
 - A live card-summary read echoed an end date different from the requested end
   date. The typed contract therefore preserves the caller's requested ISO range
   and adds a warning whenever a valid source-reported range differs.

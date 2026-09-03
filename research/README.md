@@ -47,8 +47,9 @@ The probes default to `http://127.0.0.1:9223`. Override with `COUPANG_CDP_URL` w
 - `pagination-ui-probe.ts`: verifies the redacted year/page transition and the
   structured order-model endpoint without emitting order values.
 - `receipt-ui-probe.ts`: records only receipt endpoint metadata, key/type
-  shapes, and normalized control kinds. It must not submit receipt-generation
-  requests.
+  shapes, and normalized control kinds. Before opening request history it
+  installs a route-level POST block, so a dry run cannot submit a receipt job;
+  body values are never emitted even if a blocked request is observed.
 - `account-benefits-probe.ts`: uses the persisted authenticated session to
   discover WOW membership, payment-method, card, cash, and benefit surfaces.
   It emits only URL shapes, response shapes, and boolean DOM signals; cookie
