@@ -21,21 +21,23 @@ var ErrResendControlNotFound = errors.New("OTP resend control not found")
 var ErrResendOutcomeUnverified = errors.New("OTP resend outcome unverified")
 
 type Assistant struct {
-	profileDir     string
-	findBrowserPID func(context.Context, string) (int, error)
-	pressResend    func(context.Context, int) error
+	profileDir        string
+	platformSupported func() bool
+	findBrowserPID    func(context.Context, string) (int, error)
+	pressResend       func(context.Context, int) error
 }
 
 func New(profileDir string) *Assistant {
 	return &Assistant{
-		profileDir:     filepath.Clean(profileDir),
-		findBrowserPID: findDedicatedChromePID,
-		pressResend:    pressMacOSResend,
+		profileDir:        filepath.Clean(profileDir),
+		platformSupported: func() bool { return runtime.GOOS == "darwin" },
+		findBrowserPID:    findDedicatedChromePID,
+		pressResend:       pressMacOSResend,
 	}
 }
 
 func (a *Assistant) Resend(ctx context.Context) (core.OTPResendResult, error) {
-	if runtime.GOOS != "darwin" {
+	if !a.platformSupported() {
 		return core.OTPResendResult{}, ErrUnsupported
 	}
 	pid, err := a.findBrowserPID(ctx, a.profileDir)
