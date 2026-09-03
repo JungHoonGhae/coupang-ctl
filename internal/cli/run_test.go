@@ -80,6 +80,13 @@ func (fixedReceiptWorkflow) Summary(_ context.Context, request core.ReceiptSumma
 	return core.ReceiptSummary{SchemaVersion: core.ReceiptSchemaVersion, Kind: request.Kind, From: request.From, To: request.To}, nil
 }
 
+func (fixedReceiptWorkflow) Overview(_ context.Context, request core.ReceiptOverviewRequest) (core.ReceiptOverview, error) {
+	return core.ReceiptOverview{
+		SchemaVersion: core.ReceiptSchemaVersion, Visibility: "private_local", From: request.From, To: request.To,
+		Totals: []core.ReceiptOverviewKindTotal{{Kind: core.ReceiptKindCard, TotalCount: 6, TotalAmountKRW: 70000}},
+	}, nil
+}
+
 func (fixedReceiptWorkflow) Download(_ context.Context, request core.ReceiptDownloadRequest) (receiptworkflow.Download, error) {
 	return receiptworkflow.Download{
 		Metadata: core.ReceiptDownloadMetadata{SchemaVersion: core.ReceiptSchemaVersion, Kind: request.Kind, Filename: "receipt.pdf", ContentType: "application/pdf"},
@@ -206,6 +213,15 @@ func TestReceiptCommandsUseTypedReadsAndPrivateNonOverwritingDownload(t *testing
 	}
 	if history.Kind != core.ReceiptKindCard || history.PageSize != 7 {
 		t.Fatalf("unexpected receipt history: %#v", history)
+	}
+
+	output.Reset()
+	if err := runReceipts(context.Background(), []string{"overview", "--from", "2024-12-01", "--to", "2026-01-15"}, &output, fixedReceiptWorkflow{}); err != nil {
+		t.Fatal(err)
+	}
+	var overview core.ReceiptOverview
+	if err := json.Unmarshal(output.Bytes(), &overview); err != nil || overview.From != "2024-12-01" || overview.To != "2026-01-15" || overview.Totals[0].TotalAmountKRW != 70000 {
+		t.Fatalf("unexpected receipt overview: %#v %v", overview, err)
 	}
 
 	path := filepath.Join(t.TempDir(), "receipt.pdf")

@@ -43,7 +43,7 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   rewards/card fees stay outside the comparison. Official Coupang guidance
   points membership-fee cash receipts to the PC receipt screen, making receipt
   evidence the next path for exact historical costs.
-- `receipts status`, `receipts list`, `receipts summary`, and `receipts vendor` now expose typed
+- `receipts status`, `receipts list`, `receipts summary`, `receipts overview`, and `receipts vendor` now expose typed
   `private_local` cash/card and vendor receipt reads through both CLI and MCP. Live,
   metadata-only checks verified status, empty history pagination, aggregate
   count/amount shapes, a card-method aggregate, and five vendor-receipt GET
@@ -51,6 +51,11 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 - Receipt schema v2 corrects the request-status interpretation: source
   `data=true` means `POSSIBLE`, not “in progress.” Because `IMPOSSIBLE` has no
   source reason, `request_in_progress` is explicitly null.
+- `receipts overview` and MCP `receipts_overview` split up to 20 years into
+  non-overlapping calendar-year reads and aggregate cash/card plus safe card
+  display-name totals separately. A headed live check covered 2025 and 2026,
+  returned two periods and three card display-name groups, and logged no names
+  or amounts. Receipt totals are not relabeled as order spend.
 - `receipts vendor --source-ref HASH` resolves the raw order ID only inside the
   browser adapter and returns source-native vendor payment types, products,
   and cancellation payment components. A live typed read succeeded. These

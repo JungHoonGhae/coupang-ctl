@@ -53,6 +53,27 @@ type ReceiptSummaryRequest struct {
 	MaxCards int         `json:"max_cards,omitempty" jsonschema:"Maximum observed card methods to summarize,minimum=1,maximum=30"`
 }
 
+type ReceiptOverviewRequest struct {
+	From     string `json:"from" jsonschema:"Inclusive start date in YYYY-MM-DD format"`
+	To       string `json:"to" jsonschema:"Inclusive end date in YYYY-MM-DD format"`
+	MaxCards int    `json:"max_cards,omitempty" jsonschema:"Maximum observed card methods per calendar-year source read,minimum=1,maximum=30"`
+}
+
+func (r ReceiptOverviewRequest) Validate() error {
+	from, fromErr := time.Parse(time.DateOnly, r.From)
+	to, toErr := time.Parse(time.DateOnly, r.To)
+	if fromErr != nil || toErr != nil || to.Before(from) {
+		return errors.New("from and to must be an ordered YYYY-MM-DD range")
+	}
+	if to.After(from.AddDate(20, 0, 0)) {
+		return errors.New("receipt overview range cannot exceed 20 years")
+	}
+	if r.MaxCards < 0 || r.MaxCards > 30 {
+		return errors.New("max_cards must be between 1 and 30")
+	}
+	return nil
+}
+
 func (r ReceiptSummaryRequest) Validate() error {
 	if err := r.Kind.Validate(); err != nil {
 		return err
@@ -151,6 +172,40 @@ type ReceiptSummary struct {
 	Installments   ReceiptInstallmentInfo `json:"installments"`
 	Definitions    ReceiptDefinitions     `json:"definitions"`
 	Warnings       []string               `json:"warnings"`
+}
+
+type ReceiptOverview struct {
+	SchemaVersion int                        `json:"schema_version"`
+	Visibility    string                     `json:"visibility"`
+	FetchedAt     time.Time                  `json:"fetched_at"`
+	From          string                     `json:"from"`
+	To            string                     `json:"to"`
+	Periods       []ReceiptOverviewPeriod    `json:"periods"`
+	Totals        []ReceiptOverviewKindTotal `json:"totals"`
+	Installments  ReceiptInstallmentInfo     `json:"installments"`
+	Definitions   ReceiptOverviewDefinitions `json:"definitions"`
+	Warnings      []string                   `json:"warnings"`
+}
+
+type ReceiptOverviewPeriod struct {
+	From   string                     `json:"from"`
+	To     string                     `json:"to"`
+	Totals []ReceiptOverviewKindTotal `json:"totals"`
+}
+
+type ReceiptOverviewKindTotal struct {
+	Kind           ReceiptKind            `json:"kind"`
+	TotalCount     int                    `json:"total_count"`
+	TotalAmountKRW int64                  `json:"total_amount_krw"`
+	PaymentMethods []ReceiptPaymentMethod `json:"payment_methods"`
+	Provenance     string                 `json:"provenance"`
+}
+
+type ReceiptOverviewDefinitions struct {
+	Source         string `json:"source"`
+	Provenance     string `json:"provenance"`
+	Windowing      string `json:"windowing"`
+	Interpretation string `json:"interpretation"`
 }
 
 type ReceiptPaymentMethod struct {

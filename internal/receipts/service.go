@@ -3,6 +3,7 @@ package receipts
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
@@ -112,6 +113,141 @@ func (s *Service) Summary(ctx context.Context, request core.ReceiptSummaryReques
 		},
 	}
 	return result, nil
+}
+
+func (s *Service) Overview(ctx context.Context, request core.ReceiptOverviewRequest) (core.ReceiptOverview, error) {
+	if request.MaxCards == 0 {
+		request.MaxCards = defaultMaxCards
+	}
+	if err := request.Validate(); err != nil {
+		return core.ReceiptOverview{}, err
+	}
+	if s.source == nil {
+		return core.ReceiptOverview{}, ErrSourceUnavailable
+	}
+	periods, err := receiptOverviewPeriods(request.From, request.To)
+	if err != nil {
+		return core.ReceiptOverview{}, err
+	}
+	result := core.ReceiptOverview{
+		SchemaVersion: core.ReceiptSchemaVersion,
+		Visibility:    "private_local",
+		FetchedAt:     s.now().UTC(),
+		From:          request.From,
+		To:            request.To,
+		Periods:       make([]core.ReceiptOverviewPeriod, 0, len(periods)),
+		Totals: []core.ReceiptOverviewKindTotal{
+			newReceiptOverviewKindTotal(core.ReceiptKindCash),
+			newReceiptOverviewKindTotal(core.ReceiptKindCard),
+		},
+		Installments: core.ReceiptInstallmentInfo{
+			Status: "unavailable",
+			Limitations: []string{
+				"the verified receipt summaries expose payment-method totals but no installment-month field",
+			},
+		},
+		Definitions: core.ReceiptOverviewDefinitions{
+			Source:         "coupang_payment_receipt_summary_reads",
+			Provenance:     "derived_from_observed_receipt_summaries",
+			Windowing:      "the inclusive requested range is split into non-overlapping calendar-year reads",
+			Interpretation: "cash and card totals are separate receipt-source totals and are not relabeled as order spend or summed into a lifetime-spend headline",
+		},
+		Warnings: []string{},
+	}
+	warnings := map[string]struct{}{}
+	for _, period := range periods {
+		periodResult := core.ReceiptOverviewPeriod{From: period.From, To: period.To, Totals: make([]core.ReceiptOverviewKindTotal, 0, 2)}
+		for kindIndex, kind := range []core.ReceiptKind{core.ReceiptKindCash, core.ReceiptKindCard} {
+			summary, readErr := s.source.Summary(ctx, core.ReceiptSummaryRequest{
+				Kind: kind, From: period.From, To: period.To, MaxCards: request.MaxCards,
+			})
+			if readErr != nil {
+				return core.ReceiptOverview{}, errors.Join(ErrSourceUnavailable, readErr)
+			}
+			periodTotal := receiptOverviewTotal(summary, kind)
+			periodResult.Totals = append(periodResult.Totals, periodTotal)
+			mergeReceiptOverviewTotal(&result.Totals[kindIndex], periodTotal)
+			for _, warning := range summary.Warnings {
+				if warning != "" {
+					warnings[warning] = struct{}{}
+				}
+			}
+		}
+		result.Periods = append(result.Periods, periodResult)
+	}
+	for index := range result.Totals {
+		sortReceiptPaymentMethods(result.Totals[index].PaymentMethods)
+	}
+	for warning := range warnings {
+		result.Warnings = append(result.Warnings, warning)
+	}
+	sort.Strings(result.Warnings)
+	return result, nil
+}
+
+func receiptOverviewPeriods(fromText, toText string) ([]core.ReceiptOverviewPeriod, error) {
+	from, err := time.Parse(time.DateOnly, fromText)
+	if err != nil {
+		return nil, err
+	}
+	to, err := time.Parse(time.DateOnly, toText)
+	if err != nil {
+		return nil, err
+	}
+	periods := []core.ReceiptOverviewPeriod{}
+	for start := from; !start.After(to); {
+		end := time.Date(start.Year(), time.December, 31, 0, 0, 0, 0, time.UTC)
+		if end.After(to) {
+			end = to
+		}
+		periods = append(periods, core.ReceiptOverviewPeriod{From: start.Format(time.DateOnly), To: end.Format(time.DateOnly)})
+		start = end.AddDate(0, 0, 1)
+	}
+	return periods, nil
+}
+
+func newReceiptOverviewKindTotal(kind core.ReceiptKind) core.ReceiptOverviewKindTotal {
+	return core.ReceiptOverviewKindTotal{
+		Kind: kind, PaymentMethods: []core.ReceiptPaymentMethod{},
+		Provenance: "derived_from_observed_receipt_summaries",
+	}
+}
+
+func receiptOverviewTotal(summary core.ReceiptSummary, kind core.ReceiptKind) core.ReceiptOverviewKindTotal {
+	result := newReceiptOverviewKindTotal(kind)
+	result.TotalCount = summary.TotalCount
+	result.TotalAmountKRW = summary.TotalAmountKRW
+	result.PaymentMethods = append(result.PaymentMethods, summary.PaymentMethods...)
+	sortReceiptPaymentMethods(result.PaymentMethods)
+	return result
+}
+
+func mergeReceiptOverviewTotal(target *core.ReceiptOverviewKindTotal, source core.ReceiptOverviewKindTotal) {
+	target.TotalCount += source.TotalCount
+	target.TotalAmountKRW += source.TotalAmountKRW
+	byName := make(map[string]int, len(target.PaymentMethods))
+	for index, method := range target.PaymentMethods {
+		byName[method.DisplayName] = index
+	}
+	for _, method := range source.PaymentMethods {
+		if index, ok := byName[method.DisplayName]; ok {
+			target.PaymentMethods[index].TotalCount += method.TotalCount
+			target.PaymentMethods[index].TotalAmountKRW += method.TotalAmountKRW
+			continue
+		}
+		method.Provenance = "derived_from_observed_receipt_summaries"
+		byName[method.DisplayName] = len(target.PaymentMethods)
+		target.PaymentMethods = append(target.PaymentMethods, method)
+	}
+}
+
+func sortReceiptPaymentMethods(methods []core.ReceiptPaymentMethod) {
+	sort.Slice(methods, func(i, j int) bool {
+		if methods[i].TotalAmountKRW == methods[j].TotalAmountKRW {
+			return methods[i].DisplayName < methods[j].DisplayName
+		}
+		return methods[i].TotalAmountKRW > methods[j].TotalAmountKRW
+	})
 }
 
 func (s *Service) Download(ctx context.Context, request core.ReceiptDownloadRequest) (Download, error) {

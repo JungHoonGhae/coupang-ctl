@@ -34,6 +34,13 @@ func (fixedReceiptProvider) Summary(_ context.Context, request core.ReceiptSumma
 	return core.ReceiptSummary{Visibility: "private_local", Kind: request.Kind, From: request.From, To: request.To, TotalCount: 3, TotalAmountKRW: 42000, Installments: core.ReceiptInstallmentInfo{Status: "unavailable"}}, nil
 }
 
+func (fixedReceiptProvider) Overview(_ context.Context, request core.ReceiptOverviewRequest) (core.ReceiptOverview, error) {
+	return core.ReceiptOverview{
+		Visibility: "private_local", From: request.From, To: request.To,
+		Totals: []core.ReceiptOverviewKindTotal{{Kind: core.ReceiptKindCard, TotalCount: 6, TotalAmountKRW: 70000}},
+	}, nil
+}
+
 func (fixedReceiptProvider) Vendor(_ context.Context, request core.VendorReceiptRequest) (core.VendorReceiptSnapshot, error) {
 	return core.VendorReceiptSnapshot{Visibility: "private_local", SourceRef: request.SourceRef, VendorCount: 1, Settlement: core.ReceiptSettlementInfo{Status: "source_components_observed"}}, nil
 }
@@ -286,6 +293,21 @@ func TestReceiptToolsUseTypedReadOnlyWorkflow(t *testing.T) {
 	}
 	if got.Visibility != "private_local" || got.TotalCount != 3 || got.Installments.Status != "unavailable" {
 		t.Fatalf("unexpected receipt summary: %#v", got)
+	}
+
+	response, err = clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name: "receipts_overview", Arguments: map[string]any{"from": "2024-12-01", "to": "2026-01-15"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ = json.Marshal(response.StructuredContent)
+	var overview core.ReceiptOverview
+	if err := json.Unmarshal(encoded, &overview); err != nil {
+		t.Fatal(err)
+	}
+	if overview.Visibility != "private_local" || overview.Totals[0].TotalAmountKRW != 70000 {
+		t.Fatalf("unexpected receipt overview: %#v", overview)
 	}
 
 	sourceRef := core.OrderSourceReference("synthetic-order")

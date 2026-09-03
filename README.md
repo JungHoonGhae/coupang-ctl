@@ -234,11 +234,12 @@ coupangctl products cart-add \
 coupangctl receipts status
 coupangctl receipts list --kind card --page 0 --size 5
 coupangctl receipts summary --kind card --from 2026-01-01 --to 2026-08-31
+coupangctl receipts overview --from 2021-01-01 --to 2026-08-31
 coupangctl receipts vendor --source-ref HASH --headed
 coupangctl receipts download --kind card --history-index 0 --output ./receipt.pdf
 ```
 
-`summary`의 전체 건수·금액은 영수증 화면의 관찰값이고, 결제수단 행은 관찰된 카드별 합계를 안전한 표시명으로 묶은 계산값입니다. `vendor`는 `orders list`가 반환한 SHA-256 `source_ref`로 한 주문을 찾고, 판매자별 결제수단·상품·취소 결제 구성요소를 `private_local`로 읽습니다. 원주문 ID는 브라우저 adapter 밖으로 나오지 않습니다. 취소 구성 필드는 관찰된 원본 의미를 보존하며 확정 환불액으로 합산하지 않습니다. 카드 식별자와 카드번호는 typed response 전에 버리고, 할부 개월 필드가 확인되지 않은 동안 할부 통계는 `unavailable`로 둡니다. `download`는 이미 완료된 이력의 파일만 새 `0600` 파일로 저장하며 기존 파일을 덮어쓰지 않습니다. 다운로드 URL은 출력하거나 로그에 남기지 않습니다.
+`summary`의 전체 건수·금액은 영수증 화면의 관찰값이고, 결제수단 행은 관찰된 카드별 합계를 안전한 표시명으로 묶은 계산값입니다. `overview`는 최대 20년을 비중첩 달력연도 구간으로 나눠 현금·카드를 각각 합산하고 결제수단 순위를 제공합니다. 두 영수증 원천을 임의로 더해 총지출이라고 부르지는 않습니다. `vendor`는 `orders list`가 반환한 SHA-256 `source_ref`로 한 주문을 찾고, 판매자별 결제수단·상품·취소 결제 구성요소를 `private_local`로 읽습니다. 원주문 ID는 브라우저 adapter 밖으로 나오지 않습니다. 취소 구성 필드는 관찰된 원본 의미를 보존하며 확정 환불액으로 합산하지 않습니다. 카드 식별자와 카드번호는 typed response 전에 버리고, 할부 개월 필드가 확인되지 않은 동안 할부 통계는 `unavailable`로 둡니다. `download`는 이미 완료된 이력의 파일만 새 `0600` 파일로 저장하며 기존 파일을 덮어쓰지 않습니다. 다운로드 URL은 출력하거나 로그에 남기지 않습니다.
 
 영수증 생성 요청은 외부 상태를 바꾸는 POST 작업이므로 구현하지 않았습니다. 현재 응답 계약은 [`RECEIPTS.md`](RECEIPTS.md)에 정리되어 있습니다.
 
@@ -266,7 +267,7 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 - `products_search`, `product_inspect`, `cart_add`
 - `product_price_history`
 - `product_watchlist`, `product_watch_add`, `product_watch_remove`, `product_watch_refresh`
-- `receipts_status`, `receipts_list`, `receipts_summary`, `receipts_vendor`
+- `receipts_status`, `receipts_list`, `receipts_summary`, `receipts_overview`, `receipts_vendor`
 
 읽기 도구와 변경 도구는 MCP annotation과 입력 타입에서 구분됩니다. 상품 검색·상세는 관찰가를 로컬 이력에 추가할 수 있고, watch 도구는 로컬 watchlist만 바꿉니다. 영수증 MCP 도구는 조회 전용이고 파일 다운로드는 CLI에만 있습니다. `cart_add`만 되돌릴 수 있는 외부 변경이며 별도 확인값을 요구합니다.
 

@@ -117,13 +117,14 @@ type receiptWorkflow interface {
 	Status(context.Context) (core.ReceiptRequestStatusSnapshot, error)
 	History(context.Context, core.ReceiptHistoryRequest) (core.ReceiptHistoryPage, error)
 	Summary(context.Context, core.ReceiptSummaryRequest) (core.ReceiptSummary, error)
+	Overview(context.Context, core.ReceiptOverviewRequest) (core.ReceiptOverview, error)
 	Download(context.Context, core.ReceiptDownloadRequest) (receiptworkflow.Download, error)
 	Vendor(context.Context, core.VendorReceiptRequest) (core.VendorReceiptSnapshot, error)
 }
 
 func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow receiptWorkflow) error {
 	if len(args) == 0 {
-		return errors.New("usage: coupangctl receipts <status|list|summary|vendor|download>")
+		return errors.New("usage: coupangctl receipts <status|list|summary|overview|vendor|download>")
 	}
 	switch args[0] {
 	case "status":
@@ -133,6 +134,21 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 			return err
 		}
 		result, err := workflow.Status(ctx)
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
+	case "overview":
+		flags := newFlagSet("receipts overview")
+		from := flags.String("from", "", "inclusive YYYY-MM-DD start date")
+		to := flags.String("to", "", "inclusive YYYY-MM-DD end date")
+		maxCards := flags.Int("max-cards", 20, "maximum observed card methods per calendar-year read")
+		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		const commandUsage = "usage: coupangctl receipts overview --from YYYY-MM-DD --to YYYY-MM-DD [--max-cards N] [--headed]"
+		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *from == "" || *to == "" {
+			return errors.New(commandUsage)
+		}
+		result, err := workflow.Overview(ctx, core.ReceiptOverviewRequest{From: *from, To: *to, MaxCards: *maxCards})
 		if err != nil {
 			return err
 		}
@@ -209,7 +225,7 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		}
 		return writeJSON(stdout, result)
 	default:
-		return errors.New("usage: coupangctl receipts <status|list|summary|vendor|download>")
+		return errors.New("usage: coupangctl receipts <status|list|summary|overview|vendor|download>")
 	}
 }
 

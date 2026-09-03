@@ -8,16 +8,18 @@ typed core로 정규화합니다. 모든 결과는 `private_local`이며 원문 
 
 | 작업 | CLI | MCP | 외부 상태 변경 |
 | --- | --- | --- | --- |
-| 현금·카드 요청 상태 | `receipts status` | `receipts_status` | 없음 |
+| 현금·카드 요청 가능 상태 | `receipts status` | `receipts_status` | 없음 |
 | 요청 이력 | `receipts list` | `receipts_list` | 없음 |
 | 기간·결제수단 합계 | `receipts summary` | `receipts_summary` | 없음 |
+| 다년 결제수단 개요 | `receipts overview` | `receipts_overview` | 없음 |
 | 주문별 판매자 영수증 | `receipts vendor` | `receipts_vendor` | 없음 |
 | 완료 파일 저장 | `receipts download` | 지원하지 않음 | 없음 |
 | 새 영수증 묶음 생성 요청 | 지원하지 않음 | 지원하지 않음 | 구현 제외 |
 
-기간 합계는 한 번에 최대 366일, 이력은 한 페이지 최대 50개입니다. 카드
-합계 조회에 필요한 비공개 카드 키는 좁은 Coupang adapter 안에서만 사용한
-뒤 폐기합니다.
+단일 기간 합계는 한 번에 최대 366일, 이력은 한 페이지 최대 50개입니다.
+다년 개요는 최대 20년 범위를 겹치지 않는 달력연도 구간으로 나누고 각
+구간의 관찰 합계를 더합니다. 카드 합계 조회에 필요한 비공개 카드 키는
+좁은 Coupang adapter 안에서만 사용한 뒤 폐기합니다.
 
 판매자 영수증은 `orders list`의 SHA-256 `source_ref`를 입력으로 받습니다.
 원주문 ID는 브라우저 adapter 안에서만 찾아 GET 경로에 사용하고 즉시
@@ -123,6 +125,50 @@ typed core로 정규화합니다. 모든 결과는 `private_local`이며 원문 
 응답의 `from`과 `to`는 호출자가 요청한 ISO 날짜입니다. 원천 응답이 다른
 기간을 되돌려주면 합계 자체를 숨기지 않고 `warnings`에 불일치를 표시합니다.
 
+### 다년 결제수단 개요
+
+```json
+{
+  "schema_version": 2,
+  "visibility": "private_local",
+  "from": "2024-12-01",
+  "to": "2026-01-15",
+  "periods": [
+    {
+      "from": "2024-12-01",
+      "to": "2024-12-31",
+      "totals": [
+        {"kind": "cash", "total_count": 1, "total_amount_krw": 3000},
+        {"kind": "card", "total_count": 2, "total_amount_krw": 20000}
+      ]
+    }
+  ],
+  "totals": [
+    {
+      "kind": "card",
+      "total_count": 6,
+      "total_amount_krw": 70000,
+      "payment_methods": [
+        {
+          "display_name": "합성 카드 B",
+          "total_count": 3,
+          "total_amount_krw": 40000,
+          "provenance": "derived_from_observed_receipt_summaries"
+        }
+      ],
+      "provenance": "derived_from_observed_receipt_summaries"
+    }
+  ],
+  "installments": {"status": "unavailable"}
+}
+```
+
+현금과 카드의 `totals`는 서로 분리합니다. 두 원천 합계를 임의로 더해
+“가입 후 총지출”로 표시하지 않습니다. 개요의 결제수단 순위는 관찰된
+표시명별 금액 내림차순이며, 같은 표시명이 같은 실물 카드라는 추론은 하지
+않습니다. 각 달력연도 구간도 함께 반환하므로 합산 범위와 누락 여부를
+검토할 수 있습니다.
+
 ### 주문별 판매자 영수증
 
 ```json
@@ -194,6 +240,9 @@ typed core로 정규화합니다. 모든 결과는 `private_local`이며 원문 
   진행 중 요청인지 다른 제한인지는 원천이 구분하지 않으므로
   `request_in_progress`는 `null`입니다.
 - 표시명별 합계처럼 관찰값을 더한 결과는 규칙을 위에 공개합니다.
+- 다년 개요는 2025년과 2026년의 실계정 메타데이터 검증에서 두 개의
+  비중첩 구간과 세 개의 카드 표시명 집계를 확인했습니다. 실제 카드명과
+  금액은 연구 로그에 남기지 않았습니다.
 - 새 archive 요청 POST는 지원하지 않습니다. 판매자 영수증은 검증된 단건 GET만 지원합니다.
 - 완료 파일 다운로드는 합성 계약 테스트를 통과했지만, 라이브 계정의 현재
   이력이 비어 있어 실제 완료 파일 검증은 아직 남아 있습니다.

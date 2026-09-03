@@ -46,6 +46,7 @@ type ReceiptProvider interface {
 	Status(context.Context) (core.ReceiptRequestStatusSnapshot, error)
 	History(context.Context, core.ReceiptHistoryRequest) (core.ReceiptHistoryPage, error)
 	Summary(context.Context, core.ReceiptSummaryRequest) (core.ReceiptSummary, error)
+	Overview(context.Context, core.ReceiptOverviewRequest) (core.ReceiptOverview, error)
 	Vendor(context.Context, core.VendorReceiptRequest) (core.VendorReceiptSnapshot, error)
 }
 
@@ -158,6 +159,18 @@ func addReceiptTools(server *mcp.Server, provider ReceiptProvider) {
 		result, err := provider.Summary(ctx, input)
 		if err != nil {
 			return nil, core.ReceiptSummary{}, safeReceiptToolError(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "receipts_overview",
+		Description: "Aggregate separate cash and card receipt-source totals over a multi-year date range using non-overlapping calendar-year reads. Payment-method totals are derived from observed receipt summaries; they are not relabeled as order spend, and installment months remain unavailable.",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.ReceiptOverviewRequest) (*mcp.CallToolResult, core.ReceiptOverview, error) {
+		result, err := provider.Overview(ctx, input)
+		if err != nil {
+			return nil, core.ReceiptOverview{}, safeReceiptToolError(err)
 		}
 		return nil, result, nil
 	})
