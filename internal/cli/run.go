@@ -124,7 +124,11 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 			}
 			return runOrders(ctx, args[1:], stdout, orderworkflow.NewWithPageSource(ledger, bridge))
 		}
-		return runOrders(ctx, args[1:], stdout, orderworkflow.New(ledger, browserAdapter))
+		orderService := orderworkflow.New(ledger, browserAdapter)
+		if currentBrowserReadRequested(args) {
+			orderService = orderworkflow.NewWithSyncSource(ledger, browserAdapter, core.SyncSourceCurrentBrowser)
+		}
+		return runOrders(ctx, args[1:], stdout, orderService)
 	case "products":
 		ledger, err := store.Open(ctx, paths.Database)
 		if err != nil {

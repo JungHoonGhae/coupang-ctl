@@ -25,6 +25,10 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   order queries, spending summaries, cancellation/return statistics,
   purchase/delivery trends, reorder candidates, normalized
   export/import, explicit purge, and the local stdio MCP server are implemented.
+- Sync responses carry schema-versioned acquisition evidence selected by the
+  workflow rather than supplied by the caller: `dedicated_browser_profile`,
+  `current_browser_connection`, or `ordinary_browser_selected_tab`, plus the
+  observed structured-order-document provenance.
 - `doctor` performs the same non-visible background proof as `auth status` and
   reports browser installation, `background_session`, and SQLite independently.
   A present browser no longer makes a blocked or expired session look ready.

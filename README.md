@@ -88,6 +88,13 @@ SQLite를 별도 체크로 반환합니다. 첫 로그인 전이나 headless 접
 
 현재 구현 상태와 다음 순서는 [`ROADMAP.md`](ROADMAP.md)와 `coupangctl capabilities`에서 확인할 수 있습니다. capabilities schema v2는 각 항목의 `implemented`, `next_step_kind`, `blocked_by`, `last_verified`를 분리하므로 AI도 “더 구현할 일”과 “외부 승인·사용자 확인·시간 경과가 필요한 검증”을 구별할 수 있습니다. 일반 Chrome 브리지의 설치·권한·제거 계약은 [`BROWSER_BRIDGE.md`](BROWSER_BRIDGE.md)에 있습니다.
 
+모든 주문 동기화 결과는 schema v1의 `source`와 `provenance`를 함께 반환합니다.
+`source`는 `dedicated_browser_profile`, `current_browser_connection`,
+`ordinary_browser_selected_tab` 중 실제 선택된 수집 adapter이고,
+`provenance`는 쿠팡 주문 화면의 구조화 문서에서 관찰했다는 뜻의
+`observed_source_native_structured_order_document`입니다. 호출자가 이 값을
+입력해서 수집 출처를 가장할 수는 없습니다.
+
 ## 주문 분석과 리캡
 
 ```bash

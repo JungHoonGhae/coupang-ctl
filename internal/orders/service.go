@@ -42,16 +42,21 @@ type Service struct {
 	source         DocumentSource
 	pageSource     PageSource
 	categorySource CategoryDocumentSource
+	syncSource     core.SyncSource
 	now            func() time.Time
 }
 
 func New(ledger *store.SQLite, source DocumentSource) *Service {
+	return NewWithSyncSource(ledger, source, core.SyncSourceDedicatedBrowser)
+}
+
+func NewWithSyncSource(ledger *store.SQLite, source DocumentSource, syncSource core.SyncSource) *Service {
 	categorySource, _ := source.(CategoryDocumentSource)
-	return &Service{ledger: ledger, source: source, categorySource: categorySource, now: time.Now}
+	return &Service{ledger: ledger, source: source, categorySource: categorySource, syncSource: syncSource, now: time.Now}
 }
 
 func NewWithPageSource(ledger *store.SQLite, source PageSource) *Service {
-	return &Service{ledger: ledger, pageSource: source, now: time.Now}
+	return &Service{ledger: ledger, pageSource: source, syncSource: core.SyncSourceOrdinaryBrowser, now: time.Now}
 }
 
 func (s *Service) Sync(ctx context.Context, request core.SyncRequest) (core.SyncResult, error) {
@@ -73,7 +78,12 @@ func (s *Service) Sync(ctx context.Context, request core.SyncRequest) (core.Sync
 	if err != nil {
 		return core.SyncResult{}, err
 	}
-	result := core.SyncResult{Next: cursor}
+	result := core.SyncResult{
+		SchemaVersion: core.SyncResultSchemaVersion,
+		Source:        s.syncSource,
+		Provenance:    core.SyncProvenanceObservedStructuredOrderDocument,
+		Next:          cursor,
+	}
 	completeHistoryWalk := cursor == nil
 	seenCursors := map[string]bool{}
 	seenOrderRefs := map[string]struct{}{}

@@ -16,5 +16,5 @@ type currentBrowserOrderSync struct {
 func (provider currentBrowserOrderSync) Sync(ctx context.Context, request core.SyncRequest) (core.SyncResult, error) {
 	browserAdapter := browser.NewNativeCurrentBrowser()
 	defer browserAdapter.Close()
-	return orderworkflow.New(provider.ledger, browserAdapter).Sync(ctx, request)
+	return orderworkflow.NewWithSyncSource(provider.ledger, browserAdapter, core.SyncSourceCurrentBrowser).Sync(ctx, request)
 }

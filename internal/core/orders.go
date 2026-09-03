@@ -591,7 +591,21 @@ type SyncRequest struct {
 	MaxPages int `json:"max_pages,omitempty"`
 }
 
+const SyncResultSchemaVersion = 1
+const SyncProvenanceObservedStructuredOrderDocument = "observed_source_native_structured_order_document"
+
+type SyncSource string
+
+const (
+	SyncSourceDedicatedBrowser SyncSource = "dedicated_browser_profile"
+	SyncSourceCurrentBrowser   SyncSource = "current_browser_connection"
+	SyncSourceOrdinaryBrowser  SyncSource = "ordinary_browser_selected_tab"
+)
+
 type SyncResult struct {
+	SchemaVersion  int          `json:"schema_version"`
+	Source         SyncSource   `json:"source"`
+	Provenance     string       `json:"provenance"`
 	Complete       bool         `json:"complete"`
 	PagesProcessed int          `json:"pages_processed"`
 	OrdersSeen     int          `json:"orders_seen"`

@@ -271,7 +271,7 @@ func TestSyncAcceptsAnAlreadyNormalizedPageSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Complete || result.OrdersSeen != 1 || result.ItemsSeen != 1 || len(source.seen) != 1 || source.seen[0] != nil {
+	if !result.Complete || result.OrdersSeen != 1 || result.ItemsSeen != 1 || result.Source != core.SyncSourceOrdinaryBrowser || len(source.seen) != 1 || source.seen[0] != nil {
 		t.Fatalf("normalized sync result=%#v cursors=%#v", result, source.seen)
 	}
 	stored, err := workflow.List(ctx, core.OrderFilter{Limit: 1})
@@ -280,6 +280,26 @@ func TestSyncAcceptsAnAlreadyNormalizedPageSource(t *testing.T) {
 	}
 	if len(stored) != 1 || stored[0].SourceRef != "synthetic-normalized-source" {
 		t.Fatalf("stored normalized orders = %#v", stored)
+	}
+}
+
+func TestSyncResultReportsConfiguredAcquisitionSourceAndProvenance(t *testing.T) {
+	ctx := context.Background()
+	ledger, err := store.Open(ctx, filepath.Join(t.TempDir(), "coupangctl.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	source := &fixtureSource{documents: map[string][]byte{
+		"initial": syntheticPage("synthetic-source", "2026-09-03", 4200, false),
+	}}
+	workflow := orders.NewWithSyncSource(ledger, source, core.SyncSourceCurrentBrowser)
+	result, err := workflow.Sync(ctx, core.SyncRequest{MaxPages: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SchemaVersion != core.SyncResultSchemaVersion || result.Source != core.SyncSourceCurrentBrowser || result.Provenance != "observed_source_native_structured_order_document" {
+		t.Fatalf("unexpected sync evidence: %#v", result)
 	}
 }
 
@@ -300,7 +320,7 @@ func TestSyncStopsAtPageBudgetAndContinuesLater(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Complete || first.Next == nil || first.Next.Page != 2 {
+	if first.Complete || first.Next == nil || first.Next.Page != 2 || first.Source != core.SyncSourceDedicatedBrowser {
 		t.Fatalf("unexpected budgeted sync result: %#v", first)
 	}
 	second, err := workflow.Sync(ctx, core.SyncRequest{MaxPages: 1})

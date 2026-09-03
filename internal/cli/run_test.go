@@ -539,7 +539,7 @@ func TestOrdersSyncCanUseTheExplicitlySelectedOrdinaryBrowser(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if !result.Complete || result.PagesProcessed != 1 || result.OrdersSeen != 0 {
+	if !result.Complete || result.PagesProcessed != 1 || result.OrdersSeen != 0 || result.Source != core.SyncSourceOrdinaryBrowser || result.Provenance != core.SyncProvenanceObservedStructuredOrderDocument {
 		t.Fatalf("ordinary-browser sync result = %#v", result)
 	}
 }
