@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/auth"
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
@@ -22,6 +23,7 @@ import (
 const loginURL = "https://login.coupang.com/login/login.pang"
 const orderListURL = "https://mc.coupang.com/ssr/desktop/order/list"
 const orderModelURL = "https://mc.coupang.com/ssr/api/myorders/model"
+const orderAccessRetryDelay = 10 * time.Second
 
 var ErrBrowserNotFound = errors.New("supported Chrome-family browser not found")
 var ErrDesktopRequired = errors.New("interactive desktop required")
@@ -73,16 +75,17 @@ type qrPresenter func(context.Context, string, string, string, string, core.QRLi
 type phonePresenter func(context.Context, string, string, string, string, core.OTPProvider) error
 
 type Native struct {
-	profileDir           string
-	getenv               func(string) string
-	lookPath             func(string) (string, error)
-	sessionFactory       func(context.Context, string, string) (documentSession, error)
-	headedSessionFactory func(context.Context, string, string) (documentSession, error)
-	allowHeadedFallback  func() bool
-	presentQR            qrPresenter
-	presentPhone         phonePresenter
-	mu                   sync.Mutex
-	session              documentSession
+	profileDir            string
+	getenv                func(string) string
+	lookPath              func(string) (string, error)
+	sessionFactory        func(context.Context, string, string) (documentSession, error)
+	headedSessionFactory  func(context.Context, string, string) (documentSession, error)
+	allowHeadedFallback   func() bool
+	presentQR             qrPresenter
+	presentPhone          phonePresenter
+	waitBeforeAccessRetry func(context.Context) error
+	mu                    sync.Mutex
+	session               documentSession
 }
 
 func NewNative(profileDir string) *Native {
@@ -94,6 +97,16 @@ func NewNative(profileDir string) *Native {
 		headedSessionFactory: newHeadedChromeSession,
 		presentQR:            presentQRLogin,
 		presentPhone:         presentPhoneLogin,
+		waitBeforeAccessRetry: func(ctx context.Context) error {
+			timer := time.NewTimer(orderAccessRetryDelay)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-timer.C:
+				return nil
+			}
+		},
 	}
 	native.allowHeadedFallback = func() bool { return desktopAvailable(native.getenv) }
 	return native
@@ -137,7 +150,7 @@ func (n *Native) Fetch(ctx context.Context, cursor *core.OrderCursor) ([]byte, e
 		}
 	}
 	targetURL := orderDocumentURL(cursor)
-	document, err := n.session.ReadOrderDocument(ctx, targetURL)
+	document, err := n.readOrderDocument(ctx, targetURL)
 	if !errors.Is(err, ErrBrowserAccessDenied) || n.headedSessionFactory == nil || n.allowHeadedFallback == nil || !n.allowHeadedFallback() {
 		return document, err
 	}
@@ -145,6 +158,17 @@ func (n *Native) Fetch(ctx context.Context, cursor *core.OrderCursor) ([]byte, e
 	n.session = nil
 	n.session, err = n.headedSessionFactory(ctx, path, n.profileDir)
 	if err != nil {
+		return nil, err
+	}
+	return n.readOrderDocument(ctx, targetURL)
+}
+
+func (n *Native) readOrderDocument(ctx context.Context, targetURL string) ([]byte, error) {
+	document, err := n.session.ReadOrderDocument(ctx, targetURL)
+	if !errors.Is(err, ErrBrowserAccessDenied) || n.waitBeforeAccessRetry == nil {
+		return document, err
+	}
+	if err := n.waitBeforeAccessRetry(ctx); err != nil {
 		return nil, err
 	}
 	return n.session.ReadOrderDocument(ctx, targetURL)

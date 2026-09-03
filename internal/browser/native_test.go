@@ -38,6 +38,8 @@ func TestInspectUsesExplicitExecutableAndDedicatedProfile(t *testing.T) {
 type fakeDocumentSession struct {
 	document         []byte
 	err              error
+	orderErrors      []error
+	orderReads       int
 	urls             []string
 	categoryDocument []byte
 	categoryErr      error
@@ -63,6 +65,11 @@ type fakeDocumentSession struct {
 
 func (f *fakeDocumentSession) ReadOrderDocument(_ context.Context, targetURL string) ([]byte, error) {
 	f.urls = append(f.urls, targetURL)
+	index := f.orderReads
+	f.orderReads++
+	if index < len(f.orderErrors) {
+		return f.document, f.orderErrors[index]
+	}
 	return f.document, f.err
 }
 
@@ -137,6 +144,7 @@ func TestFetchAutomaticallyFallsBackToHeadedAndReusesIt(t *testing.T) {
 		return ""
 	}
 	native.allowHeadedFallback = func() bool { return true }
+	native.waitBeforeAccessRetry = func(context.Context) error { return nil }
 	primaryCalls := 0
 	fallbackCalls := 0
 	native.sessionFactory = func(context.Context, string, string) (documentSession, error) {
@@ -159,8 +167,47 @@ func TestFetchAutomaticallyFallsBackToHeadedAndReusesIt(t *testing.T) {
 	if !headless.closed {
 		t.Fatal("denied headless session was not closed")
 	}
+	if len(headless.urls) != 2 {
+		t.Fatalf("headless session reads = %d, want one bounded retry", len(headless.urls))
+	}
 	if len(headed.urls) != 2 {
 		t.Fatalf("headed session reads = %d, want 2", len(headed.urls))
+	}
+}
+
+func TestFetchRetriesTransientAccessDenialInSameSession(t *testing.T) {
+	executable := syntheticExecutable(t, "exit 0\n")
+	profile := filepath.Join(t.TempDir(), "browser-profile")
+	if err := os.MkdirAll(profile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	document := []byte(`{"props":{}}`)
+	headless := &fakeDocumentSession{document: document, orderErrors: []error{ErrBrowserAccessDenied}}
+	native := NewNative(profile)
+	native.getenv = func(name string) string {
+		if name == "COUPANGCTL_BROWSER_PATH" {
+			return executable
+		}
+		return ""
+	}
+	waits := 0
+	native.waitBeforeAccessRetry = func(context.Context) error {
+		waits++
+		return nil
+	}
+	fallbackCalls := 0
+	native.sessionFactory = func(context.Context, string, string) (documentSession, error) { return headless, nil }
+	native.headedSessionFactory = func(context.Context, string, string) (documentSession, error) {
+		fallbackCalls++
+		return &fakeDocumentSession{}, nil
+	}
+
+	got, err := native.Fetch(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(document) || waits != 1 || len(headless.urls) != 2 || fallbackCalls != 0 {
+		t.Fatalf("retry result document=%q waits=%d reads=%d fallback_calls=%d", got, waits, len(headless.urls), fallbackCalls)
 	}
 }
 

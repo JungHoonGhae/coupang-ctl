@@ -77,12 +77,28 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   state counts, terminal error codes, and browser-sanitized receipt shapes;
   raw order IDs stay in memory. A fresh live run is still required before this
   broader sampler can change installment or refund-settlement evidence status.
-- On 2026-09-03, the pre-improvement order-metadata probe returned
-  `browser_access_denied` in headless and headed modes. A headed
-  `auth verify` immediately succeeded and rotated the session, but one bounded
-  headless retry remained denied. No response evidence was collected, so this
-  is recorded as a probe read-path blocker rather than an expired-login claim
-  or evidence about refund/installment fields.
+- On 2026-09-03, the order-metadata probe returned
+  `browser_access_denied` in headless and headed dedicated-Chrome modes. A
+  four-run minimal first-page loop reproduced three failures: one missing
+  normalized contract and two HTTP 403 responses. Redacted instrumentation
+  then showed both the order HTML and same-origin model GET receiving 403 in
+  headed mode. Stored-session and profile cookie counts, domain counts,
+  session/persistent counts, and expiry status matched; no cookie name or value
+  was printed.
+- A controlled same-page retry after ten seconds recovered one of two observed
+  403 cases, while another remained denied. The native order reader now makes
+  exactly one delayed idempotent retry in the same browser session before its
+  existing headed fallback. Synthetic tests cover transient recovery and the
+  bounded permanent-denial path. A post-change live minimal probe still ended
+  in `browser_access_denied`, so this is explicitly a resilience improvement,
+  not a resolved access claim.
+- In a same-account comparison immediately afterward, Orca/computer-use opened
+  the protected order list successfully in the user's already-running ordinary
+  Google Chrome: the order UI was present, with neither an access-denied marker
+  nor a login form. This isolates browser context as a material variable and
+  motivates a standard ordinary-browser bridge. Orca itself remains a research
+  aid rather than a runtime dependency; the bridge needs a threat-modeled,
+  explicitly paired extension/loopback contract before implementation.
 - `receipts download` can save an already-completed history artifact to a new
   private `0600` file. It re-reads the selected history row, keeps the source
   URL in browser memory, validates the final Coupang host and bounded content,
@@ -117,8 +133,9 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 - Default QR login uses the same narrow headed adapter without writing a PNG;
   it automatically selects the QR tab in the visible browser and returns
   `verified` only after the exact protected order page finishes loading.
-- Headless verification and sync have an explicit `--headed` read-only fallback
-  when the protected document returns an access-denied response.
+- Headless verification and sync make one delayed read-only retry after a
+  protected-document access-denied response, then use the explicit `--headed`
+  fallback when a desktop is available.
 - Authentication state is captured after human-approved login into a private,
   atomic `0600` session file. A later process restores it into installed Chrome
   and rotates it only after a successful authenticated read; cookie values are
@@ -327,7 +344,7 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 
 Pure Node HTTP replay of the order-list document returned `403` with minimal headers and `406` even after replaying captured browser headers. Review JSON replay succeeded, but strict browser-process-free order retrieval has not been proven. The product restores its private Coupang session into a real installed Chrome process and performs the model fetch in the authenticated same-origin page.
 
-The pragmatic first architecture is:
+The pragmatic architecture is:
 
 1. Use installed Chrome for authentication and protected structured retrieval.
 2. Parse the order-model JSON directly; do not click, scroll, or scrape rendered order cards during routine sync.
@@ -337,6 +354,10 @@ The pragmatic first architecture is:
    source adapters.
 5. Keep newly discovered APIs in the redacted endpoint catalog and promote them
    only after read/write classification and synthetic contract tests.
+6. Treat the user's already-running ordinary browser as the preferred future
+   local protected-data context when its standard bridge is available. Keep
+   dedicated Chrome for headless/server automation where accepted, and keep
+   normalized export/import as the browserless-server boundary.
 
 ## Authentication architecture decision
 
@@ -355,6 +376,14 @@ for the authentication challenge, with a browser-owned implementation that is
 headless-first for routine reads. An official read-only API, sandbox, or
 developer allowlist can replace this source adapter later without changing the
 rest of the product.
+
+A later same-account comparison found that the already-running ordinary Chrome
+could open the order UI while short-lived dedicated headed and headless Chrome
+contexts received 403. The dedicated profile remains the implemented portable
+adapter, but it is no longer assumed to be the most reliable local context. The
+next architecture candidate is a standard, explicitly paired ordinary-browser
+bridge behind the same narrow document-source interface—not an Orca dependency,
+cookie-copying shortcut, stealth mode, or automation of a login challenge.
 
 ## Roadmap
 
