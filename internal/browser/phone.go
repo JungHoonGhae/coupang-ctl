@@ -55,6 +55,10 @@ type phonePageState struct {
 	AccessDenied        bool   `json:"accessDenied"`
 }
 
+type phoneCDPCaller interface {
+	Call(context.Context, string, any, any) error
+}
+
 func classifyPhonePage(state phonePageState) phonePagePhase {
 	if state.Status == http.StatusForbidden || state.AccessDenied {
 		return phonePhaseDenied
@@ -232,7 +236,7 @@ func nextPhoneOTPAction(requestClicked, otpSubmitted bool) phoneOTPAction {
 	return phoneOTPActionRead
 }
 
-func readPhonePageState(ctx context.Context, page *cdpClient) (phonePageState, error) {
+func readPhonePageState(ctx context.Context, page phoneCDPCaller) (phonePageState, error) {
 	const expression = `(() => {
 		const documents = [document];
 		for (const frame of document.querySelectorAll('iframe')) {
@@ -257,9 +261,8 @@ func readPhonePageState(ctx context.Context, page *cdpClient) (phonePageState, e
 	return evaluatePhoneState(ctx, page, expression)
 }
 
-func prepareAndRequestPhoneOTP(ctx context.Context, page *cdpClient, phone string) (bool, error) {
-	encodedPhone, _ := json.Marshal(phone)
-	expression := fmt.Sprintf(`(() => {
+func prepareAndRequestPhoneOTP(ctx context.Context, page phoneCDPCaller, phone string) (bool, error) {
+	const functionDeclaration = `function(phone) {
 		const documents = [document];
 		for (const frame of document.querySelectorAll('iframe')) {
 			try { if (frame.contentDocument) documents.push(frame.contentDocument); } catch (_) {}
@@ -273,7 +276,7 @@ func prepareAndRequestPhoneOTP(ctx context.Context, page *cdpClient, phone strin
 		const inputType = input.ownerDocument.defaultView?.HTMLInputElement;
 		const setter = inputType ? Object.getOwnPropertyDescriptor(inputType.prototype, 'value')?.set : null;
 		if (!setter) return JSON.stringify({ready:false});
-		setter.call(input, %s);
+		setter.call(input, phone);
 		const EventType = input.ownerDocument.defaultView?.Event;
 		if (!EventType) return JSON.stringify({ready:false});
 		input.dispatchEvent(new EventType('input', {bubbles:true}));
@@ -301,13 +304,12 @@ func prepareAndRequestPhoneOTP(ctx context.Context, page *cdpClient, phone strin
 			}
 			return {ready:true, x, y};
 		}
-	})()`, string(encodedPhone))
-	return evaluateAndClickPhoneButton(ctx, page, expression)
+	}`
+	return evaluateAndClickPhoneButtonWithStringArgument(ctx, page, functionDeclaration, phone)
 }
 
-func submitPhoneOTP(ctx context.Context, page *cdpClient, otp string) (bool, error) {
-	encodedOTP, _ := json.Marshal(otp)
-	expression := fmt.Sprintf(`(() => {
+func submitPhoneOTP(ctx context.Context, page phoneCDPCaller, otp string) (bool, error) {
+	const functionDeclaration = `function(otp) {
 		const documents = [document];
 		for (const frame of document.querySelectorAll('iframe')) {
 			try { if (frame.contentDocument) documents.push(frame.contentDocument); } catch (_) {}
@@ -318,7 +320,7 @@ func submitPhoneOTP(ctx context.Context, page *cdpClient, otp string) (bool, err
 		const inputType = input.ownerDocument.defaultView?.HTMLInputElement;
 		const setter = inputType ? Object.getOwnPropertyDescriptor(inputType.prototype, 'value')?.set : null;
 		if (!setter) return JSON.stringify({ready:false});
-		setter.call(input, %s);
+		setter.call(input, otp);
 		const EventType = input.ownerDocument.defaultView?.Event;
 		if (!EventType) return JSON.stringify({ready:false});
 		input.dispatchEvent(new EventType('input', {bubbles:true}));
@@ -346,11 +348,11 @@ func submitPhoneOTP(ctx context.Context, page *cdpClient, otp string) (bool, err
 			}
 			return {ready:true, x, y};
 		}
-	})()`, string(encodedOTP))
-	return evaluateAndClickPhoneButton(ctx, page, expression)
+	}`
+	return evaluateAndClickPhoneButtonWithStringArgument(ctx, page, functionDeclaration, otp)
 }
 
-func resendPhoneOTP(ctx context.Context, page *cdpClient) (bool, error) {
+func resendPhoneOTP(ctx context.Context, page phoneCDPCaller) (bool, error) {
 	const expression = `(() => {
 		const documents = [document];
 		for (const frame of document.querySelectorAll('iframe')) {
@@ -386,15 +388,29 @@ func resendPhoneOTP(ctx context.Context, page *cdpClient) (bool, error) {
 	return evaluateAndClickPhoneButton(ctx, page, expression)
 }
 
-func evaluateAndClickPhoneButton(ctx context.Context, page *cdpClient, expression string) (bool, error) {
-	var target struct {
-		Ready bool    `json:"ready"`
-		X     float64 `json:"x"`
-		Y     float64 `json:"y"`
-	}
+type phoneButtonTarget struct {
+	Ready bool    `json:"ready"`
+	X     float64 `json:"x"`
+	Y     float64 `json:"y"`
+}
+
+func evaluateAndClickPhoneButton(ctx context.Context, page phoneCDPCaller, expression string) (bool, error) {
+	var target phoneButtonTarget
 	if err := evaluateJSON(ctx, page, expression, &target); err != nil {
 		return false, err
 	}
+	return clickPhoneButtonTarget(ctx, page, target)
+}
+
+func evaluateAndClickPhoneButtonWithStringArgument(ctx context.Context, page phoneCDPCaller, functionDeclaration, value string) (bool, error) {
+	var target phoneButtonTarget
+	if err := evaluateJSONWithStringArgument(ctx, page, functionDeclaration, value, &target); err != nil {
+		return false, err
+	}
+	return clickPhoneButtonTarget(ctx, page, target)
+}
+
+func clickPhoneButtonTarget(ctx context.Context, page phoneCDPCaller, target phoneButtonTarget) (bool, error) {
 	if !target.Ready {
 		return false, nil
 	}
@@ -410,7 +426,7 @@ func evaluateAndClickPhoneButton(ctx context.Context, page *cdpClient, expressio
 	return true, nil
 }
 
-func evaluatePhoneState(ctx context.Context, page *cdpClient, expression string) (phonePageState, error) {
+func evaluatePhoneState(ctx context.Context, page phoneCDPCaller, expression string) (phonePageState, error) {
 	var state phonePageState
 	if err := evaluateJSON(ctx, page, expression, &state); err != nil {
 		return phonePageState{}, err
@@ -418,16 +434,54 @@ func evaluatePhoneState(ctx context.Context, page *cdpClient, expression string)
 	return state, nil
 }
 
-func evaluateJSON(ctx context.Context, page *cdpClient, expression string, target any) error {
-	var evaluated struct {
-		Result struct {
-			Value json.RawMessage `json:"value"`
-		} `json:"result"`
-		ExceptionDetails json.RawMessage `json:"exceptionDetails,omitempty"`
-	}
+type runtimeJSONEvaluation struct {
+	Result struct {
+		Value json.RawMessage `json:"value"`
+	} `json:"result"`
+	ExceptionDetails json.RawMessage `json:"exceptionDetails,omitempty"`
+}
+
+func evaluateJSON(ctx context.Context, page phoneCDPCaller, expression string, target any) error {
+	var evaluated runtimeJSONEvaluation
 	if err := page.Call(ctx, "Runtime.evaluate", map[string]any{"expression": expression, "returnByValue": true}, &evaluated); err != nil {
 		return err
 	}
+	return decodeRuntimeJSON(evaluated, target)
+}
+
+func evaluateJSONWithStringArgument(ctx context.Context, page phoneCDPCaller, functionDeclaration, value string, target any) error {
+	var global struct {
+		Result struct {
+			ObjectID string `json:"objectId"`
+		} `json:"result"`
+		ExceptionDetails json.RawMessage `json:"exceptionDetails,omitempty"`
+	}
+	if err := page.Call(ctx, "Runtime.evaluate", map[string]any{"expression": "globalThis"}, &global); err != nil {
+		return err
+	}
+	if len(global.ExceptionDetails) != 0 || global.Result.ObjectID == "" {
+		return errors.New("evaluate phone login page")
+	}
+	defer func() {
+		releaseCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = page.Call(releaseCtx, "Runtime.releaseObject", map[string]any{"objectId": global.Result.ObjectID}, nil)
+	}()
+
+	var evaluated runtimeJSONEvaluation
+	if err := page.Call(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId":            global.Result.ObjectID,
+		"functionDeclaration": functionDeclaration,
+		"arguments":           []map[string]any{{"value": value}},
+		"returnByValue":       true,
+		"userGesture":         true,
+	}, &evaluated); err != nil {
+		return err
+	}
+	return decodeRuntimeJSON(evaluated, target)
+}
+
+func decodeRuntimeJSON(evaluated runtimeJSONEvaluation, target any) error {
 	if len(evaluated.ExceptionDetails) != 0 {
 		return errors.New("evaluate phone login page")
 	}

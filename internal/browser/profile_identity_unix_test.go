@@ -11,26 +11,23 @@ import (
 	"testing"
 )
 
-func TestIdentifyManagedBrowserRetriesOneTransientVersionProbe(t *testing.T) {
-	executable := filepath.Join(t.TempDir(), "google-chrome")
-	script := `#!/bin/sh
-counter="$0.count"
-if [ ! -e "$counter" ]; then
-  : >"$counter"
-  exit 1
-fi
-printf '%s\n' 'Google Chrome 152.0.0.0'
-`
-	if err := os.WriteFile(executable, []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-
-	identity, err := identifyManagedBrowser(context.Background(), executable)
+func TestInstalledBrowserMajorVersionRetriesOneTransientProbe(t *testing.T) {
+	attempts := 0
+	major, err := installedBrowserMajorVersionWithProbe(context.Background(), "synthetic-google-chrome", func(_ context.Context, executable string) ([]byte, error) {
+		if executable != "synthetic-google-chrome" {
+			t.Fatalf("executable = %q", executable)
+		}
+		attempts++
+		if attempts == 1 {
+			return nil, errors.New("synthetic transient probe failure")
+		}
+		return []byte("Google Chrome 152.0.0.0\n"), nil
+	})
 	if err != nil {
 		t.Fatalf("transient version probe was not retried: %v", err)
 	}
-	if identity.Family != "chrome" || identity.MajorVersion != 152 {
-		t.Fatalf("identity = %#v", identity)
+	if major != 152 || attempts != 2 {
+		t.Fatalf("major = %d, attempts = %d", major, attempts)
 	}
 }
 

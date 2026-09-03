@@ -1,5 +1,7 @@
 import { chromium, type Response } from "playwright-core";
 
+import { isCoupangHostURL } from "./coupang-url.js";
+
 type Shape =
   | { type: "null" }
   | { type: "array"; length: number; item?: Shape }
@@ -60,7 +62,7 @@ function shape(value: unknown, depth = 0): Shape {
 async function recordResponse(response: Response): Promise<void> {
   const request = response.request();
   const url = new URL(response.url());
-  if (!url.hostname.endsWith("coupang.com")) return;
+  if (!isCoupangHostURL(url.toString())) return;
   const contentType = response.headers()["content-type"] ?? null;
   if (url.pathname.endsWith("/dist/login.min.js")) {
     try {

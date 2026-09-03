@@ -1,5 +1,7 @@
 import { chromium } from "playwright-core";
 
+import { isCoupangLoginURL } from "./coupang-url.js";
+
 const browser = await chromium.connectOverCDP(process.env.COUPANG_CDP_URL ?? "http://127.0.0.1:9223");
 const context = browser.contexts()[0];
 const page = await context.newPage();
@@ -42,7 +44,7 @@ const unique = [...new Map(calls.map((entry) => [`${entry.method} ${entry.origin
 process.stdout.write(`${JSON.stringify({
   finalOrigin: new URL(page.url()).origin,
   finalPath: new URL(page.url()).pathname,
-  redirectedToLogin: page.url().includes("login.coupang.com"),
+  redirectedToLogin: isCoupangLoginURL(page.url()),
   calls: unique,
 }, null, 2)}\n`);
 await page.close();
