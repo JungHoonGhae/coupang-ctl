@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 	"github.com/JungHoonGhae/coupang-ctl/internal/orders"
@@ -244,6 +245,36 @@ func TestNormalizedExportCanBeImportedWithoutBrowserState(t *testing.T) {
 	}
 	if len(stored) != 1 || stored[0].TotalAmount != 3200 {
 		t.Fatalf("unexpected imported orders: %#v", stored)
+	}
+}
+
+func TestReorderComparisonLabelsStaleLocalPriceWithoutRefreshingNetwork(t *testing.T) {
+	ctx := context.Background()
+	ledger, err := store.Open(ctx, filepath.Join(t.TempDir(), "coupangctl.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	if _, err := ledger.UpsertOrderPage(ctx, core.OrderPage{Orders: []core.Order{{
+		SourceRef: "synthetic-reorder", PurchasedAt: "2026-08-01", TotalAmount: 42000, Currency: "KRW",
+		Items: []core.OrderItem{{ProductID: "101", VendorItemID: "201", Name: "Synthetic product", Quantity: 1, PaidPrice: 42000, UnitPrice: 42000, DeliveryStatus: "delivered"}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordPriceObservations(ctx, []core.ProductPriceObservation{{
+		Reference: core.ProductReference{ProductID: "101", VendorItemID: "201"},
+		Name:      "Synthetic product", CanonicalURL: "https://www.coupang.com/vp/products/101",
+		CurrentAmount: 39000, Currency: "KRW", ObservedAt: time.Now().UTC().Add(-25 * time.Hour),
+		Source: "coupang_product_inspection", Provenance: "observed",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err := orders.New(ledger, nil).ReorderCandidates(ctx, core.OrderFilter{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || candidates[0].PriceComparison.Freshness != "stale_24h_or_more" || candidates[0].PriceComparison.ObservationAgeHours < 24 || len(candidates[0].PriceComparison.Limitations) != 2 {
+		t.Fatalf("unexpected stale comparison: %#v", candidates)
 	}
 }
 

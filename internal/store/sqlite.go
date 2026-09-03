@@ -205,6 +205,32 @@ func (s *SQLite) migrate(ctx context.Context) error {
 		VALUES (8, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`); err != nil {
 		return fmt.Errorf("record commerce classification migration: %w", err)
 	}
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS product_price_observations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		product_key TEXT NOT NULL,
+		product_id TEXT NOT NULL,
+		item_id TEXT NOT NULL DEFAULT '',
+		vendor_item_id TEXT NOT NULL DEFAULT '',
+		name TEXT NOT NULL,
+		canonical_url TEXT NOT NULL DEFAULT '',
+		current_amount INTEGER NOT NULL CHECK (current_amount > 0),
+		original_amount INTEGER NOT NULL DEFAULT 0 CHECK (original_amount >= 0),
+		discount_rate INTEGER NOT NULL DEFAULT 0 CHECK (discount_rate BETWEEN 0 AND 100),
+		currency TEXT NOT NULL CHECK (currency = 'KRW'),
+		source TEXT NOT NULL CHECK (source IN ('coupang_product_search', 'coupang_product_inspection')),
+		observed_at TEXT NOT NULL,
+		UNIQUE(product_key, observed_at, source)
+	)`); err != nil {
+		return fmt.Errorf("create product price observations: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS product_price_observations_lookup_idx
+		ON product_price_observations(product_id, vendor_item_id, observed_at DESC)`); err != nil {
+		return fmt.Errorf("index product price observations: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+		VALUES (9, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`); err != nil {
+		return fmt.Errorf("record product price observation migration: %w", err)
+	}
 	return nil
 }
 

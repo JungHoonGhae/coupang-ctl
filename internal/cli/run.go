@@ -53,7 +53,6 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 	}
 	defer browserAdapter.Close()
 	authService := auth.NewService(browserAdapter)
-	productService := productworkflow.NewWithAffiliate(coupangproducts.New(browserAdapter), partners.NewFromEnvironment(os.Getenv))
 	accountService := accountworkflow.New(coupangaccount.New(browserAdapter))
 	receiptService := receiptworkflow.New(coupangreceipts.New(browserAdapter))
 
@@ -70,6 +69,12 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 		defer ledger.Close()
 		return runOrders(ctx, args[1:], stdout, orderworkflow.New(ledger, browserAdapter))
 	case "products":
+		ledger, err := store.Open(ctx, paths.Database)
+		if err != nil {
+			return err
+		}
+		defer ledger.Close()
+		productService := productworkflow.NewWithAffiliateAndPrices(coupangproducts.New(browserAdapter), partners.NewFromEnvironment(os.Getenv), ledger)
 		return runProducts(ctx, args[1:], stdout, productService)
 	case "account":
 		return runAccount(ctx, args[1:], stdout, accountService)
@@ -84,6 +89,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 			return err
 		}
 		defer ledger.Close()
+		productService := productworkflow.NewWithAffiliateAndPrices(coupangproducts.New(browserAdapter), partners.NewFromEnvironment(os.Getenv), ledger)
 		return mcpserver.RunWithAllFeaturesAndReceipts(ctx, authService, orderworkflow.New(ledger, browserAdapter), productService, accountService, receiptService, version)
 	default:
 		return usage(stderr)
@@ -232,12 +238,14 @@ func runAccount(ctx context.Context, args []string, stdout io.Writer, workflow a
 type productWorkflow interface {
 	Search(context.Context, core.ProductSearchRequest) (core.ProductSearchResult, error)
 	Inspect(context.Context, core.ProductInspectRequest) (core.ProductInspection, error)
+	PriceHistory(context.Context, core.ProductPriceHistoryRequest) (core.ProductPriceHistory, error)
+	PurgePriceHistory(context.Context) (core.ProductPriceHistoryPurgeResult, error)
 	AddToCart(context.Context, core.CartAddRequest) (core.CartAddResult, error)
 }
 
 func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow productWorkflow) error {
 	if len(args) == 0 {
-		return errors.New("usage: coupangctl products <search|inspect|cart-add>")
+		return errors.New("usage: coupangctl products <search|inspect|price-history|price-history-purge|cart-add>")
 	}
 	switch args[0] {
 	case "search":
@@ -295,6 +303,32 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 			return err
 		}
 		return writeJSON(stdout, result)
+	case "price-history":
+		flags := newFlagSet("products price-history")
+		productID := flags.String("product-id", "", "product identifier returned by search")
+		vendorItemID := flags.String("vendor-item-id", "", "optional exact vendor item identifier")
+		limit := flags.Int("limit", 200, "maximum stored observations")
+		const historyUsage = "usage: coupangctl products price-history --product-id ID [--vendor-item-id ID] [--limit N]"
+		if err := parseFlags(flags, args[1:], historyUsage); err != nil || *productID == "" {
+			return errors.New(historyUsage)
+		}
+		result, err := workflow.PriceHistory(ctx, core.ProductPriceHistoryRequest{ProductID: *productID, VendorItemID: *vendorItemID, Limit: *limit})
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
+	case "price-history-purge":
+		flags := newFlagSet("products price-history-purge")
+		confirmation := flags.String("confirm", "", "confirmation token")
+		const purgeUsage = "usage: coupangctl products price-history-purge --confirm purge-product-price-history"
+		if err := parseFlags(flags, args[1:], purgeUsage); err != nil || *confirmation != "purge-product-price-history" {
+			return errors.New(purgeUsage)
+		}
+		result, err := workflow.PurgePriceHistory(ctx)
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
 	case "cart-add":
 		flags := newFlagSet("products cart-add")
 		productID := flags.String("product-id", "", "product identifier returned by search")
@@ -316,7 +350,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		}
 		return writeJSON(stdout, result)
 	default:
-		return errors.New("usage: coupangctl products <search|inspect|cart-add>")
+		return errors.New("usage: coupangctl products <search|inspect|price-history|price-history-purge|cart-add>")
 	}
 }
 
@@ -449,7 +483,7 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 		if err != nil {
 			return err
 		}
-		return writeJSON(stdout, core.ReorderList{Candidates: candidates})
+		return writeJSON(stdout, core.NewReorderList(candidates))
 	case "export":
 		filter, err := parseOrderFilter(args[1:], true, "usage: coupangctl orders export [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N]")
 		if err != nil {
@@ -718,6 +752,9 @@ func WriteError(w io.Writer, err error) {
 	case errors.Is(err, productworkflow.ErrSourceUnavailable):
 		code = "product_source_unavailable"
 		message = "the public product source was temporarily unavailable; the request may be retried"
+	case errors.Is(err, productworkflow.ErrPriceHistoryUnavailable):
+		code = "product_price_history_unavailable"
+		message = "the local product price history was unavailable"
 	case errors.Is(err, browser.ErrQRExpired):
 		code = "qr_expired"
 		message = "the QR login expired; run auth login again"

@@ -102,6 +102,14 @@ func (fixedProductWorkflow) Inspect(_ context.Context, request core.ProductInspe
 	return core.ProductInspection{SchemaVersion: 1, Product: core.ProductCard{Reference: core.ProductReference{ProductID: request.ProductID}}}, nil
 }
 
+func (fixedProductWorkflow) PriceHistory(_ context.Context, request core.ProductPriceHistoryRequest) (core.ProductPriceHistory, error) {
+	return core.ProductPriceHistory{SchemaVersion: 1, Visibility: "private_local", ProductID: request.ProductID, VendorItemID: request.VendorItemID, ObservationCount: 2}, nil
+}
+
+func (fixedProductWorkflow) PurgePriceHistory(context.Context) (core.ProductPriceHistoryPurgeResult, error) {
+	return core.ProductPriceHistoryPurgeResult{ObservationsDeleted: 2}, nil
+}
+
 func (fixedProductWorkflow) AddToCart(_ context.Context, request core.CartAddRequest) (core.CartAddResult, error) {
 	return core.CartAddResult{SchemaVersion: 1, Attempted: true, Added: true, Verified: true, Quantity: request.Quantity}, nil
 }
@@ -114,6 +122,14 @@ func (w *capturingProductWorkflow) Search(_ context.Context, request core.Produc
 func (w *capturingProductWorkflow) Inspect(_ context.Context, request core.ProductInspectRequest) (core.ProductInspection, error) {
 	w.inspectRequest = request
 	return core.ProductInspection{SchemaVersion: core.ProductSchemaVersion}, nil
+}
+
+func (*capturingProductWorkflow) PriceHistory(_ context.Context, request core.ProductPriceHistoryRequest) (core.ProductPriceHistory, error) {
+	return core.ProductPriceHistory{SchemaVersion: 1, ProductID: request.ProductID}, nil
+}
+
+func (*capturingProductWorkflow) PurgePriceHistory(context.Context) (core.ProductPriceHistoryPurgeResult, error) {
+	return core.ProductPriceHistoryPurgeResult{}, nil
 }
 
 func (*capturingProductWorkflow) AddToCart(context.Context, core.CartAddRequest) (core.CartAddResult, error) {
@@ -237,6 +253,34 @@ func TestProductsAffiliateOptOutReachesTypedWorkflow(t *testing.T) {
 	}
 	if !workflow.inspectRequest.DisableAffiliate {
 		t.Fatal("inspection affiliate opt-out was not propagated")
+	}
+}
+
+func TestProductsPriceHistoryWritesTypedPrivateLocalResponse(t *testing.T) {
+	var output bytes.Buffer
+	if err := runProducts(context.Background(), []string{"price-history", "--product-id", "101", "--vendor-item-id", "201"}, &output, fixedProductWorkflow{}); err != nil {
+		t.Fatal(err)
+	}
+	var got core.ProductPriceHistory
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Visibility != "private_local" || got.ProductID != "101" || got.VendorItemID != "201" || got.ObservationCount != 2 {
+		t.Fatalf("unexpected price history output: %#v", got)
+	}
+}
+
+func TestProductsPriceHistoryPurgeRequiresExactConfirmation(t *testing.T) {
+	if err := runProducts(context.Background(), []string{"price-history-purge"}, io.Discard, fixedProductWorkflow{}); err == nil {
+		t.Fatal("price history purge ran without confirmation")
+	}
+	var output bytes.Buffer
+	if err := runProducts(context.Background(), []string{"price-history-purge", "--confirm", "purge-product-price-history"}, &output, fixedProductWorkflow{}); err != nil {
+		t.Fatal(err)
+	}
+	var got core.ProductPriceHistoryPurgeResult
+	if err := json.Unmarshal(output.Bytes(), &got); err != nil || got.ObservationsDeleted != 2 {
+		t.Fatalf("unexpected purge result: %#v err=%v", got, err)
 	}
 }
 

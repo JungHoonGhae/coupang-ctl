@@ -25,4 +25,8 @@ func TestReceiptCapabilitiesExposeImplementedStateAndNextEvidence(t *testing.T) 
 			t.Fatalf("capability %q does not expose experimental evidence state: %#v", id, capability)
 		}
 	}
+	price := byID["price_and_repurchase"]
+	if price.Status != core.CapabilityExperimental || price.LastVerified == "" || price.NextWork == "" {
+		t.Fatalf("price capability does not expose its experimental evidence state: %#v", price)
+	}
 }

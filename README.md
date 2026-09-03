@@ -62,6 +62,7 @@ go build -o ./bin/coupangctl ./cmd/coupangctl
 | 쇼핑 유형·리캡 | 사용 가능 | 근거가 보이는 4축 유형, 배지, 공개형·비공개형 HTML |
 | 상품별 인사이트 | 사용 가능 | 구매 횟수·수량·기록된 결제액·최고/최저 지출일 |
 | 상품 검색·상세 | 실험적 | 가격, 배송, 이미지, 혜택, 평점, 정제된 후기, 정렬 의미 보존 |
+| 가격 이력·재구매 | 실험적 | 실제로 관찰한 옵션별 현재가와 마지막 실결제 단가 비교 |
 | WOW·카드 혜택 | 실험적 | 현재 멤버십, 쿠팡이 표시한 혜택, 등록 카드 브랜드, 월별 적립 |
 | 카테고리 | 실험적 | 상품 페이지의 실제 breadcrumb 경로와 집계 커버리지 |
 | 장바구니 | 실험적 | 정확한 `vendor_item_id`와 명시적 확인이 있을 때 한 번 추가 |
@@ -124,6 +125,32 @@ MCP를 쓰면 AI가 “후기 좋은 10만 원 아래 맥북 허브, 광고 제�
 
 상품 페이지 단위 후기 수를 옵션별 판매량처럼 표현하지 않습니다. 상품 가격과 프로모션은 바뀔 수 있으므로 최종 쿠팡 화면에서 다시 확인해야 합니다.
 
+### 가격 이력과 재구매 비교
+
+성공한 `products search`와 `products inspect`는 응답에 실제
+`price.current_amount`가 있을 때만 해당 옵션의 현재가를 로컬 SQLite에
+기록합니다. 이후 다음처럼 읽습니다.
+
+```bash
+coupangctl products price-history --product-id ID --vendor-item-id ID
+coupangctl orders reorder --limit 20
+```
+
+가격 이력은 coupangctl이 처음 본 시점부터 시작합니다. 쿠팡의 과거 가격을
+소급해서 안다고 주장하지 않으며, `vendor_item_id`가 다른 옵션은 별도
+series로 유지합니다. `orders reorder`는 동일 ID의 최신 관찰가와 취소·반품
+없는 마지막 결제 단가가 모두 있을 때만 차이를 계산합니다. 명령 자체는
+새 가격을 조회하지 않으므로 `observed_at`을 보고 최종 상품 화면에서 다시
+확인해야 합니다.
+
+로컬 가격 관찰만 지우려면 명시적인 확인 문자열이 필요합니다.
+
+```bash
+coupangctl products price-history-purge --confirm purge-product-price-history
+```
+
+응답 계약과 계산 규칙은 [`PRICES.md`](PRICES.md)에 정리되어 있습니다.
+
 ### 장바구니 추가
 
 ```bash
@@ -173,6 +200,7 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 - `orders_insights`, `orders_product_insights`, `orders_reorder_candidates`
 - `orders_export`, `orders_enrich_categories`
 - `products_search`, `product_inspect`, `cart_add`
+- `product_price_history`
 - `receipts_status`, `receipts_list`, `receipts_summary`
 
 읽기 도구와 변경 도구는 MCP annotation과 입력 타입에서 구분됩니다. 영수증 MCP 도구는 조회 전용이고 파일 다운로드는 CLI에만 있습니다. `cart_add`만 되돌릴 수 있는 외부 변경이며 별도 확인값을 요구합니다.
@@ -205,6 +233,7 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 | 쿠키·세션 | 전용 상태 디렉터리의 비공개 파일에 원자적으로 저장하고 출력하지 않음 |
 | OTP·비밀번호·QR 링크 | 저장·로그·구조화 출력 금지 |
 | 카드·영수증 | 카드 식별자·번호·다운로드 URL은 버리고, 다운로드 파일은 새 `0600` 경로에만 저장 |
+| 가격 관찰 | 공개 상품명·옵션 ID·관찰가·시각을 로컬 DB에만 저장하고 별도 확인 명령으로 삭제 |
 | 주문 원본 응답 | 저장·fixture·문서 포함 금지 |
 | 정규화 주문 DB | 내 컴퓨터에 저장, 내보내기는 명시적 명령으로만 수행 |
 | 공개형 리캡 | 상품명과 정확한 날짜를 제외한 `public_safe` |
@@ -254,6 +283,7 @@ coupangctl products inspect --product-id ID --no-affiliate
 - [`HANDOFF.md`](HANDOFF.md) — 검증된 동작과 아키텍처 결정
 - [`TYPE_SYSTEM.md`](TYPE_SYSTEM.md) — 네 가지 행동 축과 16개 유형
 - [`RECEIPTS.md`](RECEIPTS.md) — 영수증 조회·다운로드의 JSON 계약과 안전 경계
+- [`PRICES.md`](PRICES.md) — 옵션별 가격 이력과 재구매 비교 계약
 - [`PRODUCT_PRINCIPLES.md`](PRODUCT_PRINCIPLES.md) — 증거·개인정보·완료 기준
 - [`research/endpoint-catalog.md`](research/endpoint-catalog.md) — 가린 비공개 route 목록
 - [`research/README_BENCHMARKS.md`](research/README_BENCHMARKS.md) — 인기 CLI·MCP 저장소를 참고한 README 설계 근거

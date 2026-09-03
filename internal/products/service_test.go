@@ -16,6 +16,28 @@ type syntheticSource struct {
 	cart       core.CartAddResult
 }
 
+type syntheticPriceHistory struct {
+	recorded     []core.ProductPriceObservation
+	observations []core.ProductPriceObservation
+	truncated    bool
+	err          error
+}
+
+func (s *syntheticPriceHistory) RecordPriceObservations(_ context.Context, observations []core.ProductPriceObservation) error {
+	s.recorded = append(s.recorded, observations...)
+	return s.err
+}
+
+func (s *syntheticPriceHistory) ListPriceObservations(context.Context, core.ProductPriceHistoryRequest) ([]core.ProductPriceObservation, bool, error) {
+	return append([]core.ProductPriceObservation(nil), s.observations...), s.truncated, s.err
+}
+
+func (s *syntheticPriceHistory) PurgePriceObservations(context.Context) (int, error) {
+	deleted := len(s.observations)
+	s.observations = nil
+	return deleted, s.err
+}
+
 func (s syntheticSource) Search(context.Context, core.ProductSearchRequest) ([]core.ProductCard, core.ProductCoverage, error) {
 	return s.items, core.ProductCoverage{Source: "synthetic"}, nil
 }
@@ -51,6 +73,48 @@ func TestSearchAppliesNaturalLanguageDerivedFiltersWithoutTreatingUnknownAsMatch
 	}
 	if result.SchemaVersion != core.ProductSchemaVersion || result.AppliedFilters.Limit != 10 || result.AppliedFilters.Sort != core.ProductSortRelevance {
 		t.Fatalf("unexpected response metadata: %#v", result)
+	}
+}
+
+func TestSearchRecordsOnlyReturnedObservedCurrentPrices(t *testing.T) {
+	history := &syntheticPriceHistory{}
+	service := NewWithAffiliateAndPrices(syntheticSource{items: []core.ProductCard{
+		{Reference: core.ProductReference{ProductID: "101", VendorItemID: "201"}, Name: "Synthetic observed", URL: "https://www.coupang.com/vp/products/101", Price: core.ProductPrice{CurrentAmount: 42000}, ObservedFields: []string{"price.current_amount"}},
+		{Reference: core.ProductReference{ProductID: "102", VendorItemID: "202"}, Name: "Synthetic unknown", URL: "https://www.coupang.com/vp/products/102", Price: core.ProductPrice{CurrentAmount: 51000}},
+	}}, nil, history)
+	service.now = func() time.Time { return time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC) }
+
+	result, err := service.Search(context.Background(), core.ProductSearchRequest{Query: "synthetic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 2 || len(history.recorded) != 1 || history.recorded[0].CurrentAmount != 42000 || history.recorded[0].Source != "coupang_product_search" {
+		t.Fatalf("unexpected price recording: result=%#v recorded=%#v", result.Items, history.recorded)
+	}
+}
+
+func TestPriceHistoryKeepsVariantsSeparateAndDerivesPerSeriesTrend(t *testing.T) {
+	base := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	history := &syntheticPriceHistory{observations: []core.ProductPriceObservation{
+		{Reference: core.ProductReference{ProductID: "101", VendorItemID: "201"}, Name: "Synthetic A", CurrentAmount: 42000, Currency: "KRW", ObservedAt: base, Source: "coupang_product_search", Provenance: "observed"},
+		{Reference: core.ProductReference{ProductID: "101", VendorItemID: "202"}, Name: "Synthetic B", CurrentAmount: 51000, Currency: "KRW", ObservedAt: base.Add(time.Hour), Source: "coupang_product_search", Provenance: "observed"},
+		{Reference: core.ProductReference{ProductID: "101", VendorItemID: "201"}, Name: "Synthetic A", CurrentAmount: 39000, Currency: "KRW", ObservedAt: base.Add(2 * time.Hour), Source: "coupang_product_inspection", Provenance: "observed"},
+	}}
+	result, err := NewWithAffiliateAndPrices(syntheticSource{}, nil, history).PriceHistory(context.Background(), core.ProductPriceHistoryRequest{ProductID: "101"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Visibility != "private_local" || result.SeriesCount != 2 || result.ObservationCount != 3 || len(result.Warnings) != 1 {
+		t.Fatalf("unexpected price history envelope: %#v", result)
+	}
+	var exact *core.ProductPriceSeries
+	for index := range result.Series {
+		if result.Series[index].Reference.VendorItemID == "201" {
+			exact = &result.Series[index]
+		}
+	}
+	if exact == nil || exact.Trend.Direction != "lower" || exact.Trend.ChangeFromFirstReturnedKRW != -3000 || exact.Trend.ChangeFromFirstReturnedPercent != -7.14 || exact.Trend.Provenance == "observed" {
+		t.Fatalf("unexpected exact-option trend: %#v", exact)
 	}
 }
 

@@ -50,6 +50,10 @@ func (fixedProductProvider) Inspect(_ context.Context, request core.ProductInspe
 	return core.ProductInspection{SchemaVersion: 1, Product: core.ProductCard{Reference: core.ProductReference{ProductID: request.ProductID}}}, nil
 }
 
+func (fixedProductProvider) PriceHistory(_ context.Context, request core.ProductPriceHistoryRequest) (core.ProductPriceHistory, error) {
+	return core.ProductPriceHistory{SchemaVersion: 1, Visibility: "private_local", ProductID: request.ProductID, ObservationCount: 2}, nil
+}
+
 func (fixedProductProvider) AddToCart(_ context.Context, request core.CartAddRequest) (core.CartAddResult, error) {
 	return core.CartAddResult{SchemaVersion: 1, Attempted: true, Added: true, Verified: true, Quantity: request.Quantity}, nil
 }
@@ -155,6 +159,18 @@ func TestProductToolsExposeNaturalLanguageSearchAndConfirmedCartMutation(t *test
 	var searchResult core.ProductSearchResult
 	if err := json.Unmarshal(encoded, &searchResult); err != nil || searchResult.Query == "" {
 		t.Fatalf("unexpected product search result: %#v, %v", searchResult, err)
+	}
+
+	history, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name: "product_price_history", Arguments: map[string]any{"product_id": "101"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ = json.Marshal(history.StructuredContent)
+	var historyResult core.ProductPriceHistory
+	if err := json.Unmarshal(encoded, &historyResult); err != nil || historyResult.ObservationCount != 2 {
+		t.Fatalf("unexpected product price history: %#v, %v", historyResult, err)
 	}
 
 	cart, err := clientSession.CallTool(ctx, &mcp.CallToolParams{

@@ -62,12 +62,20 @@ func TestLedgerUpsertIsIdempotentAndSupportsConsumerQueries(t *testing.T) {
 	if spend.OrderCount != 1 || spend.TotalAmount != 25900 || spend.DiscountAmount != 3100 {
 		t.Fatalf("unexpected spend summary: %#v", spend)
 	}
+	if err := ledger.RecordPriceObservations(ctx, []core.ProductPriceObservation{
+		priceObservation("101", "202", 11900, time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)),
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	candidates, err := ledger.ReorderCandidates(ctx, core.OrderFilter{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(candidates) != 1 || candidates[0].PurchaseCount != 1 || candidates[0].TotalQuantity != 2 {
+	if len(candidates) != 1 || candidates[0].PurchaseCount != 1 || candidates[0].TotalQuantity != 2 ||
+		candidates[0].PriceComparison.Status != "available" || candidates[0].PriceComparison.LastPaidUnitAmountKRW != 12950 ||
+		candidates[0].PriceComparison.LatestObservedAmountKRW != 11900 || candidates[0].PriceComparison.DifferenceKRW != -1050 ||
+		candidates[0].PriceComparison.Direction != "lower" {
 		t.Fatalf("unexpected reorder candidates: %#v", candidates)
 	}
 

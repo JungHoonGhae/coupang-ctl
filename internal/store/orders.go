@@ -913,16 +913,49 @@ func (s *SQLite) ReorderCandidates(ctx context.Context, filter core.OrderFilter)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(i.product_id, ''),
-		COALESCE(i.vendor_item_id, ''), i.name, COUNT(DISTINCT i.order_ref),
-		SUM(i.quantity), MAX(o.purchased_at)
+	rows, err := s.db.QueryContext(ctx, `WITH retained AS (
+		SELECT i.id, i.order_ref, COALESCE(i.product_id, '') AS product_id,
+			COALESCE(i.vendor_item_id, '') AS vendor_item_id, i.name, o.purchased_at,
+			MAX(i.quantity - i.cancelled_quantity - i.returned_quantity, 0) AS retained_units,
+			CASE WHEN i.quantity > 0 AND i.paid_price > 0
+				AND i.cancelled_quantity = 0 AND i.returned_quantity = 0
+				THEN CAST(ROUND(1.0 * i.paid_price / i.quantity) AS INTEGER) END AS paid_unit_amount,
+			CASE
+				WHEN COALESCE(i.vendor_item_id, '') != '' THEN 'vendor:' || i.vendor_item_id
+				WHEN COALESCE(i.product_id, '') != '' THEN 'product:' || i.product_id
+				ELSE 'name:' || i.name
+			END AS product_key
 		FROM order_items i JOIN orders o ON o.source_ref = i.order_ref
-		WHERE (? = '' OR o.purchased_at >= ?) AND (? = '' OR o.purchased_at <= ?)
+		WHERE o.fully_canceled = 0
+			AND (? = '' OR o.purchased_at >= ?) AND (? = '' OR o.purchased_at <= ?)
 			AND i.commerce_kind = 'product_purchase'
 			AND COALESCE(i.delivery_status, '') NOT IN ('cancelled', 'returned')
-		GROUP BY COALESCE(i.vendor_item_id, i.product_id, i.name), i.name
-		ORDER BY MAX(o.purchased_at) DESC, SUM(i.quantity) DESC
-		LIMIT ?`, filter.From, filter.From, filter.To, filter.To, filter.Limit)
+	), aggregates AS (
+		SELECT product_key, COUNT(DISTINCT order_ref) AS purchase_count,
+			SUM(retained_units) AS total_quantity, MAX(purchased_at) AS last_purchased
+		FROM retained WHERE retained_units > 0 GROUP BY product_key
+	), latest_product AS (
+		SELECT retained.*, ROW_NUMBER() OVER (
+			PARTITION BY product_key ORDER BY purchased_at DESC, id DESC
+		) AS position FROM retained WHERE retained_units > 0
+	), latest_paid AS (
+		SELECT retained.*, ROW_NUMBER() OVER (
+			PARTITION BY product_key ORDER BY purchased_at DESC, id DESC
+		) AS position FROM retained WHERE retained_units > 0 AND paid_unit_amount IS NOT NULL
+	), latest_price AS (
+		SELECT product_key, current_amount, observed_at, ROW_NUMBER() OVER (
+			PARTITION BY product_key ORDER BY observed_at DESC, id DESC
+		) AS position FROM product_price_observations
+	)
+	SELECT product.product_id, product.vendor_item_id, product.name,
+		aggregates.purchase_count, aggregates.total_quantity, aggregates.last_purchased,
+		paid.paid_unit_amount, paid.purchased_at, price.current_amount, price.observed_at
+	FROM aggregates
+	JOIN latest_product product ON product.product_key = aggregates.product_key AND product.position = 1
+	LEFT JOIN latest_paid paid ON paid.product_key = aggregates.product_key AND paid.position = 1
+	LEFT JOIN latest_price price ON price.product_key = aggregates.product_key AND price.position = 1
+	ORDER BY aggregates.last_purchased DESC, aggregates.total_quantity DESC
+	LIMIT ?`, filter.From, filter.From, filter.To, filter.To, filter.Limit)
 	if err != nil {
 		return nil, fmt.Errorf("list reorder candidates: %w", err)
 	}
@@ -930,10 +963,14 @@ func (s *SQLite) ReorderCandidates(ctx context.Context, filter core.OrderFilter)
 	var result []core.ReorderCandidate
 	for rows.Next() {
 		var candidate core.ReorderCandidate
+		var lastPaidAmount, latestObservedAmount sql.NullInt64
+		var lastPaidAt, observedAt sql.NullString
 		if err := rows.Scan(&candidate.ProductID, &candidate.VendorItemID, &candidate.Name,
-			&candidate.PurchaseCount, &candidate.TotalQuantity, &candidate.LastPurchased); err != nil {
+			&candidate.PurchaseCount, &candidate.TotalQuantity, &candidate.LastPurchased,
+			&lastPaidAmount, &lastPaidAt, &latestObservedAmount, &observedAt); err != nil {
 			return nil, fmt.Errorf("scan reorder candidate: %w", err)
 		}
+		candidate.PriceComparison = buildReorderPriceComparison(lastPaidAmount, lastPaidAt, latestObservedAmount, observedAt)
 		result = append(result, candidate)
 	}
 	if err := rows.Err(); err != nil {
@@ -943,6 +980,36 @@ func (s *SQLite) ReorderCandidates(ctx context.Context, filter core.OrderFilter)
 		result = []core.ReorderCandidate{}
 	}
 	return result, nil
+}
+
+func buildReorderPriceComparison(lastPaidAmount sql.NullInt64, lastPaidAt sql.NullString, latestObservedAmount sql.NullInt64, observedAt sql.NullString) core.ReorderPriceComparison {
+	result := core.ReorderPriceComparison{Limitations: []string{}, Provenance: "unavailable"}
+	if !lastPaidAmount.Valid || lastPaidAmount.Int64 <= 0 {
+		result.Status = "unavailable_missing_paid_unit_evidence"
+		result.Limitations = append(result.Limitations, "no fully retained positive paid-unit line was available for this identity")
+		return result
+	}
+	result.LastPaidUnitAmountKRW = lastPaidAmount.Int64
+	result.LastPaidAt = lastPaidAt.String
+	if !latestObservedAmount.Valid || latestObservedAmount.Int64 <= 0 {
+		result.Status = "unavailable_no_local_price_observation"
+		result.Limitations = append(result.Limitations, "run a product search or inspection for the exact identity to record a current-price observation")
+		return result
+	}
+	result.Status = "available"
+	result.LatestObservedAmountKRW = latestObservedAmount.Int64
+	result.ObservedAt = observedAt.String
+	result.DifferenceKRW = result.LatestObservedAmountKRW - result.LastPaidUnitAmountKRW
+	result.DifferencePercent = roundDecimal(float64(result.DifferenceKRW)/float64(result.LastPaidUnitAmountKRW)*100, 2)
+	result.Direction = "same"
+	if result.DifferenceKRW < 0 {
+		result.Direction = "lower"
+	} else if result.DifferenceKRW > 0 {
+		result.Direction = "higher"
+	}
+	result.Provenance = "derived_from_normalized_paid_unit_and_latest_observed_exact_identity_price"
+	result.Limitations = append(result.Limitations, "the latest observation is not a guaranteed checkout price; verify options and promotions on the final product page")
+	return result
 }
 
 func (s *SQLite) Export(ctx context.Context, filter core.OrderFilter, exportedAt time.Time) (core.OrderExport, error) {

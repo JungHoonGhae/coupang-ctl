@@ -63,6 +63,10 @@ being listed as `researched` does not make it a supported product API.
   gallery and detail images, current price, delivery text, rating totals, and
   bounded reviews. The sampled item had no structured card-benefit field, so
   the response exposed `card_benefit` as unavailable rather than inferring one.
+- A live public search on 2026-09-03 verified that an explicitly observed
+  `price.current_amount` can be stored and read through the local exact-option
+  history. This is a local observation ledger over the already adopted search
+  surface, not a new endpoint and not retroactive Coupang price history.
 - Search was observed as server-rendered; no dedicated search JSON request was
   promoted. Its DOM contract is isolated to the product adapter and backed by
   synthetic parser tests. Detail inspection uses JSON-LD and the narrow read

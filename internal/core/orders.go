@@ -434,12 +434,28 @@ type InsightDefinitions struct {
 }
 
 type ReorderCandidate struct {
-	ProductID     string `json:"product_id,omitempty"`
-	VendorItemID  string `json:"vendor_item_id,omitempty"`
-	Name          string `json:"name"`
-	PurchaseCount int    `json:"purchase_count"`
-	TotalQuantity int    `json:"total_quantity"`
-	LastPurchased string `json:"last_purchased"`
+	ProductID       string                 `json:"product_id,omitempty"`
+	VendorItemID    string                 `json:"vendor_item_id,omitempty"`
+	Name            string                 `json:"name"`
+	PurchaseCount   int                    `json:"purchase_count"`
+	TotalQuantity   int                    `json:"total_quantity"`
+	LastPurchased   string                 `json:"last_purchased"`
+	PriceComparison ReorderPriceComparison `json:"price_comparison"`
+}
+
+type ReorderPriceComparison struct {
+	Status                  string   `json:"status"`
+	LastPaidUnitAmountKRW   int64    `json:"last_paid_unit_amount_krw,omitempty"`
+	LastPaidAt              string   `json:"last_paid_at,omitempty"`
+	LatestObservedAmountKRW int64    `json:"latest_observed_amount_krw,omitempty"`
+	ObservedAt              string   `json:"observed_at,omitempty"`
+	ObservationAgeHours     int      `json:"observation_age_hours,omitempty"`
+	Freshness               string   `json:"freshness,omitempty"`
+	DifferenceKRW           int64    `json:"difference_krw,omitempty"`
+	DifferencePercent       float64  `json:"difference_percent,omitempty"`
+	Direction               string   `json:"direction,omitempty"`
+	Provenance              string   `json:"provenance"`
+	Limitations             []string `json:"limitations"`
 }
 
 type OrderExport struct {
@@ -471,7 +487,32 @@ type OrderList struct {
 }
 
 type ReorderList struct {
-	Candidates []ReorderCandidate `json:"candidates"`
+	SchemaVersion int                `json:"schema_version"`
+	Visibility    string             `json:"visibility"`
+	Candidates    []ReorderCandidate `json:"candidates"`
+	Definitions   ReorderDefinitions `json:"definitions"`
+}
+
+type ReorderDefinitions struct {
+	CandidateIdentity string `json:"candidate_identity"`
+	PurchaseEvidence  string `json:"purchase_evidence"`
+	PriceComparison   string `json:"price_comparison"`
+}
+
+func NewReorderList(candidates []ReorderCandidate) ReorderList {
+	if candidates == nil {
+		candidates = []ReorderCandidate{}
+	}
+	return ReorderList{
+		SchemaVersion: 1,
+		Visibility:    "private_local",
+		Candidates:    candidates,
+		Definitions: ReorderDefinitions{
+			CandidateIdentity: "vendor_item_id_else_product_id_else_exact_name",
+			PurchaseEvidence:  "retained product-purchase lines from the normalized structured order model",
+			PriceComparison:   "latest locally observed exact-identity price minus the latest eligible paid unit amount; recent means observed less than 24 hours ago, and no live price is fetched by this command",
+		},
+	}
 }
 
 type RecapWriteResult struct {

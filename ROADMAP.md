@@ -25,7 +25,7 @@ The machine-readable view is `coupangctl capabilities`.
 | P1 | Batch receipts | experimental | Enables accounting, reimbursement, and archive workflows. | Cash/card status, history, summaries, and private completed-archive download are implemented; validate a completed download live and add vendor-receipt reads without implementing request creation. |
 | P1 | Payment method and installments | experimental | Answers which payment methods funded observed receipt totals without confusing registered cards with usage. | Payment-method counts and amounts are implemented; capture a redacted sales-slip detail shape and keep installment status `unavailable` until an explicit installment-month field is observed. |
 | P1 | Product category enrichment | experimental | Enables source-native category totals without guessing from product names. | The first bounded live backfill completed; validate path stability over time and across more accounts while keeping coverage visible in every category chart. |
-| P2 | Price history and repurchase | planned | Helps decide when and what to buy again. | Build after category enrichment; never automate final purchase or payment. |
+| P2 | Price history and repurchase | experimental | Helps decide when and what to buy again using exact-option evidence instead of name similarity. | Search/inspection observations, 24-hour staleness labels, and last-paid-unit comparisons are implemented; add an explicit watchlist and scheduled refresh without automating purchase or payment. |
 
 ## Current product boundaries
 
@@ -48,6 +48,11 @@ The machine-readable view is `coupangctl capabilities`.
   observed numeric category ID. `sales` preserves Coupang's 판매량순 ordering
   but does not claim an absolute sales count, which the observed page does not
   expose. Page-wide review totals are not attributed to a specific option.
+- Price history begins only when a successful coupangctl search or inspection
+  observes `price.current_amount`. Series use vendor-item ID when available and
+  never merge different options. Repurchase comparison uses the latest stored
+  observation and latest fully retained paid-unit evidence; it does not claim a
+  live checkout price or retroactive market history.
 - Affiliate URLs are generated only through the official Partners deeplink API
   when credentials are configured. They stay separate from canonical URLs,
   never claim a guaranteed lower price, always carry a definite commission

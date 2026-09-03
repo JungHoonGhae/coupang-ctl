@@ -29,6 +29,7 @@ type OrderProvider interface {
 type ProductProvider interface {
 	Search(context.Context, core.ProductSearchRequest) (core.ProductSearchResult, error)
 	Inspect(context.Context, core.ProductInspectRequest) (core.ProductInspection, error)
+	PriceHistory(context.Context, core.ProductPriceHistoryRequest) (core.ProductPriceHistory, error)
 	AddToCart(context.Context, core.CartAddRequest) (core.CartAddResult, error)
 }
 
@@ -195,6 +196,17 @@ func addProductTools(server *mcp.Server, provider ProductProvider) {
 		return nil, result, nil
 	})
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "product_price_history",
+		Description: "Read locally accumulated current-price observations for one product. Exact vendor options remain separate series, and trends are deterministic calculations over observations made by prior coupangctl searches or inspections. This does not claim retroactive Coupang price history.",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.ProductPriceHistoryRequest) (*mcp.CallToolResult, core.ProductPriceHistory, error) {
+		result, err := provider.PriceHistory(ctx, input)
+		if err != nil {
+			return nil, core.ProductPriceHistory{}, safeProductToolError(err)
+		}
+		return nil, result, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "cart_add",
 		Description: "Add one exact products_search candidate to the user's Coupang cart. Call only after the user explicitly asks to add that item and set confirmed=true. This changes external cart state but never purchases, orders, or pays. Never retry automatically when verification is inconclusive.",
 		Annotations: &mcp.ToolAnnotations{
@@ -268,7 +280,7 @@ func addOrderTools(server *mcp.Server, provider OrderProvider) {
 		if err != nil {
 			return nil, core.ReorderList{}, safeToolError(err)
 		}
-		return nil, core.ReorderList{Candidates: candidates}, nil
+		return nil, core.NewReorderList(candidates), nil
 	})
 
 	mcp.AddTool(server, &mcp.Tool{

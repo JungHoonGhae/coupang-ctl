@@ -97,9 +97,9 @@ func CurrentCapabilities() CapabilityReport {
 			Interface: []string{"cli", "mcp"}, NextWork: "validate breadcrumb-path stability over time and across more accounts", LastVerified: "2026-09-02",
 		},
 		{
-			ID: "price_and_repurchase", Priority: "P2", Status: CapabilityPlanned,
-			UserValue: "price history and higher-confidence repurchase suggestions",
-			Interface: []string{"cli", "mcp"}, NextWork: "stabilize category and receipt adapters first",
+			ID: "price_and_repurchase", Priority: "P2", Status: CapabilityExperimental,
+			UserValue: "exact-option local price history and evidence-backed comparison with the last eligible paid unit amount on repurchase candidates",
+			Interface: []string{"cli", "mcp"}, NextWork: "add an explicit watchlist and scheduled refresh, then validate the 24-hour staleness threshold over longitudinal observations", LastVerified: "2026-09-03",
 		},
 	}}
 }

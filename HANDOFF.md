@@ -108,6 +108,19 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   Both source-native breadcrumbs and explicit unavailable outcomes occurred in
   live use. The adapter remains experimental until path stability is checked
   over time and on more than one account.
+- Successful product search and inspection results now append only explicitly
+  observed current prices to a local SQLite history. Vendor-item identities are
+  separate series, affiliate URLs are never stored, and the CLI supports an
+  explicitly confirmed price-history-only purge.
+- `products price-history` and MCP `product_price_history` expose the bounded
+  local history, per-series min/max/change, provenance, truncation, and the
+  non-retroactive coverage boundary. A public live search and exact inspection
+  recorded two observations for one option and read both back through the typed
+  command.
+- `orders reorder` now compares the latest exact-identity local observation
+  with the latest fully retained paid-unit order evidence when both exist. It
+  returns explicit unavailable states otherwise and does not fetch a fresh
+  price or imply a guaranteed checkout price.
 - QR image output is cropped to the QR region and enlarged; full login-page
   screenshots are no longer written.
 - macOS can request an already-visible OTP send/resend control via the native
@@ -237,8 +250,9 @@ spec normalization are experimental; category-label discovery and
 selected-option coverage across layouts are the next search tasks.
 Source-native purchase-category enrichment is also experimental while its
 stability is validated. Cash/card receipt reads are now experimental; completed
-artifact and vendor-receipt validation remain. Current product price history
-and evidence-backed repurchase comparison are the next P2 work.
+artifact and vendor-receipt validation remain. Exact-option local price history
+and repurchase comparison are experimental; an explicit watchlist, scheduled
+refresh, and longitudinal validation of the 24-hour staleness threshold are next.
 
 ## Security and compliance
 

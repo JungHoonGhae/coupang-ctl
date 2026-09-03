@@ -211,7 +211,31 @@ func (s *Service) EnrichCategories(ctx context.Context, request core.CategoryEnr
 }
 
 func (s *Service) ReorderCandidates(ctx context.Context, filter core.OrderFilter) ([]core.ReorderCandidate, error) {
-	return s.ledger.ReorderCandidates(ctx, filter)
+	candidates, err := s.ledger.ReorderCandidates(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	now := s.now().UTC()
+	for index := range candidates {
+		comparison := &candidates[index].PriceComparison
+		if comparison.Status != "available" {
+			continue
+		}
+		observedAt, parseErr := time.Parse(time.RFC3339Nano, comparison.ObservedAt)
+		if parseErr != nil || observedAt.After(now.Add(5*time.Minute)) {
+			comparison.Freshness = "unknown"
+			comparison.Limitations = append(comparison.Limitations, "the local observation timestamp could not be compared with the current clock")
+			continue
+		}
+		age := now.Sub(observedAt)
+		comparison.ObservationAgeHours = int(age / time.Hour)
+		comparison.Freshness = "recent_under_24h"
+		if age >= 24*time.Hour {
+			comparison.Freshness = "stale_24h_or_more"
+			comparison.Limitations = append(comparison.Limitations, "the latest local observation is at least 24 hours old; refresh the exact product before acting")
+		}
+	}
+	return candidates, nil
 }
 
 func (s *Service) Export(ctx context.Context, filter core.OrderFilter) (core.OrderExport, error) {

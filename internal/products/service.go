@@ -3,6 +3,7 @@ package products
 import (
 	"context"
 	"errors"
+	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -13,15 +14,17 @@ import (
 )
 
 const (
-	defaultSearchLimit = 10
-	defaultReviewLimit = 5
-	defaultImageLimit  = 20
+	defaultSearchLimit       = 10
+	defaultReviewLimit       = 5
+	defaultImageLimit        = 20
+	defaultPriceHistoryLimit = 200
 
 	affiliateDisclosure = "이 링크를 통해 구매하면 쿠팡 파트너스 활동의 일환으로 일정액의 수수료를 제공받습니다."
 	priceNotice         = "제휴 링크 자체로 구매자에게 별도 수수료가 부과되지는 않습니다. 상품 가격과 할인 혜택은 변동될 수 있으므로 쿠팡의 최종 화면에서 확인하세요."
 )
 
 var ErrSourceUnavailable = errors.New("product document source unavailable")
+var ErrPriceHistoryUnavailable = errors.New("product price history store unavailable")
 
 var (
 	computerCapacityPattern = regexp.MustCompile(`(?i)([0-9]{1,4})\s*(TB|GB|G)\b`)
@@ -39,6 +42,12 @@ type Source interface {
 
 type AffiliateLinker interface {
 	Convert(context.Context, []string) (map[string]string, error)
+}
+
+type PriceHistoryRepository interface {
+	RecordPriceObservations(context.Context, []core.ProductPriceObservation) error
+	ListPriceObservations(context.Context, core.ProductPriceHistoryRequest) ([]core.ProductPriceObservation, bool, error)
+	PurgePriceObservations(context.Context) (int, error)
 }
 
 func (s *Service) AddToCart(ctx context.Context, request core.CartAddRequest) (core.CartAddResult, error) {
@@ -60,9 +69,10 @@ func (s *Service) AddToCart(ctx context.Context, request core.CartAddRequest) (c
 }
 
 type Service struct {
-	source    Source
-	affiliate AffiliateLinker
-	now       func() time.Time
+	source       Source
+	affiliate    AffiliateLinker
+	priceHistory PriceHistoryRepository
+	now          func() time.Time
 }
 
 func New(source Source) *Service {
@@ -71,6 +81,10 @@ func New(source Source) *Service {
 
 func NewWithAffiliate(source Source, affiliate AffiliateLinker) *Service {
 	return &Service{source: source, affiliate: affiliate, now: time.Now}
+}
+
+func NewWithAffiliateAndPrices(source Source, affiliate AffiliateLinker, priceHistory PriceHistoryRepository) *Service {
+	return &Service{source: source, affiliate: affiliate, priceHistory: priceHistory, now: time.Now}
 }
 
 func (s *Service) Search(ctx context.Context, request core.ProductSearchRequest) (core.ProductSearchResult, error) {
@@ -110,11 +124,13 @@ func (s *Service) Search(ctx context.Context, request core.ProductSearchRequest)
 	if collapsed > 0 {
 		warnings = append(warnings, "multiple options from the same Coupang product page were collapsed; set include_variants=true to inspect every observed option")
 	}
+	fetchedAt := s.now().UTC()
 	affiliate, affiliateWarnings := s.applyAffiliateLinks(ctx, items, request.DisableAffiliate)
 	warnings = append(warnings, affiliateWarnings...)
+	warnings = append(warnings, s.recordPriceObservations(ctx, items, fetchedAt, "coupang_product_search")...)
 	return core.ProductSearchResult{
 		SchemaVersion: core.ProductSchemaVersion,
-		Query:         request.Query, Currency: "KRW", FetchedAt: s.now().UTC(), Items: items,
+		Query:         request.Query, Currency: "KRW", FetchedAt: fetchedAt, Items: items,
 		AppliedFilters: request, Coverage: coverage, Ranking: rankingSummary(request), Affiliate: affiliate, Warnings: warnings,
 	}, nil
 }
@@ -157,7 +173,144 @@ func (s *Service) Inspect(ctx context.Context, request core.ProductInspectReques
 	result.Product = products[0]
 	result.Affiliate = affiliate
 	result.Warnings = append(result.Warnings, warnings...)
+	result.Warnings = append(result.Warnings, s.recordPriceObservations(ctx, products, result.FetchedAt, "coupang_product_inspection")...)
 	return result, nil
+}
+
+func (s *Service) PriceHistory(ctx context.Context, request core.ProductPriceHistoryRequest) (core.ProductPriceHistory, error) {
+	if request.Limit == 0 {
+		request.Limit = defaultPriceHistoryLimit
+	}
+	if err := request.Validate(); err != nil {
+		return core.ProductPriceHistory{}, err
+	}
+	if s.priceHistory == nil {
+		return core.ProductPriceHistory{}, ErrPriceHistoryUnavailable
+	}
+	observations, truncated, err := s.priceHistory.ListPriceObservations(ctx, request)
+	if err != nil {
+		return core.ProductPriceHistory{}, errors.Join(ErrPriceHistoryUnavailable, err)
+	}
+	result := core.ProductPriceHistory{
+		SchemaVersion: core.PriceHistorySchemaVersion, Visibility: "private_local",
+		ProductID: request.ProductID, VendorItemID: request.VendorItemID,
+		ObservationCount: len(observations), Series: []core.ProductPriceSeries{}, Warnings: []string{},
+		Coverage: core.ProductPriceHistoryCoverage{ReturnedObservations: len(observations), Limit: request.Limit, Truncated: truncated},
+		Definitions: core.ProductPriceHistoryDefinitions{
+			PriceSource:    "current prices observed by successful coupangctl product search or inspection reads",
+			SeriesIdentity: "vendor_item_id_else_product_id; prices from different observed options are never merged",
+			Trend:          "deterministic difference from the first returned observation to the latest returned observation within one identity series",
+			HistoryStart:   "local observation begins when coupangctl first sees the item; no retroactive Coupang price history is claimed",
+		},
+	}
+	if len(observations) == 0 {
+		result.Warnings = append(result.Warnings, "no local price observations exist for this product identity yet")
+		return result, nil
+	}
+	first := observations[0].ObservedAt
+	last := observations[len(observations)-1].ObservedAt
+	result.FirstReturnedAt = &first
+	result.LastReturnedAt = &last
+	byIdentity := map[string]int{}
+	for _, observation := range observations {
+		identity := priceSeriesIdentity(observation.Reference)
+		index, exists := byIdentity[identity]
+		if !exists {
+			index = len(result.Series)
+			byIdentity[identity] = index
+			result.Series = append(result.Series, core.ProductPriceSeries{Identity: identity, Reference: observation.Reference, Observations: []core.ProductPriceObservation{}})
+		}
+		series := &result.Series[index]
+		series.LatestName = observation.Name
+		series.CanonicalURL = observation.CanonicalURL
+		series.Reference = observation.Reference
+		series.Observations = append(series.Observations, observation)
+	}
+	for index := range result.Series {
+		result.Series[index].Trend = priceTrend(result.Series[index].Observations)
+	}
+	sort.Slice(result.Series, func(i, j int) bool { return result.Series[i].Identity < result.Series[j].Identity })
+	result.SeriesCount = len(result.Series)
+	if result.SeriesCount > 1 {
+		result.Warnings = append(result.Warnings, "multiple observed options are returned as separate series; their prices are not compared as one trend")
+	}
+	if truncated {
+		result.Warnings = append(result.Warnings, "older local price observations were omitted by the requested limit")
+	}
+	return result, nil
+}
+
+func (s *Service) PurgePriceHistory(ctx context.Context) (core.ProductPriceHistoryPurgeResult, error) {
+	if s.priceHistory == nil {
+		return core.ProductPriceHistoryPurgeResult{}, ErrPriceHistoryUnavailable
+	}
+	deleted, err := s.priceHistory.PurgePriceObservations(ctx)
+	if err != nil {
+		return core.ProductPriceHistoryPurgeResult{}, errors.Join(ErrPriceHistoryUnavailable, err)
+	}
+	return core.ProductPriceHistoryPurgeResult{ObservationsDeleted: deleted}, nil
+}
+
+func (s *Service) recordPriceObservations(ctx context.Context, items []core.ProductCard, observedAt time.Time, source string) []string {
+	if s.priceHistory == nil {
+		return nil
+	}
+	observations := make([]core.ProductPriceObservation, 0, len(items))
+	for _, item := range items {
+		if !contains(item.ObservedFields, "price.current_amount") || item.Price.CurrentAmount <= 0 || !core.NumericProductIdentifier(item.Reference.ProductID) {
+			continue
+		}
+		observations = append(observations, core.ProductPriceObservation{
+			Reference: item.Reference, Name: item.Name, CanonicalURL: item.URL,
+			CurrentAmount: item.Price.CurrentAmount, OriginalAmount: item.Price.OriginalAmount,
+			DiscountRate: item.Price.DiscountRate, Currency: "KRW", ObservedAt: observedAt,
+			Source: source, Provenance: "observed",
+		})
+	}
+	if len(observations) == 0 {
+		return nil
+	}
+	if err := s.priceHistory.RecordPriceObservations(ctx, observations); err != nil {
+		return []string{"current product prices were returned but could not be added to local price history"}
+	}
+	return nil
+}
+
+func priceSeriesIdentity(reference core.ProductReference) string {
+	if reference.VendorItemID != "" {
+		return "vendor:" + reference.VendorItemID
+	}
+	return "product:" + reference.ProductID
+}
+
+func priceTrend(observations []core.ProductPriceObservation) core.ProductPriceTrend {
+	if len(observations) == 0 {
+		return core.ProductPriceTrend{}
+	}
+	first := observations[0].CurrentAmount
+	latest := observations[len(observations)-1].CurrentAmount
+	minimum, maximum := first, first
+	for _, observation := range observations[1:] {
+		minimum = min(minimum, observation.CurrentAmount)
+		maximum = max(maximum, observation.CurrentAmount)
+	}
+	difference := latest - first
+	direction := "unchanged"
+	if difference < 0 {
+		direction = "lower"
+	} else if difference > 0 {
+		direction = "higher"
+	}
+	percent := 0.0
+	if first > 0 {
+		percent = math.Round((float64(difference)/float64(first))*10000) / 100
+	}
+	return core.ProductPriceTrend{
+		ObservationCount: len(observations), FirstReturnedAmountKRW: first, LatestAmountKRW: latest,
+		MinimumAmountKRW: minimum, MaximumAmountKRW: maximum,
+		ChangeFromFirstReturnedKRW: difference, ChangeFromFirstReturnedPercent: percent,
+		Direction: direction, Provenance: "derived_from_observed_prices_within_one_product_identity",
+	}
 }
 
 func (s *Service) applyAffiliateLinks(ctx context.Context, items []core.ProductCard, disabled bool) (core.ProductAffiliateDisclosure, []string) {
