@@ -321,6 +321,7 @@ func (s *SQLite) Insights(ctx context.Context, filter core.OrderFilter) (core.Sh
 			RepeatChoice:       "repeat_order_product_events_after_each_identified_products_first_retained_order",
 			BasketComposition:  "unique_stable_product_ids_per_fully_identified_retained_order",
 			PurchaseClumpiness: "normalized_gap_entropy_against_uniform_same_window_null_median",
+			DeliveryTrend:      "latest_purchase_year_minus_earliest_purchase_year_for_observed_nonnegative_product_delivery_hours; direction_uses_average_hours",
 		},
 	}
 	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MIN(purchased_at), ''), COALESCE(MAX(purchased_at), ''), COUNT(DISTINCT purchased_at), COUNT(*)
@@ -697,16 +698,19 @@ func longestMonthStreak(entries []core.MonthlyOrderStats) int {
 }
 
 func compareDeliveryTrend(trend []core.DeliveryDurationSummary) core.DeliveryTrendComparison {
+	result := core.DeliveryTrendComparison{SchemaVersion: core.DeliveryTrendSchemaVersion}
 	if len(trend) < 2 {
-		return core.DeliveryTrendComparison{}
+		return result
 	}
 	baseline := trend[0]
 	latest := trend[len(trend)-1]
-	result := core.DeliveryTrendComparison{
-		BaselinePeriod:    baseline.Period,
-		LatestPeriod:      latest.Period,
-		AverageHoursDelta: roundDecimal(latest.AverageHours-baseline.AverageHours, 2),
-	}
+	result.BaselinePeriod = baseline.Period
+	result.LatestPeriod = latest.Period
+	result.BaselineShipmentCount = baseline.ShipmentCount
+	result.LatestShipmentCount = latest.ShipmentCount
+	result.AverageHoursDelta = roundDecimal(latest.AverageHours-baseline.AverageHours, 2)
+	result.MedianHoursDelta = roundDecimal(latest.MedianHours-baseline.MedianHours, 2)
+	result.P90HoursDelta = roundDecimal(latest.P90Hours-baseline.P90Hours, 2)
 	if baseline.AverageHours != 0 {
 		result.AverageHoursPercentChange = roundDecimal(result.AverageHoursDelta/baseline.AverageHours, 6)
 	}

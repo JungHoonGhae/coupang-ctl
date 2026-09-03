@@ -267,6 +267,11 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   cancellation and return quantities, receipt eligibility, brand metadata, and
   gross order totals. Analytics expose purchase time/day/month distributions,
   return/cancellation rates, and shipment-duration average/median/p90 by year.
+- Schema v1 `delivery_trend` carries baseline/latest shipment counts and
+  average, median, and p90 deltas directly. Its typed definition states that
+  direction uses average hours, while a worked five-sample-per-year store test
+  verifies both annual distributions and comparison deltas in the full release
+  suite.
 - `shopping_profile_v4` uses four denominator-visible observed-behavior axes:
   purchase-day concentration against a same-sample uniform null, literal
   day/night order majority, repeat-choice majority, and single-product basket

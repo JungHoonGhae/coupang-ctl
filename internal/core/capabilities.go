@@ -68,7 +68,7 @@ func CurrentCapabilities() CapabilityReport {
 			UserValue:    "complete normalized order history with resumable synchronization",
 			Interface:    []string{"cli", "mcp"},
 			Implemented:  []string{"bounded cursor pagination", "resumable SQLite checkpoints", "complete-history reconciliation without duplicate orders", "schema-versioned sync source and observed provenance selected by the acquisition workflow", "browserless CLI and MCP latest-sync audit with timestamps, counts, failure code, and complete-history evidence", "explicit unknown_legacy provenance for pre-migration sync runs"},
-			NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-02",
+			NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-03",
 		},
 		{
 			ID: "spend_cancel_return_stats", Priority: "P0", Status: CapabilityAvailable,
@@ -90,8 +90,8 @@ func CurrentCapabilities() CapabilityReport {
 			ID: "purchase_delivery_trends", Priority: "P0", Status: CapabilityAvailable,
 			UserValue:    "purchase hour, weekday, month, and delivery-duration trends",
 			Interface:    []string{"cli", "mcp"},
-			Implemented:  []string{"KST purchase hour and weekday series", "monthly order and spend series", "average, median, p90, yearly delivery durations, and baseline-to-latest trend"},
-			NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-02",
+			Implemented:  []string{"KST purchase hour and weekday series", "monthly order and spend series", "average, median, p90, and sample-count yearly delivery durations", "schema-versioned baseline-to-latest average, median, and p90 deltas with direct sample evidence", "typed definition that direction uses average hours", "worked multi-sample distribution contract in the full release test suite"},
+			NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-03",
 		},
 		{
 			ID: "shopping_type_recap", Priority: "P0", Status: CapabilityAvailable,

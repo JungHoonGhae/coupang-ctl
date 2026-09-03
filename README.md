@@ -130,6 +130,12 @@ coupangctl orders recap-image --output ./shopping-recap.png --confirm-public-saf
 - **계산값**: 관찰값을 명시적인 규칙으로 합산·분류한 값
 - **추론값**: 원천에 없는 정보를 휴리스틱으로 추정한 값
 
+`orders stats.delivery_by_year`는 연도별 배송 표본 수와 평균·중앙값·p90
+소요시간을 함께 반환합니다. schema v1 `delivery_trend`에는 최초 구매연도와 최신
+구매연도의 표본 수, 평균·중앙값·p90 변화량이 직접 들어갑니다. `direction`은
+평균 소요시간 변화 기준이며 그 규칙은 `orders insights`의
+`definitions.delivery_trend`에 명시됩니다.
+
 공개형 리캡은 기간, 표본 수, 분모, 제외 규칙을 함께 보여줍니다. 카테고리는 상품명으로 억지 매핑하지 않고 쿠팡 상품 페이지의 가변 길이 `BreadcrumbList`만 사용하며, 확인하지 못한 상품은 `unknown`으로 남깁니다.
 
 `orders recap-image`는 먼저 1080×1350 공유 카드에 들어갈 실제 값과

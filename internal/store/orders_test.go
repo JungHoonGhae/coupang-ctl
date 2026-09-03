@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -196,6 +197,9 @@ func TestLedgerPersistsReceiptCancellationAndAdjustedSpendMetadata(t *testing.T)
 	if stats.DeliveryDuration.ShipmentCount != 1 || stats.DeliveryDuration.AverageHours != 48 {
 		t.Fatalf("unexpected delivery duration: %#v", stats.DeliveryDuration)
 	}
+	if stats.DeliveryTrend.SchemaVersion != core.DeliveryTrendSchemaVersion || stats.DeliveryTrend.BaselinePeriod != "" || stats.DeliveryTrend.Direction != "" {
+		t.Fatalf("single-year delivery trend should remain versioned but unclaimed: %#v", stats.DeliveryTrend)
+	}
 	if len(stats.TopBrands) != 1 || stats.TopBrands[0].Key != "Synthetic brand" {
 		t.Fatalf("unexpected brand stats: %#v", stats.TopBrands)
 	}
@@ -260,8 +264,11 @@ func TestDeliveryTrendComparesEarliestAndLatestPurchaseYears(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.DeliveryTrend.BaselinePeriod != "2021" || stats.DeliveryTrend.LatestPeriod != "2026" || stats.DeliveryTrend.AverageHoursDelta != 24 || stats.DeliveryTrend.AverageHoursPercentChange != 1 || stats.DeliveryTrend.Direction != "slower" {
+	if stats.DeliveryTrend.SchemaVersion != core.DeliveryTrendSchemaVersion || stats.DeliveryTrend.BaselinePeriod != "2021" || stats.DeliveryTrend.LatestPeriod != "2026" || stats.DeliveryTrend.AverageHoursDelta != 24 || stats.DeliveryTrend.AverageHoursPercentChange != 1 || stats.DeliveryTrend.Direction != "slower" {
 		t.Fatalf("unexpected delivery trend: %#v", stats.DeliveryTrend)
+	}
+	if stats.DeliveryTrend.BaselineShipmentCount != 1 || stats.DeliveryTrend.LatestShipmentCount != 1 || stats.DeliveryTrend.MedianHoursDelta != 24 || stats.DeliveryTrend.P90HoursDelta != 24 {
+		t.Fatalf("delivery trend omitted distribution evidence: %#v", stats.DeliveryTrend)
 	}
 	insights, err := ledger.Insights(ctx, core.OrderFilter{})
 	if err != nil {
@@ -269,6 +276,9 @@ func TestDeliveryTrendComparesEarliestAndLatestPurchaseYears(t *testing.T) {
 	}
 	if insights.OrderCount != 2 || insights.DistinctOrderDays != 2 || insights.ActiveMonthCount != 2 || insights.LongestActiveMonthStreak != 1 || insights.DeliveredWithin24HoursRate != 0.5 || insights.DeliveredWithin48HoursRate != 1 || len(insights.DeliveryByYear) != 2 || insights.DeliveryTrend.Direction != "slower" {
 		t.Fatalf("unexpected shopping insights: %#v", insights)
+	}
+	if insights.Definitions.DeliveryTrend != "latest_purchase_year_minus_earliest_purchase_year_for_observed_nonnegative_product_delivery_hours; direction_uses_average_hours" {
+		t.Fatalf("delivery trend definition is missing or ambiguous: %#v", insights.Definitions)
 	}
 	if insights.SchemaVersion != 1 || insights.RepeatPurchases.IdentifiedProductCount != 1 || insights.RepeatPurchases.RepeatProductCount != 1 || insights.RepeatPurchases.RepeatProductPurchaseOccasionRate != 1 || insights.RepeatPurchases.RepeatChoiceCount != 1 || insights.RepeatPurchases.RepeatChoiceRate != 0.5 || insights.RepeatPurchases.ProductIDCoverage != 1 {
 		t.Fatalf("unexpected repeat-purchase insights: %#v", insights.RepeatPurchases)
@@ -278,6 +288,56 @@ func TestDeliveryTrendComparesEarliestAndLatestPurchaseYears(t *testing.T) {
 	}
 	if insights.PurchaseTiming.PurchaseDays != 2 || insights.PurchaseTiming.ObservationDays != 1827 || len(insights.PurchaseHours) != 1 || insights.PurchaseHours[0].Key != "10" || len(insights.PurchaseMonths) != 2 {
 		t.Fatalf("unexpected purchase timing series: timing=%#v hours=%#v months=%#v", insights.PurchaseTiming, insights.PurchaseHours, insights.PurchaseMonths)
+	}
+}
+
+func TestDeliveryTrendPreservesAnnualDistributionAndSampleEvidence(t *testing.T) {
+	ctx := context.Background()
+	ledger, err := store.Open(ctx, filepath.Join(t.TempDir(), "coupangctl.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	type annualDurations struct {
+		year      int
+		durations []time.Duration
+	}
+	orders := []core.Order{}
+	for _, annual := range []annualDurations{
+		{year: 2021, durations: []time.Duration{10 * time.Hour, 20 * time.Hour, 30 * time.Hour, 40 * time.Hour, 100 * time.Hour}},
+		{year: 2026, durations: []time.Duration{8 * time.Hour, 12 * time.Hour, 16 * time.Hour, 20 * time.Hour, 24 * time.Hour}},
+	} {
+		for index, duration := range annual.durations {
+			purchased := time.Date(annual.year, time.January, index+1, 1, 0, 0, 0, time.UTC)
+			delivered := purchased.Add(duration)
+			orders = append(orders, core.Order{
+				SourceRef:   "synthetic-distribution-" + strconv.Itoa(annual.year) + "-" + strconv.Itoa(index),
+				PurchasedAt: purchased.Format(time.DateOnly), PurchasedAtTime: &purchased,
+				TotalAmount: 1000, Currency: "KRW",
+				Items: []core.OrderItem{{ProductID: "101", VendorItemID: "201", Name: "Synthetic delivery", Quantity: 1, UnitPrice: 1000, PaidPrice: 1000, DeliveredAt: &delivered}},
+			})
+		}
+	}
+	if _, err := ledger.UpsertOrderPage(ctx, core.OrderPage{Orders: orders}); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := ledger.Stats(ctx, core.OrderFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats.DeliveryByYear) != 2 {
+		t.Fatalf("unexpected annual delivery series: %#v", stats.DeliveryByYear)
+	}
+	baseline, latest := stats.DeliveryByYear[0], stats.DeliveryByYear[1]
+	if baseline.Period != "2021" || baseline.ShipmentCount != 5 || baseline.AverageHours != 40 || baseline.MedianHours != 30 || baseline.P90Hours != 100 {
+		t.Fatalf("unexpected baseline distribution: %#v", baseline)
+	}
+	if latest.Period != "2026" || latest.ShipmentCount != 5 || latest.AverageHours != 16 || latest.MedianHours != 16 || latest.P90Hours != 24 {
+		t.Fatalf("unexpected latest distribution: %#v", latest)
+	}
+	trend := stats.DeliveryTrend
+	if trend.BaselineShipmentCount != 5 || trend.LatestShipmentCount != 5 || trend.AverageHoursDelta != -24 || trend.MedianHoursDelta != -14 || trend.P90HoursDelta != -76 || trend.Direction != "faster" {
+		t.Fatalf("unexpected delivery distribution trend: %#v", trend)
 	}
 }
 

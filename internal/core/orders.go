@@ -176,11 +176,18 @@ type DeliveryDurationSummary struct {
 	P90Hours      float64 `json:"p90_hours"`
 }
 
+const DeliveryTrendSchemaVersion = 1
+
 type DeliveryTrendComparison struct {
+	SchemaVersion             int     `json:"schema_version"`
 	BaselinePeriod            string  `json:"baseline_period,omitempty"`
 	LatestPeriod              string  `json:"latest_period,omitempty"`
+	BaselineShipmentCount     int     `json:"baseline_shipment_count"`
+	LatestShipmentCount       int     `json:"latest_shipment_count"`
 	AverageHoursDelta         float64 `json:"average_hours_delta"`
 	AverageHoursPercentChange float64 `json:"average_hours_percent_change"`
+	MedianHoursDelta          float64 `json:"median_hours_delta"`
+	P90HoursDelta             float64 `json:"p90_hours_delta"`
 	Direction                 string  `json:"direction,omitempty"`
 }
 
@@ -549,6 +556,7 @@ type InsightDefinitions struct {
 	RepeatChoice        string `json:"repeat_choice"`
 	BasketComposition   string `json:"basket_composition"`
 	PurchaseClumpiness  string `json:"purchase_clumpiness"`
+	DeliveryTrend       string `json:"delivery_trend"`
 }
 
 type ReorderCandidate struct {
