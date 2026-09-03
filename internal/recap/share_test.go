@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"html/template"
 	"image"
 	"image/png"
 	"os"
@@ -58,6 +59,22 @@ func TestPublicSharePreviewListsExactVisibleFieldsAndExclusions(t *testing.T) {
 	for _, private := range []string{"Synthetic private brand", "2024-01-05", "2025-12-28"} {
 		if strings.Contains(text, private) {
 			t.Fatalf("share preview exposed private detail %q: %s", private, text)
+		}
+	}
+}
+
+func TestRenderedShareCardCarriesEveryPreviewedFieldContract(t *testing.T) {
+	summary := syntheticInsights()
+	summary.Profile = insights.BuildShoppingProfile(summary)
+	preview := recap.PublicSharePreview(summary)
+	var rendered bytes.Buffer
+	if err := recap.RenderPublicShareCard(&rendered, summary); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range preview.Fields {
+		marker := `data-share-field="` + template.HTMLEscapeString(field.ID) + `" data-share-value="` + template.HTMLEscapeString(field.Value) + `"`
+		if !bytes.Contains(rendered.Bytes(), []byte(marker)) {
+			t.Fatalf("rendered share card omits preview field %q=%q", field.ID, field.Value)
 		}
 	}
 }

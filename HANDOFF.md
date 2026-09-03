@@ -33,6 +33,10 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   audit without a browser: timestamps, run state, source, provenance, counts,
   stable error code, and complete-history evidence. Migration 13 adds only the
   source/provenance columns; older runs remain explicitly `unknown_legacy`.
+- The public recap share-card template carries the exact preview field ID and
+  value on each visible element. A full-suite release test compares every
+  previewed field against the rendered HTML, so adding or removing a field on
+  only one side fails before a PNG can ship.
 - `doctor` performs the same non-visible background proof as `auth status` and
   reports browser installation, `background_session`, and SQLite independently.
   A present browser no longer makes a blocked or expired session look ready.

@@ -55,14 +55,14 @@
   <main class="card">
     <header>
       <span class="brand">coupang<b>ctl</b> shopping recap</span>
-      <p class="period">실제 기록 {{monthRange .Summary.FirstOrderDate .Summary.LastOrderDate}}</p>
+      <p class="period" data-share-field="analysis_period_month" data-share-value="{{monthRange .Summary.FirstOrderDate .Summary.LastOrderDate}}">실제 기록 {{monthRange .Summary.FirstOrderDate .Summary.LastOrderDate}}</p>
     </header>
     {{if .Summary.Profile.Ready}}
     <section class="hero">
       <div>
         <p class="kicker">나의 쇼핑 기록 네 글자</p>
-        <p class="code">{{.Summary.Profile.Code}}</p>
-        <h1>{{typeTitle .Summary.Profile.Code}}</h1>
+        <p class="code" data-share-field="shopping_profile_code" data-share-value="{{.Summary.Profile.Code}}">{{.Summary.Profile.Code}}</p>
+        <h1 data-share-field="shopping_profile_title" data-share-value="{{typeTitle .Summary.Profile.Code}}">{{typeTitle .Summary.Profile.Code}}</h1>
         <p class="note">성격을 점치는 검사가 아니라, 내 주문 기록에서 보인 구매 리듬을 장난스럽게 요약했어요.</p>
       </div>
       <div class="avatar-wrap">
@@ -72,19 +72,19 @@
     </section>
     <section class="axes">
       {{range .Summary.Profile.Axes}}
-      <article class="axis">
+      <article class="axis" data-share-field="axis.{{.ID}}" data-share-value="{{.SelectedCode}} {{axisLabel .SelectedCode}}">
         <div class="axis-head"><strong class="axis-code">{{.SelectedCode}}</strong><span class="axis-name">{{axisLabel .SelectedCode}}</span></div>
         <p class="axis-proof">{{axisReceipt .}}</p>
       </article>
       {{end}}
     </section>
     <section class="stats">
-      <div class="stat"><span>분석 주문</span><strong>{{comma .Summary.OrderCount}}건</strong></div>
-      <div class="stat"><span>최장 연속 구매</span><strong>{{comma .Summary.LongestActiveMonthStreak}}개월</strong></div>
-      <div class="stat"><span>24시간 안 배송 · n={{comma .Summary.Samples.DeliveryEvents}}</span><strong>{{pct .Summary.DeliveredWithin24HoursRate}}%</strong></div>
+      <div class="stat" data-share-field="order_count" data-share-value="{{.Summary.OrderCount}}"><span>분석 주문</span><strong>{{comma .Summary.OrderCount}}건</strong></div>
+      <div class="stat" data-share-field="longest_active_month_streak" data-share-value="{{.Summary.LongestActiveMonthStreak}}"><span>최장 연속 구매</span><strong>{{comma .Summary.LongestActiveMonthStreak}}개월</strong></div>
+      <div class="stat" data-share-field="delivered_within_24_hours_rate" data-share-value="{{pct .Summary.DeliveredWithin24HoursRate}}%"><span>24시간 안 배송 · n={{comma .Summary.Samples.DeliveryEvents}}</span><strong>{{pct .Summary.DeliveredWithin24HoursRate}}%</strong></div>
     </section>
     {{else}}
-    <section class="empty"><div><p class="kicker">표본 수집 중</p><h1>조금 더 쇼핑 기록이 필요해요</h1><p>부족한 축은 물음표로 남기고 타입을 지어내지 않습니다.</p></div></section>
+    <section class="empty" data-share-field="profile_ready" data-share-value="false"><div><p class="kicker">표본 수집 중</p><h1>조금 더 쇼핑 기록이 필요해요</h1><p>부족한 축은 물음표로 남기고 타입을 지어내지 않습니다.</p></div></section>
     {{end}}
     <footer>
       <p>정규화된 내 주문 기록에서 계산 · 기간은 월 단위 · 취소·반품과 누락 커버리지는 원본 리캡 규칙을 따름 · 쿠팡 공식 성격검사 아님</p>
