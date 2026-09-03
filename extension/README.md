@@ -34,6 +34,10 @@ Linux에서 `$XDG_CONFIG_HOME/google-chrome/NativeMessagingHosts/`이며,
 Windows에서는 로컬 상태 디렉터리의 매니페스트와 HKCU 레지스트리 값을
 함께 사용합니다. 제거는 `./coupangctl browser-bridge uninstall`이며 동일
 설치의 비공개 소유권 기록과 내용이 일치하지 않으면 아무 파일도 지우지 않습니다.
+새 바이너리의 번들 또는 실행 경로가 달라진 경우 `install`은 기록된 SHA-256과
+현재 파일이 일치할 때만 중단 복구 가능한 업그레이드를 수행합니다. 응답이
+`status: "upgraded"`이면 `chrome://extensions`에서 이 확장을 다시 로드한 뒤
+동기화합니다.
 
 등록 후 명령을 먼저 실행하고, 이미 로그인된 일반 Chrome 주문목록 탭에서
 확장 버튼을 한 번 누릅니다.

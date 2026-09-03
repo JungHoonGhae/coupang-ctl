@@ -17,6 +17,14 @@ coupangctl browser-bridge doctor
 macOS와 Linux는 Chrome의 사용자 NativeMessagingHosts 디렉터리를 사용하고,
 Windows는 상태 디렉터리의 매니페스트를 HKCU Chrome 키에 연결합니다.
 
+소유권 기록 schema v2는 네 개 확장 파일과 네이티브 호스트 매니페스트의
+SHA-256을 저장합니다. 이후 바이너리의 내장 번들이 바뀌면 현재 파일이 기록된
+이전 digest와 정확히 일치할 때만 `upgrading` 전환 기록을 먼저 쓰고 파일을
+교체합니다. 중간에 프로세스가 끝나도 다음 `install`이 이전·목표 digest 중
+하나인 파일만 이어서 복구합니다. 기록에 없는 변경이나 예상 밖 확장 파일은
+덮어쓰지 않습니다. 바이너리 경로가 바뀐 정상 업데이트도 같은 계약으로
+네이티브 호스트 매니페스트를 갱신합니다.
+
 설치 응답은 다음 형태입니다. 아래 경로는 예시이며 실제 응답은 현재 시스템의
 절대경로를 반환합니다.
 
@@ -33,6 +41,11 @@ Windows는 상태 디렉터리의 매니페스트를 HKCU Chrome 키에 연결�
   "next_action": "load_unpacked_extension"
 }
 ```
+
+최초 설치와 동일 버전 재실행은 `status: "installed"`를 반환합니다. 검증된
+이전 번들 또는 실행 경로를 갱신한 경우에는 `status: "upgraded"`와
+`next_action: "reload_extension_in_chrome"`를 반환합니다. Web Store 배포 전
+압축해제 확장은 Chrome에서 다시 로드해야 새 코드가 확실히 반영됩니다.
 
 Chrome Web Store 배포 전에는 `extension_path`를 `chrome://extensions`에서
 압축해제된 확장으로 한 번 로드해야 합니다. 설치 명령은 Chrome 보안 정책을
@@ -71,16 +84,18 @@ top frame에서 패키지 안의 isolated-world reader를 한 번 실행하고, 
 coupangctl browser-bridge uninstall
 ```
 
-제거 전에는 설치 기록, 네이티브 매니페스트·등록, 네 개의 내장 번들 파일이
-현재 바이너리가 기대하는 내용과 모두 일치해야 합니다. 하나라도 바뀌면 제거를
-거부합니다. 성공 시 `native_host_registration`, `extension_bundle`,
+제거 전에는 활성 설치 기록, 네이티브 매니페스트·등록, 네 개의 소유 번들 파일이
+현재 바이너리가 기대하는 내용과 모두 일치해야 합니다. 진행 중인 업그레이드나
+기록되지 않은 변경이 있으면 먼저 `install`로 복구해야 하며 제거는 거부됩니다.
+성공 시 `native_host_registration`, `extension_bundle`,
 `installation_record`만 제거하며 Chrome 프로필, 쿠키, Chrome이 관리하는 확장
 데이터, `coupangctl.sqlite3`는 삭제하지 않습니다.
 
 ## 현재 검증 상태
 
 합성 계약 테스트는 설치 충돌의 사전 차단, Unix 비공개 파일 권한, 정확한 확장
-origin, 변조 진단, 소유권 기반 제거, MCP typed provider 분리를 검증합니다.
+origin, digest 기반 정상 업그레이드, 중단 복구, 실행 경로 이동, 기록되지 않은
+변조와 예상 밖 파일 거부, 소유권 기반 제거, MCP typed provider 분리를 검증합니다.
 Linux, macOS, Windows 바이너리는 CGO 없이 교차 빌드합니다. 실제 macOS
 관리형 호스트 설치는 doctor를 통과했고, 일반 Chrome에서
 CLI→Native Messaging→typed core→SQLite 한 페이지 읽기가 네 번 연속

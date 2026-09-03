@@ -143,6 +143,13 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   closed on changed content without printing it, and uninstall removes only an
   exact matching ownership record, native registration, and bundle. It never
   removes Chrome profiles, cookies, extension data, or the order ledger.
+- Installation-record schema v2 stores SHA-256 digests for the four extension
+  files and native manifest. A legitimate bundle or executable-path update is
+  accepted only when every existing artifact matches its recorded digest. The
+  manager writes an `upgrading` transition first, resumes an interrupted mixed
+  old/new state, and rejects unrecorded content or unexpected extension files.
+  The existing live macOS v1 record migrated to v2 with five active digests;
+  doctor remained fully ready and no extension code changed.
 - MCP now exposes `orders_sync_ordinary_browser` through a dedicated typed sync
   provider. It uses the same normalized order service and SQLite ledger as the
   CLI while keeping the ordinary-page source separate from the dedicated
