@@ -65,7 +65,7 @@ go build -o ./bin/coupangctl ./cmd/coupangctl
 | 상품 검색·상세 | 실험적 | 가격, 배송, 이미지, 혜택, 평점, 정제된 후기, 정렬 의미 보존 |
 | 가격 이력·재구매 | 실험적 | 실제로 관찰한 옵션별 현재가와 마지막 실결제 단가 비교 |
 | WOW·카드 혜택 | 실험적 | 현재 멤버십, 쿠팡이 표시한 혜택, 등록 카드 브랜드, 월별 적립 |
-| 카테고리 | 실험적 | 상품 페이지의 실제 breadcrumb 경로와 집계 커버리지 |
+| 카테고리 | 실험적 | 실제 breadcrumb 경로, 집계 커버리지, 재관측 안정성 |
 | 장바구니 | 실험적 | 정확한 `vendor_item_id`와 명시적 확인이 있을 때 한 번 추가 |
 | 영수증 일괄 처리 | 실험적 | 현금·카드 상태·이력·기간 합계, 주문별 거래명세, 완료 파일의 비공개 저장 |
 | 주문·결제 | 지원 안 함 | 자동 주문, 결제, 구매 확정은 구현하지 않음 |
@@ -81,7 +81,9 @@ coupangctl orders stats --from 2026-01-01
 coupangctl orders insights
 coupangctl orders products
 coupangctl orders categories --max-products 25
+coupangctl orders categories --max-products 25 --recheck
 coupangctl orders category-catalog --query '생활용품'
+coupangctl orders category-stability
 coupangctl orders reorder --limit 20
 coupangctl orders recap --output ./shopping-recap.html
 coupangctl orders recap-image
@@ -110,6 +112,13 @@ PNG에는 상품명·금액·정확한 날짜·결제수단을 넣는 옵션 자
 관찰된 distinct 상품 수이며 쿠팡 판매량이나 인기도가 아닙니다. 분류 성공률과
 미분류 상품 수도 항상 함께 반환합니다. 자세한 계약은
 [`CATEGORIES.md`](CATEGORIES.md)에 있습니다.
+
+`orders categories --recheck`는 요청할 때만 이미 캐시된 상품을 가장 오래
+확인한 순서로 제한적으로 다시 읽어 append-only 관측을 남깁니다.
+`orders category-stability`는 동일 `vendor_item_id`의 경로가 재관측 사이에
+달라졌는지, 같은 상품을 서로 다른 날짜에 확인했는지, 표본과 커버리지가
+충분한지를 구조화해 보여줍니다. 한 로컬 원장의 결과를 쿠팡 전체나 다른
+계정의 안정성으로 확대 해석하지 않습니다.
 
 `orders spend`는 전체 원장 합계와 함께 `product_purchases`, `membership_fees`, `unclassified`를 분리합니다. 명시적인 멤버십 결제를 상품 구매나 연속 구매 기록에 섞지 않습니다.
 
@@ -265,7 +274,7 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 
 - `auth_status`, `account_benefits`
 - `orders_sync`, `orders_list`, `orders_spend`, `orders_stats`
-- `orders_insights`, `orders_product_insights`, `orders_category_catalog`, `orders_reorder_candidates`
+- `orders_insights`, `orders_product_insights`, `orders_category_catalog`, `orders_category_stability`, `orders_reorder_candidates`
 - `orders_export`, `orders_enrich_categories`
 - `products_search`, `product_inspect`, `cart_add`
 - `product_price_history`

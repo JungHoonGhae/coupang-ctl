@@ -18,6 +18,7 @@ type OrderProvider interface {
 	Sync(context.Context, core.SyncRequest) (core.SyncResult, error)
 	EnrichCategories(context.Context, core.CategoryEnrichmentRequest) (core.CategoryEnrichmentResult, error)
 	CategoryCatalog(context.Context, core.CategoryCatalogRequest) (core.CategoryCatalog, error)
+	CategoryStability(context.Context) (core.CategoryStabilityReport, error)
 	List(context.Context, core.OrderFilter) ([]core.Order, error)
 	Spend(context.Context, core.OrderFilter) (core.SpendSummary, error)
 	Stats(context.Context, core.OrderFilter) (core.OrderStats, error)
@@ -358,6 +359,16 @@ func addOrderTools(server *mcp.Server, provider OrderProvider) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name: "orders_category_stability", Description: "Report whether exact source-native breadcrumb paths changed across locally retained observations. Counts, observation days, insufficient-evidence states, and the single-ledger limitation remain explicit; this does not claim population-wide stability.", Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, core.CategoryStabilityReport, error) {
+		result, err := provider.CategoryStability(ctx)
+		if err != nil {
+			return nil, core.CategoryStabilityReport{}, safeToolError(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name: "orders_reorder_candidates", Description: "List locally derived repeat-purchase candidates without placing an order.", Annotations: readOnly,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.OrderFilter) (*mcp.CallToolResult, core.ReorderList, error) {
 		candidates, err := provider.ReorderCandidates(ctx, input)
@@ -378,9 +389,9 @@ func addOrderTools(server *mcp.Server, provider OrderProvider) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "orders_enrich_categories", Description: "Cache source-native Coupang product breadcrumb categories for uncached local products.",
+		Name: "orders_enrich_categories", Description: "Cache source-native Coupang product breadcrumb categories for uncached local products. Set recheck=true only to explicitly append fresh observations for cached products, oldest cache entries first.",
 		Annotations: &mcp.ToolAnnotations{
-			ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: true, OpenWorldHint: boolPointer(true),
+			ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: false, OpenWorldHint: boolPointer(true),
 		},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.CategoryEnrichmentRequest) (*mcp.CallToolResult, core.CategoryEnrichmentResult, error) {
 		result, err := provider.EnrichCategories(ctx, input)

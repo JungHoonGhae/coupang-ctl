@@ -549,6 +549,44 @@ func TestOrdersCategoryCatalogReturnsSourceNativeSearchID(t *testing.T) {
 	}
 }
 
+func TestOrdersCategoryStabilityReturnsLongitudinalEvidence(t *testing.T) {
+	ctx := context.Background()
+	stateDir := t.TempDir()
+	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
+	ledger, err := store.Open(ctx, filepath.Join(stateDir, "coupangctl.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ledger.UpsertOrderPage(ctx, core.OrderPage{Orders: []core.Order{{
+		SourceRef: "synthetic-category-stability", PurchasedAt: "2026-08-29", TotalAmount: 1200, Currency: "KRW",
+		Items: []core.OrderItem{{ProductID: "101", VendorItemID: "201", Name: "Synthetic private product", Quantity: 1, UnitPrice: 1200, PaidPrice: 1200}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	category := core.ProductCategory{Source: core.CategorySourceProductJSONLDBreadcrumb, Path: []core.ProductCategoryNode{{ID: "200", Name: "Synthetic category", Position: 2}}}
+	if err := ledger.SaveProductCategory(ctx, core.ProductReference{VendorItemID: "201"}, category); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.SaveProductCategory(ctx, core.ProductReference{VendorItemID: "201"}, category); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := Run(ctx, []string{"orders", "category-stability"}, &stdout, &stderr, "test"); err != nil {
+		t.Fatal(err)
+	}
+	var got core.CategoryStabilityReport
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Assessment != "insufficient_distinct_days" || got.RecheckedProductCount != 1 || got.StableProductCount != 1 || got.ObservationCount != 2 || got.Provenance.Assessment != "derived" {
+		t.Fatalf("unexpected category stability response: %#v", got)
+	}
+}
+
 func TestOrdersProductsReturnsPrivateLocalProductInsightShape(t *testing.T) {
 	ctx := context.Background()
 	stateDir := t.TempDir()

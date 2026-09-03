@@ -148,8 +148,15 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   explicitly unavailable rather than inferring from names.
 - The first full bounded category pass reached zero pending product references.
   Both source-native breadcrumbs and explicit unavailable outcomes occurred in
-  live use. The adapter remains experimental until path stability is checked
-  over time and on more than one account.
+  live use. Category saves now retain append-only outcome observations while
+  keeping a latest-value cache. An explicit bounded `--recheck` selects the
+  oldest cache entries first, and `orders category-stability` plus MCP
+  `orders_category_stability` report exact-product rechecks, distinct
+  observation days, stable/changed path counts, coverage, provenance, and
+  insufficient-evidence states. A 2026-09-03 headless-first live recheck of
+  five products produced five same-product multi-day comparisons and no path
+  changes. The adapter remains experimental until the sample is broader and
+  more than one consenting account is checked.
 - `orders category-catalog` and MCP `orders_category_catalog` expose only the
   category IDs, labels, and path prefixes actually observed in those cached
   breadcrumbs. Query matching and distinct local-product counts are labeled

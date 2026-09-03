@@ -472,6 +472,7 @@ type orderWorkflow interface {
 	Sync(context.Context, core.SyncRequest) (core.SyncResult, error)
 	EnrichCategories(context.Context, core.CategoryEnrichmentRequest) (core.CategoryEnrichmentResult, error)
 	CategoryCatalog(context.Context, core.CategoryCatalogRequest) (core.CategoryCatalog, error)
+	CategoryStability(context.Context) (core.CategoryStabilityReport, error)
 	List(context.Context, core.OrderFilter) ([]core.Order, error)
 	Spend(context.Context, core.OrderFilter) (core.SpendSummary, error)
 	Stats(context.Context, core.OrderFilter) (core.OrderStats, error)
@@ -485,7 +486,7 @@ type orderWorkflow interface {
 
 func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow orderWorkflow) error {
 	if len(args) == 0 {
-		return errors.New("usage: coupangctl orders <sync|categories|category-catalog|list|spend|stats|insights|products|recap|recap-image|reorder|export|import|purge>")
+		return errors.New("usage: coupangctl orders <sync|categories|category-catalog|category-stability|list|spend|stats|insights|products|recap|recap-image|reorder|export|import|purge>")
 	}
 	switch args[0] {
 	case "sync":
@@ -503,11 +504,21 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 	case "categories":
 		flags := newFlagSet("orders categories")
 		maxProducts := flags.Int("max-products", 25, "maximum uncached products to enrich")
+		recheck := flags.Bool("recheck", false, "explicitly re-read cached breadcrumbs, oldest first")
 		_ = flags.Bool("headed", false, "use a headed browser")
-		if err := parseFlags(flags, args[1:], "usage: coupangctl orders categories [--max-products N] [--headed]"); err != nil {
+		if err := parseFlags(flags, args[1:], "usage: coupangctl orders categories [--max-products N] [--recheck] [--headed]"); err != nil {
 			return err
 		}
-		result, err := workflow.EnrichCategories(ctx, core.CategoryEnrichmentRequest{MaxProducts: *maxProducts})
+		result, err := workflow.EnrichCategories(ctx, core.CategoryEnrichmentRequest{MaxProducts: *maxProducts, Recheck: *recheck})
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
+	case "category-stability":
+		if len(args) != 1 {
+			return errors.New("usage: coupangctl orders category-stability")
+		}
+		result, err := workflow.CategoryStability(ctx)
 		if err != nil {
 			return err
 		}
@@ -677,7 +688,7 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 		}
 		return writeJSON(stdout, result)
 	default:
-		return errors.New("usage: coupangctl orders <sync|categories|category-catalog|list|spend|stats|insights|products|recap|recap-image|reorder|export|import|purge>")
+		return errors.New("usage: coupangctl orders <sync|categories|category-catalog|category-stability|list|spend|stats|insights|products|recap|recap-image|reorder|export|import|purge>")
 	}
 }
 

@@ -1033,6 +1033,12 @@ func (s *SQLite) Purge(ctx context.Context) (core.PurgeResult, error) {
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM orders").Scan(&result.OrdersDeleted); err != nil {
 		return core.PurgeResult{}, fmt.Errorf("count normalized orders: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM product_category_observations"); err != nil {
+		return core.PurgeResult{}, fmt.Errorf("purge product category observations: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM product_categories"); err != nil {
+		return core.PurgeResult{}, fmt.Errorf("purge product category cache: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM orders"); err != nil {
 		return core.PurgeResult{}, fmt.Errorf("purge normalized orders: %w", err)
 	}

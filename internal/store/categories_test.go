@@ -133,3 +133,42 @@ func TestCategoryCatalogFindsOnlyObservedLabelsWithExplicitCoverage(t *testing.T
 		t.Fatalf("unexpected limited catalog: %#v", limited)
 	}
 }
+
+func TestOrderPurgeRemovesDerivedCategoryEvidence(t *testing.T) {
+	ctx := context.Background()
+	ledger, err := store.Open(ctx, filepath.Join(t.TempDir(), "coupangctl.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	page := core.OrderPage{Orders: []core.Order{{
+		SourceRef: "synthetic-purge-order", PurchasedAt: "2026-08-29", TotalAmount: 1000, Currency: "KRW",
+		Items: []core.OrderItem{{ProductID: "101", VendorItemID: "201", Name: "Synthetic private product", Quantity: 1, UnitPrice: 1000, PaidPrice: 1000}},
+	}}}
+	if _, err := ledger.UpsertOrderPage(ctx, page); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.SaveProductCategory(ctx, core.ProductReference{VendorItemID: "201"}, core.ProductCategory{
+		Source: core.CategorySourceProductJSONLDBreadcrumb,
+		Path:   []core.ProductCategoryNode{{ID: "200", Name: "Synthetic category", Position: 2}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ledger.Purge(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ledger.UpsertOrderPage(ctx, page); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := ledger.PendingCategoryProducts(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].VendorItemID != "201" {
+		t.Fatalf("purged category evidence was reused: %#v", pending)
+	}
+	report, err := ledger.CategoryStability(ctx)
+	if err != nil || report.ObservationCount != 0 || report.Assessment != "unavailable_no_observed_breadcrumbs" {
+		t.Fatalf("purged category observation remained visible: %#v, %v", report, err)
+	}
+}

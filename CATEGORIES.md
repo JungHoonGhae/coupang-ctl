@@ -8,13 +8,22 @@
 
 ```bash
 coupangctl orders categories --max-products 25
+coupangctl orders categories --max-products 25 --recheck
 coupangctl orders category-catalog --query '생활용품' --limit 50
+coupangctl orders category-stability
 coupangctl products search --category-id 123456 --sort sales
 ```
 
-첫 명령은 아직 확인하지 않은 주문 상품을 제한된 개수만큼 보강합니다. 두 번째
-명령은 로컬 SQLite만 읽으며 브라우저나 네트워크를 호출하지 않습니다. 반환된
-`category_id`는 세 번째 명령의 현재 쿠팡 카테고리 검색에 넘길 수 있습니다.
+기본 `orders categories`는 아직 확인하지 않은 주문 상품을 제한된 개수만큼
+보강합니다. `orders category-catalog`은 로컬 SQLite만 읽으며 브라우저나
+네트워크를 호출하지 않습니다. 반환된 `category_id`는 `products search`의
+현재 쿠팡 카테고리 검색에 넘길 수 있습니다.
+
+`--recheck`는 명시적으로 요청한 경우에만 이미 캐시된 상품을 `max-products`
+개까지 가장 오래 확인한 순서로 다시 읽습니다. 최신 캐시는 갱신하지만 이전
+경로와 확인 시각은 append-only 관측으로 남깁니다. 응답의
+`recheck_candidate_count`가 분모이고, 제한 때문에 일부만 처리했으면
+`recheck_truncated=true`, `complete=false`입니다.
 
 ## 응답 shape
 
@@ -72,3 +81,28 @@ coupangctl products search --category-id 123456 --sort sales
 taxonomy의 완전성을 뜻하지 않습니다. 쿠팡이 경로나 이름을 바꾸거나 현재 해당
 카테고리에 상품이 없을 수 있으므로 최종 가용성과 순서는 `products search`의
 현재 응답으로 확인합니다.
+
+## 경로 안정성 조회
+
+`orders category-stability`와 MCP `orders_category_stability`는 네트워크를
+호출하지 않고 저장된 관측만 읽습니다. schema version은 `1`, visibility는
+`private_local`입니다.
+
+- `eligible_product_count`, `observed_product_count`, `observed_product_rate`:
+  로컬 원장과 source-native breadcrumb 관측의 커버리지
+- `rechecked_product_count`: 유효한 경로 관측이 두 번 이상인 동일 상품 수
+- `multi_day_rechecked_product_count`: 같은 상품을 서로 다른 UTC 날짜에
+  관측한 수
+- `stable_product_count`, `changed_product_count`: 재관측 상품 중 고유 경로가
+  하나인 수와 둘 이상인 수
+- `observation_count`, `distinct_observation_day_count`, 최초·최근 시각:
+  판정에 사용한 관측 범위
+- `assessment`: `unavailable_no_observed_breadcrumbs`,
+  `insufficient_rechecks`, `insufficient_distinct_days`, `changes_observed`,
+  `stable_within_local_observation_window` 중 하나
+- `provenance`: 경로와 시각은 `observed`, 집계와 판정은 `derived`
+
+`stable_within_local_observation_window`는 동일 상품의 multi-day 표본 안에서
+변화가 없었다는 뜻일 뿐입니다. 한 계정만으로 다른 계정이나 쿠팡 전체의
+taxonomy 안정성을 주장하지 않으며, missing/unavailable 결과도 안정적인
+경로로 세지 않습니다.

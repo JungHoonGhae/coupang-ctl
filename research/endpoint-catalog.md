@@ -135,6 +135,12 @@ being listed as `researched` does not make it a supported product API.
   guessing missing categories. Both valid breadcrumb documents and explicit
   unavailable outcomes were observed; account-specific counts and labels were
   not recorded here.
+- A 2026-09-03 explicit headless-first recheck retained five additional
+  breadcrumb observations for the same exact product identities on a later
+  UTC date. All five paths matched their prior observations. This is a bounded
+  single-account sample, not evidence of population-wide taxonomy stability;
+  the typed stability report keeps that limitation and its denominators
+  visible.
 - New endpoints require a synthetic contract fixture, strict URL allowlist,
   bounded pagination, safe error mapping, and a live metadata-only verification
   before their adoption status changes.
@@ -146,6 +152,8 @@ being listed as `researched` does not make it a supported product API.
    not trigger request creation.
 2. Capture a redacted sales-slip detail shape and adopt installments only if an
    explicit installment-month field exists.
-3. Validate category breadcrumb stability across time and across more accounts.
+3. Broaden the same-product category recheck sample and validate across more
+   consenting accounts; preserve changed paths rather than overwriting their
+   evidence.
 4. Continue sampling exact card-benefit fields when a source-positive product
    is encountered; do not translate generic promotion text into a card claim.

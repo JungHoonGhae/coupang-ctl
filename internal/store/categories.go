@@ -7,15 +7,20 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
 
 func (s *SQLite) PendingCategoryProducts(ctx context.Context, limit int) ([]core.ProductReference, error) {
+	return s.CategoryProductsForEnrichment(ctx, limit, false)
+}
+
+func (s *SQLite) CategoryProductsForEnrichment(ctx context.Context, limit int, recheck bool) ([]core.ProductReference, error) {
 	if limit < 1 || limit > 1000 {
 		return nil, errors.New("category product limit must be between 1 and 1000")
 	}
-	rows, err := s.db.QueryContext(ctx, `WITH products AS (
+	query := `WITH products AS (
 		SELECT 'vendor:' || vendor_item_id AS product_key,
 			MAX(product_id) AS product_id, vendor_item_id
 		FROM order_items
@@ -27,7 +32,26 @@ func (s *SQLite) PendingCategoryProducts(ctx context.Context, limit int) ([]core
 	WHERE cached.product_key IS NULL
 		OR (cached.source = ? AND cached.breadcrumb_json = '[]')
 	ORDER BY products.vendor_item_id
-	LIMIT ?`, core.CategorySourceProductJSONLDBreadcrumb, limit)
+	LIMIT ?`
+	if recheck {
+		query = `WITH products AS (
+			SELECT 'vendor:' || vendor_item_id AS product_key,
+				MAX(product_id) AS product_id, vendor_item_id
+			FROM order_items
+			WHERE COALESCE(product_id, '') != '' AND COALESCE(vendor_item_id, '') != ''
+			GROUP BY vendor_item_id
+		)
+		SELECT products.product_id, products.vendor_item_id
+		FROM products LEFT JOIN product_categories cached ON cached.product_key = products.product_key
+		ORDER BY CASE WHEN cached.product_key IS NULL THEN 0 ELSE 1 END,
+			COALESCE(cached.fetched_at, ''), products.vendor_item_id
+		LIMIT ?`
+	}
+	args := []any{core.CategorySourceProductJSONLDBreadcrumb, limit}
+	if recheck {
+		args = []any{limit}
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("load uncached category products: %w", err)
 	}
@@ -42,6 +66,16 @@ func (s *SQLite) PendingCategoryProducts(ctx context.Context, limit int) ([]core
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate uncached category products: %w", err)
+	}
+	return result, nil
+}
+
+func (s *SQLite) CategoryRecheckCandidateCount(ctx context.Context) (int, error) {
+	var result int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT vendor_item_id) FROM order_items
+		WHERE COALESCE(product_id, '') != '' AND COALESCE(vendor_item_id, '') != ''`).Scan(&result)
+	if err != nil {
+		return 0, fmt.Errorf("count category recheck products: %w", err)
 	}
 	return result, nil
 }
@@ -88,55 +122,165 @@ func (s *SQLite) SaveProductCategory(ctx context.Context, reference core.Product
 		second = path[1].Name
 	}
 	leaf := path[len(path)-1]
-	_, err = s.db.ExecContext(ctx, `INSERT INTO product_categories(
-		product_key, source, top_category, second_category, leaf_category,
-		leaf_category_id, breadcrumb_json, fetched_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-	ON CONFLICT(product_key) DO UPDATE SET source = excluded.source,
-		top_category = excluded.top_category, second_category = excluded.second_category,
-		leaf_category = excluded.leaf_category, leaf_category_id = excluded.leaf_category_id,
-		breadcrumb_json = excluded.breadcrumb_json, fetched_at = excluded.fetched_at`,
-		"vendor:"+reference.VendorItemID, category.Source, path[0].Name, second, leaf.Name, leaf.ID, string(encodedPath))
-	if err != nil {
-		return fmt.Errorf("save product category: %w", err)
-	}
-	return nil
+	return s.saveProductCategoryOutcome(ctx, "vendor:"+reference.VendorItemID, category.Source,
+		path[0].Name, second, leaf.Name, leaf.ID, string(encodedPath))
 }
 
 func (s *SQLite) SaveMissingProductCategory(ctx context.Context, reference core.ProductReference) error {
 	if reference.VendorItemID == "" {
 		return errors.New("invalid product category")
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO product_categories(
-		product_key, source, top_category, second_category, leaf_category,
-		leaf_category_id, breadcrumb_json, fetched_at
-	) VALUES (?, 'coupang_product_jsonld_breadcrumb_missing_v1', '', '', '', '', '[]', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-	ON CONFLICT(product_key) DO UPDATE SET source = excluded.source,
-		top_category = '', second_category = '', leaf_category = '', leaf_category_id = '',
-		breadcrumb_json = '[]', fetched_at = excluded.fetched_at`,
-		"vendor:"+reference.VendorItemID)
-	if err != nil {
-		return fmt.Errorf("save missing product category: %w", err)
-	}
-	return nil
+	return s.saveProductCategoryOutcome(ctx, "vendor:"+reference.VendorItemID,
+		core.CategorySourceProductJSONLDBreadcrumbMissing, "", "", "", "", "[]")
 }
 
 func (s *SQLite) SaveUnavailableProductCategory(ctx context.Context, reference core.ProductReference) error {
 	if reference.VendorItemID == "" {
 		return errors.New("invalid product category")
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO product_categories(
+	return s.saveProductCategoryOutcome(ctx, "vendor:"+reference.VendorItemID,
+		core.CategorySourceProductUnavailable, "", "", "", "", "[]")
+}
+
+func (s *SQLite) saveProductCategoryOutcome(ctx context.Context, productKey, source, top, second, leaf, leafID, breadcrumbJSON string) error {
+	observedAt := s.now().UTC().Format(time.RFC3339Nano)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin product category save: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO product_categories(
 		product_key, source, top_category, second_category, leaf_category,
 		leaf_category_id, breadcrumb_json, fetched_at
-	) VALUES (?, ?, '', '', '', '', '[]', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(product_key) DO UPDATE SET source = excluded.source,
-		top_category = '', second_category = '', leaf_category = '', leaf_category_id = '',
-		breadcrumb_json = '[]', fetched_at = excluded.fetched_at`,
-		"vendor:"+reference.VendorItemID, core.CategorySourceProductUnavailable)
-	if err != nil {
-		return fmt.Errorf("save unavailable product category: %w", err)
+		top_category = excluded.top_category, second_category = excluded.second_category,
+		leaf_category = excluded.leaf_category, leaf_category_id = excluded.leaf_category_id,
+		breadcrumb_json = excluded.breadcrumb_json, fetched_at = excluded.fetched_at`,
+		productKey, source, top, second, leaf, leafID, breadcrumbJSON, observedAt); err != nil {
+		return fmt.Errorf("save product category: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO product_category_observations(
+		product_key, source, breadcrumb_json, observed_at
+	) VALUES (?, ?, ?, ?)`, productKey, source, breadcrumbJSON, observedAt); err != nil {
+		return fmt.Errorf("record product category observation: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit product category save: %w", err)
 	}
 	return nil
+}
+
+func (s *SQLite) CategoryStability(ctx context.Context) (core.CategoryStabilityReport, error) {
+	result := core.CategoryStabilityReport{
+		SchemaVersion: core.CategoryStabilitySchemaVersion,
+		Visibility:    "private_local",
+		Source:        core.CategorySourceProductJSONLDBreadcrumb,
+		Assessment:    "unavailable_no_observed_breadcrumbs",
+		Definitions: core.CategoryStabilityDefinition{
+			ProductUnit:              "distinct vendor_item_id values from locally synchronized order products",
+			RecheckedProduct:         "a product with at least two valid source-native breadcrumb observations",
+			MultiDayRecheckedProduct: "a rechecked product observed on at least two distinct UTC calendar dates",
+			StableProduct:            "a rechecked product with one distinct observed breadcrumb path",
+			ChangedProduct:           "a rechecked product with more than one distinct observed breadcrumb path",
+			ObservationDay:           "distinct UTC calendar date among valid breadcrumb observations",
+			Assessment:               "changes_observed; otherwise stable only when at least one exact product has multi-day evidence; insufficient states remain explicit",
+		},
+		Limitations: []string{
+			"observations begin when coupangctl adopts or rechecks a category; no retroactive category history is claimed",
+			"missing and unavailable outcomes are retained but excluded from breadcrumb-path stability counts",
+			"one private local ledger cannot establish cross-account or population-wide category stability",
+		},
+		Provenance: core.CategoryStabilityProvenance{PathAndTimestamp: "observed", Counts: "derived", Assessment: "derived"},
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT vendor_item_id) FROM order_items
+		WHERE COALESCE(product_id, '') != '' AND COALESCE(vendor_item_id, '') != ''`).Scan(&result.EligibleProductCount); err != nil {
+		return core.CategoryStabilityReport{}, fmt.Errorf("count category stability products: %w", err)
+	}
+	rows, err := s.db.QueryContext(ctx, `WITH products AS (
+		SELECT DISTINCT 'vendor:' || vendor_item_id AS product_key FROM order_items
+		WHERE COALESCE(product_id, '') != '' AND COALESCE(vendor_item_id, '') != ''
+	)
+	SELECT observations.product_key, observations.breadcrumb_json, observations.observed_at
+	FROM product_category_observations observations JOIN products USING(product_key)
+	WHERE observations.source = ? AND observations.breadcrumb_json != '[]'
+	ORDER BY observations.product_key, observations.observed_at`, core.CategorySourceProductJSONLDBreadcrumb)
+	if err != nil {
+		return core.CategoryStabilityReport{}, fmt.Errorf("load category stability observations: %w", err)
+	}
+	defer rows.Close()
+	type productEvidence struct {
+		observations int
+		paths        map[string]struct{}
+		days         map[string]struct{}
+	}
+	products := map[string]*productEvidence{}
+	days := map[string]struct{}{}
+	var first, last time.Time
+	for rows.Next() {
+		var productKey, encodedPath, observedAt string
+		if err := rows.Scan(&productKey, &encodedPath, &observedAt); err != nil {
+			return core.CategoryStabilityReport{}, fmt.Errorf("scan category stability observation: %w", err)
+		}
+		var path []core.ProductCategoryNode
+		observed, parseErr := time.Parse(time.RFC3339Nano, observedAt)
+		if json.Unmarshal([]byte(encodedPath), &path) != nil || !validCatalogPath(path) || parseErr != nil {
+			continue
+		}
+		evidence := products[productKey]
+		if evidence == nil {
+			evidence = &productEvidence{paths: map[string]struct{}{}, days: map[string]struct{}{}}
+			products[productKey] = evidence
+		}
+		evidence.observations++
+		evidence.paths[encodedPath] = struct{}{}
+		evidence.days[observed.UTC().Format("2006-01-02")] = struct{}{}
+		result.ObservationCount++
+		days[observed.UTC().Format("2006-01-02")] = struct{}{}
+		if first.IsZero() || observed.Before(first) {
+			first = observed
+		}
+		if last.IsZero() || observed.After(last) {
+			last = observed
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return core.CategoryStabilityReport{}, fmt.Errorf("iterate category stability observations: %w", err)
+	}
+	result.ObservedProductCount = len(products)
+	result.ObservedProductRate = ratio(result.ObservedProductCount, result.EligibleProductCount)
+	result.DistinctObservationDayCount = len(days)
+	if !first.IsZero() {
+		result.FirstObservedAt = first.UTC().Format(time.RFC3339Nano)
+		result.LastObservedAt = last.UTC().Format(time.RFC3339Nano)
+	}
+	for _, evidence := range products {
+		if evidence.observations < 2 {
+			continue
+		}
+		result.RecheckedProductCount++
+		if len(evidence.days) > 1 {
+			result.MultiDayRecheckedProductCount++
+		}
+		if len(evidence.paths) > 1 {
+			result.ChangedProductCount++
+		} else {
+			result.StableProductCount++
+		}
+	}
+	switch {
+	case result.ObservedProductCount == 0:
+		result.Assessment = "unavailable_no_observed_breadcrumbs"
+	case result.ChangedProductCount > 0:
+		result.Assessment = "changes_observed"
+	case result.RecheckedProductCount == 0:
+		result.Assessment = "insufficient_rechecks"
+	case result.MultiDayRecheckedProductCount == 0:
+		result.Assessment = "insufficient_distinct_days"
+	default:
+		result.Assessment = "stable_within_local_observation_window"
+	}
+	return result, nil
 }
 
 func (s *SQLite) CategoryCatalog(ctx context.Context, request core.CategoryCatalogRequest) (core.CategoryCatalog, error) {

@@ -7,12 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
 
 type SQLite struct {
-	db *sql.DB
+	db  *sql.DB
+	now func() time.Time
 }
 
 func Open(ctx context.Context, path string) (*SQLite, error) {
@@ -38,7 +40,7 @@ func Open(ctx context.Context, path string) (*SQLite, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 	db.SetMaxOpenConns(1)
-	store := &SQLite{db: db}
+	store := &SQLite{db: db, now: time.Now}
 	if err := store.migrate(ctx); err != nil {
 		db.Close()
 		return nil, err
@@ -256,6 +258,29 @@ func (s *SQLite) migrate(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at)
 		VALUES (11, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`); err != nil {
 		return fmt.Errorf("record complete-history evidence migration: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS product_category_observations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		product_key TEXT NOT NULL,
+		source TEXT NOT NULL,
+		breadcrumb_json TEXT NOT NULL DEFAULT '[]',
+		observed_at TEXT NOT NULL,
+		UNIQUE(product_key, source, observed_at)
+	)`); err != nil {
+		return fmt.Errorf("create product category observations: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS product_category_observations_lookup_idx
+		ON product_category_observations(product_key, observed_at)`); err != nil {
+		return fmt.Errorf("index product category observations: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO product_category_observations(
+		product_key, source, breadcrumb_json, observed_at
+	) SELECT product_key, source, breadcrumb_json, fetched_at FROM product_categories`); err != nil {
+		return fmt.Errorf("seed product category observations: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+		VALUES (12, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`); err != nil {
+		return fmt.Errorf("record product category observation migration: %w", err)
 	}
 	return nil
 }

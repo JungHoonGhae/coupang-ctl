@@ -139,11 +139,11 @@ func CurrentCapabilities() CapabilityReport {
 		},
 		{
 			ID: "product_categories", Priority: "P1", Status: CapabilityExperimental,
-			UserValue:   "source-native category totals and a searchable observed label/ID catalog with explicit coverage and no product-name guessing",
+			UserValue:   "source-native category totals, a searchable observed label/ID catalog, and longitudinal path-stability evidence with no product-name guessing",
 			Interface:   []string{"cli", "mcp"},
-			Implemented: []string{"bounded resumable breadcrumb enrichment", "leaf category aggregates with classification coverage", "local label-to-ID path catalog for AI search handoff"},
-			NextWork:    "validate breadcrumb-path stability over time and across more accounts", NextStepKind: CapabilityNextLongitudinalValidation,
-			BlockedBy: []string{"path stability requires observations at later dates and additional consenting account samples"}, LastVerified: "2026-09-03",
+			Implemented: []string{"bounded resumable breadcrumb enrichment", "leaf category aggregates with classification coverage", "local label-to-ID path catalog for AI search handoff", "append-only category observations, explicit bounded rechecks, and same-product multi-day stability assessment"},
+			NextWork:    "broaden the live recheck sample and validate breadcrumb-path behavior across additional consenting accounts", NextStepKind: CapabilityNextLongitudinalValidation,
+			BlockedBy: []string{"the first five-product multi-day recheck had no path changes, but cross-account validation requires additional consenting account samples"}, LastVerified: "2026-09-03",
 		},
 		{
 			ID: "price_and_repurchase", Priority: "P2", Status: CapabilityExperimental,

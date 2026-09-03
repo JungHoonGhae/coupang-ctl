@@ -18,8 +18,10 @@ var ErrInvalidOrderData = errors.New("invalid order data")
 var ErrProductCategoryUnavailable = errors.New("product category unavailable")
 
 const CategorySourceProductJSONLDBreadcrumb = "coupang_product_jsonld_breadcrumb_v1"
+const CategorySourceProductJSONLDBreadcrumbMissing = "coupang_product_jsonld_breadcrumb_missing_v1"
 const CategorySourceProductUnavailable = "coupang_product_category_unavailable_v1"
 const CategoryCatalogSchemaVersion = 1
+const CategoryStabilitySchemaVersion = 1
 
 type CommerceKind string
 
@@ -391,8 +393,46 @@ type CategoryCatalogProvenance struct {
 	QueryMatch             string `json:"query_match"`
 }
 
+type CategoryStabilityReport struct {
+	SchemaVersion                 int                         `json:"schema_version"`
+	Visibility                    string                      `json:"visibility"`
+	Source                        string                      `json:"source"`
+	Assessment                    string                      `json:"assessment"`
+	EligibleProductCount          int                         `json:"eligible_product_count"`
+	ObservedProductCount          int                         `json:"observed_product_count"`
+	RecheckedProductCount         int                         `json:"rechecked_product_count"`
+	MultiDayRecheckedProductCount int                         `json:"multi_day_rechecked_product_count"`
+	StableProductCount            int                         `json:"stable_product_count"`
+	ChangedProductCount           int                         `json:"changed_product_count"`
+	ObservationCount              int                         `json:"observation_count"`
+	DistinctObservationDayCount   int                         `json:"distinct_observation_day_count"`
+	FirstObservedAt               string                      `json:"first_observed_at,omitempty"`
+	LastObservedAt                string                      `json:"last_observed_at,omitempty"`
+	ObservedProductRate           float64                     `json:"observed_product_rate"`
+	Definitions                   CategoryStabilityDefinition `json:"definitions"`
+	Limitations                   []string                    `json:"limitations"`
+	Provenance                    CategoryStabilityProvenance `json:"provenance"`
+}
+
+type CategoryStabilityDefinition struct {
+	ProductUnit              string `json:"product_unit"`
+	RecheckedProduct         string `json:"rechecked_product"`
+	MultiDayRecheckedProduct string `json:"multi_day_rechecked_product"`
+	StableProduct            string `json:"stable_product"`
+	ChangedProduct           string `json:"changed_product"`
+	ObservationDay           string `json:"observation_day"`
+	Assessment               string `json:"assessment"`
+}
+
+type CategoryStabilityProvenance struct {
+	PathAndTimestamp string `json:"path_and_timestamp"`
+	Counts           string `json:"counts"`
+	Assessment       string `json:"assessment"`
+}
+
 type CategoryEnrichmentRequest struct {
-	MaxProducts int `json:"max_products,omitempty"`
+	MaxProducts int  `json:"max_products,omitempty"`
+	Recheck     bool `json:"recheck,omitempty" jsonschema:"Explicitly re-read already cached product breadcrumbs, oldest cache entries first"`
 }
 
 type CategoryEnrichmentResult struct {
@@ -402,6 +442,9 @@ type CategoryEnrichmentResult struct {
 	CategoriesUnavailable int  `json:"categories_unavailable"`
 	RemainingProducts     int  `json:"remaining_products"`
 	Complete              bool `json:"complete"`
+	Recheck               bool `json:"recheck"`
+	RecheckCandidateCount int  `json:"recheck_candidate_count"`
+	RecheckTruncated      bool `json:"recheck_truncated"`
 }
 
 type CategoryBucket struct {

@@ -105,6 +105,102 @@ func TestCategoryEnrichmentCachesOnlySourceNativeBreadcrumbs(t *testing.T) {
 	}
 }
 
+func TestCategoryStabilityReportsObservedBreadcrumbChanges(t *testing.T) {
+	ctx := context.Background()
+	ledger, err := store.Open(ctx, filepath.Join(t.TempDir(), "coupangctl.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	if _, err := ledger.UpsertOrderPage(ctx, core.OrderPage{Orders: []core.Order{{
+		SourceRef: "synthetic-stability-order", PurchasedAt: "2026-08-29", TotalAmount: 1000, Currency: "KRW",
+		Items: []core.OrderItem{{ProductID: "101", VendorItemID: "201", Name: "Synthetic private item", Quantity: 1, UnitPrice: 1000, PaidPrice: 1000}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	first := core.ProductCategory{
+		Source: core.CategorySourceProductJSONLDBreadcrumb,
+		Path: []core.ProductCategoryNode{
+			{ID: "100", Name: "Synthetic broad", Position: 2},
+			{ID: "200", Name: "Synthetic first leaf", Position: 3},
+		},
+	}
+	if err := ledger.SaveProductCategory(ctx, core.ProductReference{VendorItemID: "201"}, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.SaveProductCategory(ctx, core.ProductReference{VendorItemID: "201"}, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.SaveProductCategory(ctx, core.ProductReference{VendorItemID: "201"}, core.ProductCategory{
+		Source: core.CategorySourceProductJSONLDBreadcrumb,
+		Path: []core.ProductCategoryNode{
+			{ID: "100", Name: "Synthetic broad", Position: 2},
+			{ID: "300", Name: "Synthetic changed leaf", Position: 3},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := orders.New(ledger, nil).CategoryStability(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.SchemaVersion != core.CategoryStabilitySchemaVersion || report.Visibility != "private_local" || report.Source != core.CategorySourceProductJSONLDBreadcrumb {
+		t.Fatalf("unexpected stability envelope: %#v", report)
+	}
+	if report.Assessment != "changes_observed" || report.EligibleProductCount != 1 || report.ObservedProductCount != 1 || report.RecheckedProductCount != 1 || report.ChangedProductCount != 1 || report.StableProductCount != 0 {
+		t.Fatalf("unexpected stability assessment: %#v", report)
+	}
+	if report.ObservationCount != 3 || report.DistinctObservationDayCount != 1 || report.FirstObservedAt == "" || report.LastObservedAt == "" {
+		t.Fatalf("unexpected stability observation evidence: %#v", report)
+	}
+	if report.Provenance.PathAndTimestamp != "observed" || report.Provenance.Assessment != "derived" || len(report.Limitations) == 0 {
+		t.Fatalf("unexpected stability provenance: %#v", report)
+	}
+}
+
+func TestCategoryEnrichmentRechecksCachedBreadcrumbOnlyWhenRequested(t *testing.T) {
+	ctx := context.Background()
+	ledger, err := store.Open(ctx, filepath.Join(t.TempDir(), "coupangctl.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	if _, err := ledger.UpsertOrderPage(ctx, core.OrderPage{Orders: []core.Order{{
+		SourceRef: "synthetic-recheck-order", PurchasedAt: "2026-08-29", TotalAmount: 1000, Currency: "KRW",
+		Items: []core.OrderItem{{ProductID: "101", VendorItemID: "201", Name: "Synthetic private item", Quantity: 1, UnitPrice: 1000, PaidPrice: 1000}},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	source := &fixtureSource{categoryDocument: syntheticCategoryDocument("200", "Synthetic first leaf")}
+	workflow := orders.New(ledger, source)
+	first, err := workflow.EnrichCategories(ctx, core.CategoryEnrichmentRequest{MaxProducts: 10})
+	if err != nil || first.ProductsProcessed != 1 {
+		t.Fatalf("unexpected initial enrichment: %#v, %v", first, err)
+	}
+	withoutRecheck, err := workflow.EnrichCategories(ctx, core.CategoryEnrichmentRequest{MaxProducts: 10})
+	if err != nil || withoutRecheck.ProductsProcessed != 0 {
+		t.Fatalf("cached category was implicitly rechecked: %#v, %v", withoutRecheck, err)
+	}
+
+	source.categoryDocument = syntheticCategoryDocument("300", "Synthetic changed leaf")
+	rechecked, err := workflow.EnrichCategories(ctx, core.CategoryEnrichmentRequest{MaxProducts: 10, Recheck: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rechecked.Recheck || rechecked.RecheckCandidateCount != 1 || rechecked.ProductsProcessed != 1 || rechecked.RecheckTruncated {
+		t.Fatalf("unexpected explicit recheck result: %#v", rechecked)
+	}
+	report, err := workflow.CategoryStability(ctx)
+	if err != nil || report.Assessment != "changes_observed" || report.ChangedProductCount != 1 {
+		t.Fatalf("recheck did not preserve the changed path: %#v, %v", report, err)
+	}
+}
+
+func syntheticCategoryDocument(leafID, leafName string) []byte {
+	return []byte(fmt.Sprintf(`{"json_ld":[{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://www.coupang.com/"},{"@type":"ListItem","position":2,"name":"Synthetic broad","item":"https://www.coupang.com/np/categories/100"},{"@type":"ListItem","position":3,"name":%q,"item":"https://www.coupang.com/np/categories/%s"}]}]}`, leafName, leafID))
+}
+
 func TestSyncResumesAfterFailureWithoutDuplicates(t *testing.T) {
 	ctx := context.Background()
 	ledger, err := store.Open(ctx, filepath.Join(t.TempDir(), "coupangctl.sqlite3"))

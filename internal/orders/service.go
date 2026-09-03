@@ -168,6 +168,10 @@ func (s *Service) CategoryCatalog(ctx context.Context, request core.CategoryCata
 	return s.ledger.CategoryCatalog(ctx, request)
 }
 
+func (s *Service) CategoryStability(ctx context.Context) (core.CategoryStabilityReport, error) {
+	return s.ledger.CategoryStability(ctx)
+}
+
 func (s *Service) EnrichCategories(ctx context.Context, request core.CategoryEnrichmentRequest) (core.CategoryEnrichmentResult, error) {
 	budget := request.MaxProducts
 	if budget == 0 {
@@ -179,11 +183,18 @@ func (s *Service) EnrichCategories(ctx context.Context, request core.CategoryEnr
 	if s.categorySource == nil {
 		return core.CategoryEnrichmentResult{}, ErrDocumentSource
 	}
-	pending, err := s.ledger.PendingCategoryProducts(ctx, budget)
+	pending, err := s.ledger.CategoryProductsForEnrichment(ctx, budget, request.Recheck)
 	if err != nil {
 		return core.CategoryEnrichmentResult{}, err
 	}
-	result := core.CategoryEnrichmentResult{}
+	result := core.CategoryEnrichmentResult{Recheck: request.Recheck}
+	if request.Recheck {
+		result.RecheckCandidateCount, err = s.ledger.CategoryRecheckCandidateCount(ctx)
+		if err != nil {
+			return result, err
+		}
+		result.RecheckTruncated = result.RecheckCandidateCount > len(pending)
+	}
 	for _, reference := range pending {
 		document, err := s.categorySource.FetchProductCategory(ctx, reference)
 		if errors.Is(err, core.ErrProductCategoryUnavailable) {
@@ -219,7 +230,7 @@ func (s *Service) EnrichCategories(ctx context.Context, request core.CategoryEnr
 	if err != nil {
 		return result, err
 	}
-	result.Complete = result.RemainingProducts == 0
+	result.Complete = result.RemainingProducts == 0 && !result.RecheckTruncated
 	return result, nil
 }
 

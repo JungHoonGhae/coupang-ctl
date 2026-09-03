@@ -104,6 +104,17 @@ func (fixedOrderProvider) CategoryCatalog(_ context.Context, request core.Catego
 	}, nil
 }
 
+func (fixedOrderProvider) CategoryStability(context.Context) (core.CategoryStabilityReport, error) {
+	return core.CategoryStabilityReport{
+		SchemaVersion:         core.CategoryStabilitySchemaVersion,
+		Visibility:            "private_local",
+		Source:                core.CategorySourceProductJSONLDBreadcrumb,
+		Assessment:            "stable_within_local_observation_window",
+		RecheckedProductCount: 2,
+		Provenance:            core.CategoryStabilityProvenance{PathAndTimestamp: "observed", Counts: "derived", Assessment: "derived"},
+	}, nil
+}
+
 func (fixedOrderProvider) List(context.Context, core.OrderFilter) ([]core.Order, error) {
 	return []core.Order{}, nil
 }
@@ -416,6 +427,36 @@ func TestOrdersCategoryCatalogToolReturnsObservedSearchHandoff(t *testing.T) {
 	}
 	if got.Visibility != "private_local" || got.Query != "Synthetic" || len(got.Categories) != 1 || got.Categories[0].CategoryID != "200" {
 		t.Fatalf("unexpected category catalog: %#v", got)
+	}
+}
+
+func TestOrdersCategoryStabilityToolReturnsTypedEvidence(t *testing.T) {
+	ctx := context.Background()
+	server := NewWithOrders(fixedStatusProvider{}, fixedOrderProvider{}, "v0.1.0-test")
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: "orders_category_stability"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(result.StructuredContent)
+	var got core.CategoryStabilityReport
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.SchemaVersion != core.CategoryStabilitySchemaVersion || got.Assessment != "stable_within_local_observation_window" || got.RecheckedProductCount != 2 || got.Provenance.PathAndTimestamp != "observed" {
+		t.Fatalf("unexpected category stability tool response: %#v", got)
 	}
 }
 
