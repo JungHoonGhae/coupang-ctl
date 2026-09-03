@@ -35,13 +35,14 @@
 
 ## 3분 빠른 시작
 
-아직 공개 태그가 없으므로 아래 명령은 안정 릴리스가 아니라 최신 `main` 개발
-스냅샷을 설치합니다. Go 1.26 이상과 설치된 Chrome 계열 브라우저가 필요하지만,
-저장소 clone이나 Node·Playwright·Orca·확장 프로그램은 필요하지 않습니다.
+현재 공개 채널은 안정 릴리스가 아닌 `v0.1.0-rc.2` 후보 릴리스입니다. Go 1.26
+이상과 설치된 Chrome 계열 브라우저가 필요하지만, 저장소 clone이나
+Node·Playwright·Orca·확장 프로그램은 필요하지 않습니다.
 
 ```bash
-go install github.com/JungHoonGhae/coupang-ctl/cmd/coupangctl@main
+go install github.com/JungHoonGhae/coupang-ctl/cmd/coupangctl@v0.1.0-rc.2
 
+coupangctl --help
 coupangctl version
 coupangctl doctor
 coupangctl login
@@ -51,10 +52,10 @@ coupangctl recap --output ./shopping-recap.html
 
 Go는 바이너리를 `GOBIN` 또는 기본 `GOPATH/bin`에 설치합니다. `coupangctl`을
 찾지 못하면 그 디렉터리를 `PATH`에 추가합니다. `version`이 출력하는 전체
-pseudo-version으로 같은 소스를 다시 지정할 수 있습니다. 첫 공개 태그부터는
-검증된 릴리스 아카이브와 체크섬을 기본 설치 경로로 안내합니다. 저장소를 직접
-수정하려는 개발자는 clone 후 `go build -o ./bin/coupangctl ./cmd/coupangctl`을
-사용합니다.
+pseudo-version으로 같은 소스를 다시 지정할 수 있습니다. 이 후보 릴리스의 검증된
+아카이브와 체크섬도 [GitHub Releases](https://github.com/JungHoonGhae/coupang-ctl/releases)에서
+제공합니다. 저장소를 직접 수정하려는 개발자는 clone 후
+`go build -o ./bin/coupangctl ./cmd/coupangctl`을 사용합니다.
 
 `coupangctl login`은 기존 세션을 화면 없이 먼저 확인합니다. 정상 세션은 그대로
 재사용하고, 명확히 미설정 또는 만료된 경우에만 실제 Chrome의 QR 로그인을
@@ -70,13 +71,12 @@ SQLite를 별도 체크로 반환합니다. 첫 로그인 전이나 headless 접
 환경에서는 설치가 정상이어도 전체 `ok`가 `false`일 수 있으며,
 `background_session.message`가 다음 동작을 설명합니다.
 
-여섯 플랫폼 아카이브·SBOM·체크섬·GitHub provenance를 만드는 태그 릴리스
-파이프라인은 snapshot으로 검증되어 있지만, 아직 공개 릴리스 태그가 없으므로
-존재하지 않는 다운로드 URL을 설치 경로로 안내하지 않습니다. 배포물의 정확한
-파일 허용 목록과 검증 방법은 [`RELEASING.md`](RELEASING.md)에 있습니다. 왜
-Orca나 확장이 아니라 단일 바이너리를 기본으로 삼았는지는
-[`research/cli-distribution.md`](research/cli-distribution.md)에 근거와 함께
-정리했습니다.
+후보 릴리스는 여섯 플랫폼 아카이브·각 SBOM·체크섬·GitHub provenance를 함께
+제공합니다. 현재 macOS와 Windows 산출물은 네이티브 서명되지 않았으므로 stable로
+취급하지 않습니다. 배포물의 정확한 파일 허용 목록과 검증 방법은
+[`RELEASING.md`](RELEASING.md)에 있습니다. 왜 Orca나 확장이 아니라 단일
+바이너리를 기본으로 삼았는지는 [`research/cli-distribution.md`](research/cli-distribution.md)에
+근거와 함께 정리했습니다.
 
 > [!CAUTION]
 > 생성된 세션과 주문 DB는 개인 데이터입니다. 공유용 리캡은 기본적으로 상품명과 정확한 날짜를 제외하지만, `--include-products`로 만든 HTML은 파일 자체에 실제 상품·금액·날짜가 들어 있으므로 공유하면 안 됩니다.

@@ -32,9 +32,21 @@ import (
 
 const orderSyncUsage = "usage: coupangctl orders sync [--max-pages N] [--headed|--current-browser|--ordinary-browser]"
 
+type helpResponse struct {
+	SchemaVersion int           `json:"schema_version"`
+	Name          string        `json:"name"`
+	Usage         string        `json:"usage"`
+	Commands      []helpCommand `json:"commands"`
+}
+
+type helpCommand struct {
+	Name    string `json:"name"`
+	Summary string `json:"summary"`
+}
+
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version string) error {
-	if len(args) == 0 {
-		return usage(stderr)
+	if len(args) == 0 || (len(args) == 1 && isTopLevelHelp(args[0])) {
+		return writeTopLevelHelp(stdout)
 	}
 	if strings.HasPrefix(args[0], "chrome-extension://") {
 		return runChromeNativeHost(ctx, args, os.Stdin, stdout)
@@ -172,6 +184,31 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 	default:
 		return usage(stderr)
 	}
+}
+
+func isTopLevelHelp(arg string) bool {
+	return arg == "help" || arg == "--help" || arg == "-h"
+}
+
+func writeTopLevelHelp(w io.Writer) error {
+	return writeJSON(w, helpResponse{
+		SchemaVersion: 1,
+		Name:          "coupangctl",
+		Usage:         "coupangctl <command> [options]",
+		Commands: []helpCommand{
+			{Name: "auth", Summary: "sign in, verify, or assist an interactive login"},
+			{Name: "orders", Summary: "sync orders and produce local analytics or recap output"},
+			{Name: "products", Summary: "search, inspect, watch, and add products to the cart"},
+			{Name: "account", Summary: "inspect membership, benefits, rewards, and payment summaries"},
+			{Name: "receipts", Summary: "list, summarize, and download receipt records"},
+			{Name: "current-browser", Summary: "inspect approved current-browser connectivity"},
+			{Name: "browser-bridge", Summary: "manage the optional ordinary-browser bridge"},
+			{Name: "doctor", Summary: "check browser, profile, authentication, and local storage health"},
+			{Name: "capabilities", Summary: "report implemented and externally blocked capabilities"},
+			{Name: "version", Summary: "print the installed coupangctl version"},
+			{Name: "mcp", Summary: "run the MCP adapter over standard input and output"},
+		},
+	})
 }
 
 func expandConvenienceCommand(args []string) []string {
