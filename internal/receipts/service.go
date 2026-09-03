@@ -25,6 +25,7 @@ type Source interface {
 	History(context.Context, core.ReceiptHistoryRequest) (core.ReceiptHistoryPage, error)
 	Summary(context.Context, core.ReceiptSummaryRequest) (core.ReceiptSummary, error)
 	Download(context.Context, core.ReceiptDownloadRequest) (Download, error)
+	Vendor(context.Context, core.VendorReceiptRequest) (core.VendorReceiptSnapshot, error)
 }
 
 type Service struct {
@@ -133,6 +134,45 @@ func (s *Service) Download(ctx context.Context, request core.ReceiptDownloadRequ
 	result.Metadata.HistoryIndex = request.HistoryIndex
 	result.Metadata.DownloadIndex = request.DownloadIndex
 	result.Metadata.Bytes = len(result.Content)
+	return result, nil
+}
+
+func (s *Service) Vendor(ctx context.Context, request core.VendorReceiptRequest) (core.VendorReceiptSnapshot, error) {
+	if request.MaxPages == 0 {
+		request.MaxPages = 1000
+	}
+	if err := request.Validate(); err != nil {
+		return core.VendorReceiptSnapshot{}, err
+	}
+	if s.source == nil {
+		return core.VendorReceiptSnapshot{}, ErrSourceUnavailable
+	}
+	result, err := s.source.Vendor(ctx, request)
+	if err != nil {
+		return core.VendorReceiptSnapshot{}, errors.Join(ErrSourceUnavailable, err)
+	}
+	result.SchemaVersion = core.ReceiptSchemaVersion
+	result.Visibility = "private_local"
+	result.FetchedAt = s.now().UTC()
+	result.SourceRef = request.SourceRef
+	result.VendorCount = len(result.Vendors)
+	result.Definitions = definitions()
+	result.Installments = core.ReceiptInstallmentInfo{
+		Status: "unavailable",
+		Limitations: []string{
+			"the verified vendor-receipt response exposes payment types and cancellation components but no installment-month field",
+		},
+	}
+	result.Settlement = core.ReceiptSettlementInfo{
+		Status: "source_components_observed",
+		Limitations: []string{
+			"source cancellation amount fields are exposed without relabeling them as a completed refund settlement",
+			"exact post-refund net spend remains unavailable until status and amount semantics agree across canceled and returned samples",
+		},
+	}
+	if result.Vendors == nil {
+		result.Vendors = []core.VendorReceiptVendor{}
+	}
 	return result, nil
 }
 

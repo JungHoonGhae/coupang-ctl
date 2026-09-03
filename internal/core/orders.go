@@ -1,11 +1,18 @@
 package core
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
+
+func OrderSourceReference(sourceID string) string {
+	digest := sha256.Sum256([]byte("coupangctl:order:" + sourceID))
+	return hex.EncodeToString(digest[:])
+}
 
 var ErrInvalidOrderData = errors.New("invalid order data")
 var ErrProductCategoryUnavailable = errors.New("product category unavailable")

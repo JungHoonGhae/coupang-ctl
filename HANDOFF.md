@@ -43,11 +43,16 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   rewards/card fees stay outside the comparison. Official Coupang guidance
   points membership-fee cash receipts to the PC receipt screen, making receipt
   evidence the next path for exact historical costs.
-- `receipts status`, `receipts list`, and `receipts summary` now expose typed
-  `private_local` cash/card receipt reads through both CLI and MCP. Live,
+- `receipts status`, `receipts list`, `receipts summary`, and `receipts vendor` now expose typed
+  `private_local` cash/card and vendor receipt reads through both CLI and MCP. Live,
   metadata-only checks verified status, empty history pagination, aggregate
-  count/amount shapes, and a card-method aggregate without printing card
-  identifiers or raw values.
+  count/amount shapes, a card-method aggregate, and five vendor-receipt GET
+  shapes without printing card identifiers, raw order IDs, or raw values.
+- `receipts vendor --source-ref HASH` resolves the raw order ID only inside the
+  browser adapter and returns source-native vendor payment types, products,
+  and cancellation payment components. A live typed read succeeded. These
+  components are not relabeled as a completed refund settlement, and the
+  verified response contained no installment-month field.
 - `receipts download` can save an already-completed history artifact to a new
   private `0600` file. It re-reads the selected history row, keeps the source
   URL in browser memory, validates the final Coupang host and bounded content,
@@ -257,6 +262,11 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   summaries therefore expose observed payment-method totals while reporting
   installments as `unavailable` rather than guessing lump-sum/installment
   splits.
+- The vendor-receipt contract is
+  `GET /ssr/api/payment-receipt/vendor-receipts/<orderId>`. Product-facing
+  input is the hashed order `source_ref`; the raw ID never leaves the browser
+  adapter. Five redacted samples returned 200 with stable payment and
+  cancellation-component key/type shapes.
 
 ## Important limitation
 
@@ -300,8 +310,8 @@ snapshots are implemented. Product-type/category rankings and computer-title
 spec normalization are experimental; category-label discovery and
 selected-option coverage across layouts are the next search tasks.
 Source-native purchase-category enrichment is also experimental while its
-stability is validated. Cash/card receipt reads are now experimental; completed
-artifact and vendor-receipt validation remain. Exact-option local price history
+stability is validated. Cash/card and vendor-receipt reads are experimental;
+completed artifact validation remains. Exact-option local price history
 and repurchase comparison are experimental; the scheduler-ready watch command
 is implemented. Longitudinal threshold validation and optional platform-specific
 scheduler installers are next.

@@ -11,12 +11,18 @@ typed core로 정규화합니다. 모든 결과는 `private_local`이며 원문 
 | 현금·카드 요청 상태 | `receipts status` | `receipts_status` | 없음 |
 | 요청 이력 | `receipts list` | `receipts_list` | 없음 |
 | 기간·결제수단 합계 | `receipts summary` | `receipts_summary` | 없음 |
+| 주문별 판매자 영수증 | `receipts vendor` | `receipts_vendor` | 없음 |
 | 완료 파일 저장 | `receipts download` | 지원하지 않음 | 없음 |
 | 새 영수증 묶음 생성 요청 | 지원하지 않음 | 지원하지 않음 | 구현 제외 |
 
 기간 합계는 한 번에 최대 366일, 이력은 한 페이지 최대 50개입니다. 카드
 합계 조회에 필요한 비공개 카드 키는 좁은 Coupang adapter 안에서만 사용한
 뒤 폐기합니다.
+
+판매자 영수증은 `orders list`의 SHA-256 `source_ref`를 입력으로 받습니다.
+원주문 ID는 브라우저 adapter 안에서만 찾아 GET 경로에 사용하고 즉시
+폐기합니다. 기본 `max_pages=1000`은 검색 안전 상한이지 이력을 1000페이지로
+잘라 저장한다는 뜻이 아닙니다.
 
 ## 응답 형태
 
@@ -112,6 +118,48 @@ typed core로 정규화합니다. 모든 결과는 `private_local`이며 원문 
 응답의 `from`과 `to`는 호출자가 요청한 ISO 날짜입니다. 원천 응답이 다른
 기간을 되돌려주면 합계 자체를 숨기지 않고 `warnings`에 불일치를 표시합니다.
 
+### 주문별 판매자 영수증
+
+```json
+{
+  "schema_version": 1,
+  "visibility": "private_local",
+  "source_ref": "<synthetic-sha256>",
+  "pages_scanned": 2,
+  "vendor_count": 1,
+  "vendors": [
+    {
+      "vendor_index": 0,
+      "vendor_name": "합성 판매자",
+      "main_payment_type_name": "합성 카드",
+      "main_payment_amount_krw": 12000,
+      "payment": {
+        "original_payment_amount_krw": 12000,
+        "original_payment_canceled_amount_krw": 3000,
+        "coupon_discount_amount_krw": 3000,
+        "coupon_discount_canceled_amount_krw": 1000
+      },
+      "products": [
+        {
+          "product_index": 0,
+          "name": "합성 상품",
+          "quantity": 2,
+          "canceled_quantity": 1,
+          "unit_price_krw": 7500
+        }
+      ]
+    }
+  ],
+  "installments": {"status": "unavailable"},
+  "settlement": {"status": "source_components_observed"}
+}
+```
+
+`original_payment_canceled_amount_krw` 같은 필드는 쿠팡 응답의 취소 결제
+구성요소를 이름 그대로 보존한 관찰값입니다. 할인 배분, 포인트, 배송비,
+후속 조정과 환불 완료 상태까지 합의된 계약이 아니므로 현재는 “실제 환불액”
+또는 “정확한 순지출”로 재명명하거나 자동 합산하지 않습니다.
+
 ### 다운로드 결과
 
 ```json
@@ -137,7 +185,7 @@ typed core로 정규화합니다. 모든 결과는 `private_local`이며 원문 
 
 - `provenance: observed`는 영수증 읽기 응답에서 직접 확인한 값입니다.
 - 표시명별 합계처럼 관찰값을 더한 결과는 규칙을 위에 공개합니다.
-- 새 archive 요청 POST와 거래명세서(vendor receipt)는 아직 지원하지 않습니다.
+- 새 archive 요청 POST는 지원하지 않습니다. 판매자 영수증은 검증된 단건 GET만 지원합니다.
 - 완료 파일 다운로드는 합성 계약 테스트를 통과했지만, 라이브 계정의 현재
   이력이 비어 있어 실제 완료 파일 검증은 아직 남아 있습니다.
 - 비공개 endpoint는 불안정할 수 있으므로 모두 `internal/coupang/receipts`

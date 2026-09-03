@@ -52,6 +52,12 @@ type fakeDocumentSession struct {
 	receiptHistory   []core.ReceiptHistoryRequest
 	receiptSummaries []core.ReceiptSummaryRequest
 	receiptDownloads []core.ReceiptDownloadRequest
+	vendorOrderIDs   []string
+	vendorSourceRefs []string
+	vendorPages      []int
+	researchDocument []byte
+	researchErr      error
+	researchSamples  []ReceiptResearchOrderSample
 	closed           bool
 }
 
@@ -87,6 +93,18 @@ func (f *fakeDocumentSession) ReadReceiptSummaryDocument(_ context.Context, requ
 func (f *fakeDocumentSession) ReadReceiptDownloadDocument(_ context.Context, request core.ReceiptDownloadRequest) ([]byte, error) {
 	f.receiptDownloads = append(f.receiptDownloads, request)
 	return f.nextReceiptDocument()
+}
+
+func (f *fakeDocumentSession) ReadVendorReceiptDocument(_ context.Context, orderID, sourceRef string, pagesScanned int) ([]byte, error) {
+	f.vendorOrderIDs = append(f.vendorOrderIDs, orderID)
+	f.vendorSourceRefs = append(f.vendorSourceRefs, sourceRef)
+	f.vendorPages = append(f.vendorPages, pagesScanned)
+	return f.nextReceiptDocument()
+}
+
+func (f *fakeDocumentSession) ReadReceiptResearchMetadata(_ context.Context, samples []ReceiptResearchOrderSample) ([]byte, error) {
+	f.researchSamples = append([]ReceiptResearchOrderSample(nil), samples...)
+	return f.researchDocument, f.researchErr
 }
 
 func (f *fakeDocumentSession) nextReceiptDocument() ([]byte, error) {
@@ -316,6 +334,81 @@ func TestReceiptReadsDefaultBoundsBeforeReachingNarrowSession(t *testing.T) {
 	}
 	if len(session.receiptHistory) != 1 || session.receiptHistory[0].PageSize != 5 || len(session.receiptSummaries) != 1 || session.receiptSummaries[0].MaxCards != 20 || len(session.receiptDownloads) != 1 || session.receiptDownloads[0].PageSize != 5 {
 		t.Fatalf("unexpected receipt bounds: history=%#v summary=%#v download=%#v", session.receiptHistory, session.receiptSummaries, session.receiptDownloads)
+	}
+}
+
+func TestFetchVendorReceiptResolvesOnlyHashedOrderReference(t *testing.T) {
+	executable := syntheticExecutable(t, "exit 0\n")
+	profile := filepath.Join(t.TempDir(), "browser-profile")
+	if err := os.MkdirAll(profile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rawOrderID := "1234567890"
+	sourceRef := core.OrderSourceReference(rawOrderID)
+	session := &fakeDocumentSession{
+		document:        []byte(`{"orderList":[{"orderId":"` + rawOrderID + `"}],"hasNext":false}`),
+		receiptDocument: []byte(`{"found":true,"source_ref":"` + sourceRef + `","pages_scanned":1,"vendors":[]}`),
+	}
+	native := NewNative(profile)
+	native.getenv = func(name string) string {
+		if name == "COUPANGCTL_BROWSER_PATH" {
+			return executable
+		}
+		return ""
+	}
+	native.sessionFactory = func(context.Context, string, string) (documentSession, error) { return session, nil }
+
+	document, err := native.FetchVendorReceipt(context.Background(), core.VendorReceiptRequest{SourceRef: sourceRef, MaxPages: 3})
+	if err != nil || string(document) != string(session.receiptDocument) {
+		t.Fatalf("vendor receipt document = %q, %v", document, err)
+	}
+	if len(session.vendorOrderIDs) != 1 || session.vendorOrderIDs[0] != rawOrderID || session.vendorSourceRefs[0] != sourceRef || session.vendorPages[0] != 1 {
+		t.Fatalf("unexpected vendor lookup: ids=%#v refs=%#v pages=%#v", session.vendorOrderIDs, session.vendorSourceRefs, session.vendorPages)
+	}
+}
+
+func TestLocateOrderReferenceUsesStructuredPaginationWithoutExposingID(t *testing.T) {
+	rawOrderID := "9876543210"
+	sourceRef := core.OrderSourceReference(rawOrderID)
+	document := []byte(`{"orderList":[{"orderId":"` + rawOrderID + `"}],"orderPagination":{"hasNext":true,"nextYear":2025,"nextPageIndex":2}}`)
+	orderID, next, found, err := locateOrderReference(document, sourceRef)
+	if err != nil || !found || orderID != rawOrderID || next != nil {
+		t.Fatalf("matching lookup = %q %#v %v %v", orderID, next, found, err)
+	}
+	_, next, found, err = locateOrderReference(document, core.OrderSourceReference("different"))
+	if err != nil || found || next == nil || next.Year != 2025 || next.Page != 2 {
+		t.Fatalf("pagination lookup = %#v %v %v", next, found, err)
+	}
+}
+
+func TestReceiptResearchMetadataUsesDedicatedNarrowSession(t *testing.T) {
+	executable := syntheticExecutable(t, "exit 0\n")
+	profile := filepath.Join(t.TempDir(), "browser-profile")
+	if err := os.MkdirAll(profile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	session := &fakeDocumentSession{researchDocument: []byte(`{"schema_version":1,"operation":"read_only_get_metadata"}`)}
+	native := NewNative(profile)
+	native.getenv = func(name string) string {
+		if name == "COUPANGCTL_BROWSER_PATH" {
+			return executable
+		}
+		return ""
+	}
+	native.sessionFactory = func(context.Context, string, string) (documentSession, error) { return session, nil }
+
+	document, err := native.FetchReceiptResearchMetadata(context.Background(), []ReceiptResearchOrderSample{{OrderID: "12345", State: "ordinary"}})
+	if err != nil || string(document) != string(session.researchDocument) {
+		t.Fatalf("research metadata = %q, %v", document, err)
+	}
+	if len(session.researchSamples) != 1 || session.researchSamples[0].OrderID != "12345" || session.researchSamples[0].State != "ordinary" {
+		t.Fatalf("research samples = %#v", session.researchSamples)
+	}
+	if _, err := native.FetchReceiptResearchMetadata(context.Background(), []ReceiptResearchOrderSample{{OrderID: "not-numeric", State: "ordinary"}}); err == nil {
+		t.Fatal("invalid research order reference was accepted")
+	}
+	if _, err := native.FetchReceiptResearchMetadata(context.Background(), []ReceiptResearchOrderSample{{OrderID: "12345", State: "private-value"}}); err == nil {
+		t.Fatal("invalid research state was accepted")
 	}
 }
 

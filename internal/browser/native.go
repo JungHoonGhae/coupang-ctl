@@ -1,7 +1,9 @@
 package browser
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -55,6 +57,16 @@ type receiptDocumentSession interface {
 	ReadReceiptHistoryDocument(context.Context, core.ReceiptHistoryRequest) ([]byte, error)
 	ReadReceiptSummaryDocument(context.Context, core.ReceiptSummaryRequest) ([]byte, error)
 	ReadReceiptDownloadDocument(context.Context, core.ReceiptDownloadRequest) ([]byte, error)
+	ReadVendorReceiptDocument(context.Context, string, string, int) ([]byte, error)
+}
+
+type receiptResearchDocumentSession interface {
+	ReadReceiptResearchMetadata(context.Context, []ReceiptResearchOrderSample) ([]byte, error)
+}
+
+type ReceiptResearchOrderSample struct {
+	OrderID string `json:"order_id"`
+	State   string `json:"state"`
 }
 
 type qrPresenter func(context.Context, string, string, string, string, core.QRLinkPresenter) error
@@ -337,6 +349,257 @@ func (n *Native) FetchReceiptDownload(ctx context.Context, request core.ReceiptD
 	return n.fetchReceiptDocument(ctx, func(session receiptDocumentSession) ([]byte, error) {
 		return session.ReadReceiptDownloadDocument(ctx, request)
 	})
+}
+
+func (n *Native) FetchVendorReceipt(ctx context.Context, request core.VendorReceiptRequest) ([]byte, error) {
+	if request.MaxPages == 0 {
+		request.MaxPages = 1000
+	}
+	if err := request.Validate(); err != nil {
+		return nil, err
+	}
+	present, err := directoryPresent(n.profileDir)
+	if err != nil {
+		return nil, fmt.Errorf("inspect dedicated browser profile: %w", err)
+	}
+	if !present {
+		return nil, ErrAuthenticationRequired
+	}
+	path, err := n.discover()
+	if err != nil {
+		return nil, err
+	}
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.session == nil {
+		n.session, err = n.sessionFactory(ctx, path, n.profileDir)
+		if err != nil {
+			return nil, err
+		}
+	}
+	read := func() ([]byte, error) {
+		return readVendorReceiptFromSession(ctx, n.session, request)
+	}
+	document, err := read()
+	if !errors.Is(err, ErrBrowserAccessDenied) || n.headedSessionFactory == nil || n.allowHeadedFallback == nil || !n.allowHeadedFallback() {
+		return document, err
+	}
+	_ = n.session.Close()
+	n.session = nil
+	n.session, err = n.headedSessionFactory(ctx, path, n.profileDir)
+	if err != nil {
+		return nil, err
+	}
+	return read()
+}
+
+func readVendorReceiptFromSession(ctx context.Context, session documentSession, request core.VendorReceiptRequest) ([]byte, error) {
+	receipts, ok := session.(receiptDocumentSession)
+	if !ok {
+		return nil, ErrStructuredReceiptDataMissing
+	}
+	var cursor *core.OrderCursor
+	seen := map[string]bool{}
+	for pagesScanned := 1; pagesScanned <= request.MaxPages; pagesScanned++ {
+		key := "initial"
+		if cursor != nil {
+			key = fmt.Sprintf("%d/%d", cursor.Year, cursor.Page)
+		}
+		if seen[key] {
+			return nil, ErrStructuredOrderDataMissing
+		}
+		seen[key] = true
+		document, err := session.ReadOrderDocument(ctx, orderDocumentURL(cursor))
+		if err != nil {
+			return nil, err
+		}
+		orderID, next, found, err := locateOrderReference(document, request.SourceRef)
+		if err != nil {
+			return nil, ErrStructuredOrderDataMissing
+		}
+		if found {
+			return receipts.ReadVendorReceiptDocument(ctx, orderID, request.SourceRef, pagesScanned)
+		}
+		if next == nil {
+			return nil, core.ErrVendorReceiptNotFound
+		}
+		cursor = next
+	}
+	return nil, core.ErrVendorReceiptNotFound
+}
+
+func locateOrderReference(document []byte, sourceRef string) (string, *core.OrderCursor, bool, error) {
+	payload := bytes.TrimSpace(document)
+	if len(payload) == 0 {
+		return "", nil, false, errors.New("empty order document")
+	}
+	if payload[0] != '{' {
+		var err error
+		payload, err = embeddedNextData(payload)
+		if err != nil {
+			return "", nil, false, err
+		}
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	var root map[string]any
+	if err := decoder.Decode(&root); err != nil {
+		return "", nil, false, err
+	}
+	domain := root
+	for _, key := range []string{"props", "pageProps", "domains", "desktopOrder"} {
+		next, ok := domain[key].(map[string]any)
+		if !ok {
+			if _, modelOK := root["orderList"]; modelOK {
+				domain = root
+				break
+			}
+			return "", nil, false, errors.New("order domain missing")
+		}
+		domain = next
+	}
+	orders, ok := domain["orderList"].([]any)
+	if !ok {
+		return "", nil, false, errors.New("order list missing")
+	}
+	for _, raw := range orders {
+		order, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		orderID := scalarOrderID(order["orderId"])
+		if orderID != "" && core.OrderSourceReference(orderID) == sourceRef {
+			return orderID, nil, true, nil
+		}
+	}
+	pagination := domain
+	if embedded, ok := domain["orderPagination"].(map[string]any); ok {
+		pagination = embedded
+	}
+	hasNext, _ := pagination["hasNext"].(bool)
+	if !hasNext {
+		return "", nil, false, nil
+	}
+	year, yearOK := browserInteger(pagination["nextYear"])
+	page, pageOK := browserInteger(pagination["nextPageIndex"])
+	if !yearOK || !pageOK || year < 2000 || page < 0 {
+		return "", nil, false, errors.New("invalid order cursor")
+	}
+	return "", &core.OrderCursor{Year: year, Page: page}, false, nil
+}
+
+func embeddedNextData(document []byte) ([]byte, error) {
+	remaining := document
+	for {
+		start := bytes.Index(remaining, []byte("<script"))
+		if start < 0 {
+			return nil, errors.New("next data missing")
+		}
+		remaining = remaining[start:]
+		tagEnd := bytes.IndexByte(remaining, '>')
+		if tagEnd < 0 {
+			return nil, errors.New("script tag malformed")
+		}
+		tag := remaining[:tagEnd+1]
+		body := remaining[tagEnd+1:]
+		end := bytes.Index(body, []byte("</script>"))
+		if end < 0 {
+			return nil, errors.New("script body malformed")
+		}
+		if bytes.Contains(tag, []byte(`id="__NEXT_DATA__"`)) || bytes.Contains(tag, []byte(`id='__NEXT_DATA__'`)) {
+			return bytes.TrimSpace(body[:end]), nil
+		}
+		remaining = body[end+len("</script>"):]
+	}
+}
+
+func scalarOrderID(value any) string {
+	switch typed := value.(type) {
+	case string:
+		if numericReference(typed) {
+			return typed
+		}
+	case json.Number:
+		if _, err := typed.Int64(); err == nil && numericReference(typed.String()) {
+			return typed.String()
+		}
+	}
+	return ""
+}
+
+func browserInteger(value any) (int, bool) {
+	switch typed := value.(type) {
+	case json.Number:
+		parsed, err := typed.Int64()
+		return int(parsed), err == nil && parsed == int64(int(parsed))
+	case float64:
+		return int(typed), typed == float64(int(typed))
+	default:
+		return 0, false
+	}
+}
+
+// FetchReceiptResearchMetadata is intentionally outside the typed receipt
+// product adapter. It returns a browser-sanitized key/path report used to
+// decide whether an unstable read contract is safe to adopt.
+func (n *Native) FetchReceiptResearchMetadata(ctx context.Context, samples []ReceiptResearchOrderSample) ([]byte, error) {
+	if len(samples) > 5 {
+		return nil, errors.New("receipt research sample cannot exceed five orders")
+	}
+	allowedStates := map[string]bool{
+		"ordinary": true, "fully_canceled": true, "canceled_units": true,
+		"returned_units": true, "canceled_and_returned_units": true,
+	}
+	for _, sample := range samples {
+		if !numericReference(sample.OrderID) || !allowedStates[sample.State] {
+			return nil, errors.New("receipt research sample contains an invalid order reference")
+		}
+	}
+	return n.fetchReceiptResearchDocument(ctx, func(session receiptResearchDocumentSession) ([]byte, error) {
+		return session.ReadReceiptResearchMetadata(ctx, samples)
+	})
+}
+
+func (n *Native) fetchReceiptResearchDocument(ctx context.Context, read func(receiptResearchDocumentSession) ([]byte, error)) ([]byte, error) {
+	present, err := directoryPresent(n.profileDir)
+	if err != nil {
+		return nil, fmt.Errorf("inspect dedicated browser profile: %w", err)
+	}
+	if !present {
+		return nil, ErrAuthenticationRequired
+	}
+	path, err := n.discover()
+	if err != nil {
+		return nil, err
+	}
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.session == nil {
+		n.session, err = n.sessionFactory(ctx, path, n.profileDir)
+		if err != nil {
+			return nil, err
+		}
+	}
+	invoke := func() ([]byte, error) {
+		session, ok := n.session.(receiptResearchDocumentSession)
+		if !ok {
+			return nil, ErrStructuredReceiptDataMissing
+		}
+		return read(session)
+	}
+	document, err := invoke()
+	if !errors.Is(err, ErrBrowserAccessDenied) || n.headedSessionFactory == nil || n.allowHeadedFallback == nil || !n.allowHeadedFallback() {
+		return document, err
+	}
+	_ = n.session.Close()
+	n.session = nil
+	n.session, err = n.headedSessionFactory(ctx, path, n.profileDir)
+	if err != nil {
+		return nil, err
+	}
+	return invoke()
 }
 
 func (n *Native) fetchReceiptDocument(ctx context.Context, read func(receiptDocumentSession) ([]byte, error)) ([]byte, error) {

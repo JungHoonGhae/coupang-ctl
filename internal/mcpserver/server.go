@@ -46,6 +46,7 @@ type ReceiptProvider interface {
 	Status(context.Context) (core.ReceiptRequestStatusSnapshot, error)
 	History(context.Context, core.ReceiptHistoryRequest) (core.ReceiptHistoryPage, error)
 	Summary(context.Context, core.ReceiptSummaryRequest) (core.ReceiptSummary, error)
+	Vendor(context.Context, core.VendorReceiptRequest) (core.VendorReceiptSnapshot, error)
 }
 
 func New(provider StatusProvider, version string) *mcp.Server {
@@ -157,6 +158,18 @@ func addReceiptTools(server *mcp.Server, provider ReceiptProvider) {
 		result, err := provider.Summary(ctx, input)
 		if err != nil {
 			return nil, core.ReceiptSummary{}, safeReceiptToolError(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "receipts_vendor",
+		Description: "Read the source-native vendor receipt for one hashed source_ref returned by orders_list. Returns private-local payment method, product, and cancellation component fields without exposing the raw order ID. Cancellation components are not labeled as a completed refund settlement, and installment months remain unavailable unless explicitly observed. This performs GET reads only and never creates a receipt.",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.VendorReceiptRequest) (*mcp.CallToolResult, core.VendorReceiptSnapshot, error) {
+		result, err := provider.Vendor(ctx, input)
+		if err != nil {
+			return nil, core.VendorReceiptSnapshot{}, safeReceiptToolError(err)
 		}
 		return nil, result, nil
 	})

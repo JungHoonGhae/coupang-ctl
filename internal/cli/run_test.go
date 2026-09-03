@@ -87,6 +87,10 @@ func (fixedReceiptWorkflow) Download(_ context.Context, request core.ReceiptDown
 	}, nil
 }
 
+func (fixedReceiptWorkflow) Vendor(_ context.Context, request core.VendorReceiptRequest) (core.VendorReceiptSnapshot, error) {
+	return core.VendorReceiptSnapshot{SchemaVersion: 1, Visibility: "private_local", SourceRef: request.SourceRef, VendorCount: 1}, nil
+}
+
 func (fixedAccountWorkflow) Snapshot(_ context.Context, request core.AccountBenefitsRequest) (core.AccountBenefitsSnapshot, error) {
 	return core.AccountBenefitsSnapshot{
 		SchemaVersion: 1,
@@ -215,6 +219,16 @@ func TestReceiptCommandsUseTypedReadsAndPrivateNonOverwritingDownload(t *testing
 	}
 	if err := runReceipts(context.Background(), []string{"download", "--kind", "cash", "--history-index", "0", "--output", path}, io.Discard, fixedReceiptWorkflow{}); err == nil {
 		t.Fatal("receipt download overwrote an existing file")
+	}
+
+	sourceRef := core.OrderSourceReference("synthetic-order")
+	output.Reset()
+	if err := runReceipts(context.Background(), []string{"vendor", "--source-ref", sourceRef, "--max-pages", "7"}, &output, fixedReceiptWorkflow{}); err != nil {
+		t.Fatal(err)
+	}
+	var vendor core.VendorReceiptSnapshot
+	if err := json.Unmarshal(output.Bytes(), &vendor); err != nil || vendor.SourceRef != sourceRef || vendor.VendorCount != 1 {
+		t.Fatalf("unexpected vendor receipt: %#v %v", vendor, err)
 	}
 }
 
@@ -716,6 +730,23 @@ func TestWriteErrorUsesTypedProductSourceFailureWithoutLeakingCause(t *testing.T
 	}
 	if bytes.Contains(output.Bytes(), []byte("sensitive upstream detail")) {
 		t.Fatalf("error output exposed an internal cause: %s", output.Bytes())
+	}
+}
+
+func TestWriteErrorClassifiesMissingVendorReceiptWithoutReference(t *testing.T) {
+	var output bytes.Buffer
+	WriteError(&output, errors.Join(receiptworkflow.ErrSourceUnavailable, core.ErrVendorReceiptNotFound, errors.New("sensitive order reference")))
+	var envelope struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(output.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Error.Code != "vendor_receipt_not_found" || strings.Contains(envelope.Error.Message, "sensitive") {
+		t.Fatalf("unexpected error envelope: %#v", envelope)
 	}
 }
 

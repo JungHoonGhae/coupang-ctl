@@ -34,6 +34,10 @@ func (fixedReceiptProvider) Summary(_ context.Context, request core.ReceiptSumma
 	return core.ReceiptSummary{Visibility: "private_local", Kind: request.Kind, From: request.From, To: request.To, TotalCount: 3, TotalAmountKRW: 42000, Installments: core.ReceiptInstallmentInfo{Status: "unavailable"}}, nil
 }
 
+func (fixedReceiptProvider) Vendor(_ context.Context, request core.VendorReceiptRequest) (core.VendorReceiptSnapshot, error) {
+	return core.VendorReceiptSnapshot{Visibility: "private_local", SourceRef: request.SourceRef, VendorCount: 1, Settlement: core.ReceiptSettlementInfo{Status: "source_components_observed"}}, nil
+}
+
 func (fixedAccountProvider) Snapshot(_ context.Context, request core.AccountBenefitsRequest) (core.AccountBenefitsSnapshot, error) {
 	return core.AccountBenefitsSnapshot{
 		SchemaVersion: 1,
@@ -282,6 +286,22 @@ func TestReceiptToolsUseTypedReadOnlyWorkflow(t *testing.T) {
 	}
 	if got.Visibility != "private_local" || got.TotalCount != 3 || got.Installments.Status != "unavailable" {
 		t.Fatalf("unexpected receipt summary: %#v", got)
+	}
+
+	sourceRef := core.OrderSourceReference("synthetic-order")
+	response, err = clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name: "receipts_vendor", Arguments: map[string]any{"source_ref": sourceRef, "max_pages": 7},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ = json.Marshal(response.StructuredContent)
+	var vendor core.VendorReceiptSnapshot
+	if err := json.Unmarshal(encoded, &vendor); err != nil {
+		t.Fatal(err)
+	}
+	if vendor.Visibility != "private_local" || vendor.SourceRef != sourceRef || vendor.Settlement.Status != "source_components_observed" {
+		t.Fatalf("unexpected vendor receipt tool response: %#v", vendor)
 	}
 }
 

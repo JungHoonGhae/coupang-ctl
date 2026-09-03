@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -89,6 +90,63 @@ type downloadDocument struct {
 	ContentType string `json:"content_type"`
 	Bytes       int    `json:"bytes"`
 	Base64      string `json:"base64"`
+}
+
+type vendorDocument struct {
+	Found        bool                   `json:"found"`
+	SourceRef    string                 `json:"source_ref"`
+	PagesScanned int                    `json:"pages_scanned"`
+	Vendors      []vendorReceiptPayload `json:"vendors"`
+}
+
+type vendorReceiptPayload struct {
+	MainPayType                      string                 `json:"mainPayType"`
+	MainPayTypeName                  string                 `json:"mainPayTypeName"`
+	MainPayTypeDescription           string                 `json:"mainPayTypeDescription"`
+	MainPayTypePrice                 int64                  `json:"mainPayTypePrice"`
+	MainPayedByMobile                bool                   `json:"mainPayedByMobile"`
+	PayedWithCoupangCash             bool                   `json:"payedWithCoupangCash"`
+	NeedToDisplayReceipt             bool                   `json:"needToDisplayReceipt"`
+	NeedToDisplayCashableCashReceipt bool                   `json:"needToDisplayCashableCashReceipt"`
+	TotalProductPrice                int64                  `json:"totalProductPrice"`
+	TotalDeliveryFee                 int64                  `json:"totalDeliveryFee"`
+	TotalIssuedPrice                 int64                  `json:"totalIssuedPrice"`
+	TotalGiftWrappingPrice           int64                  `json:"totalGiftWrappingPrice"`
+	TotalOverseasProductPrice        int64                  `json:"totalOverseasProductPrice"`
+	OverseasDeliveryFee              int64                  `json:"overSeasDeliveryFee"`
+	RepresentedVendorName            string                 `json:"representedVendorName"`
+	PaymentDetails                   paymentDetailsPayload  `json:"paymentDetails"`
+	ProductList                      []vendorProductPayload `json:"productList"`
+}
+
+type vendorProductPayload struct {
+	VendorItemID          int64                 `json:"vendorItemId"`
+	VendorItemName        string                `json:"vendorItemName"`
+	Quantity              int                   `json:"quantity"`
+	CanceledQuantity      int                   `json:"canceledQuantity"`
+	CancelHoldingQuantity int                   `json:"cancelHoldingQuantity"`
+	UnitPrice             int64                 `json:"unitPrice"`
+	CombinedUnitPrice     int64                 `json:"combinedUnitPrice"`
+	PaymentDetails        paymentDetailsPayload `json:"productPaymentDetails"`
+}
+
+type paymentDetailsPayload struct {
+	OriginalPaymentPrice                 int64                  `json:"originalPaymentPrice"`
+	OriginalPaymentCancelPrice           int64                  `json:"originalPaymentCancelPrice"`
+	CoupangCashPrice                     int64                  `json:"coupangCashPrice"`
+	CoupangCashCancelPrice               int64                  `json:"coupangCashCancelPrice"`
+	CashableCoupangCashPrice             int64                  `json:"cashableCoupangCashPrice"`
+	CashableCoupangCashCancelPrice       int64                  `json:"cashableCoupangCashCancelPrice"`
+	DiscountCouponPrice                  int64                  `json:"discountCouponPrice"`
+	DiscountCouponCancelPrice            int64                  `json:"discountCouponCancelPrice"`
+	CreditCardInstantDiscountPrice       int64                  `json:"creditCardInstantDiscountPrice"`
+	CreditCardInstantDiscountCancelPrice int64                  `json:"creditCardInstantDiscountCancelPrice"`
+	InstantDiscount                      instantDiscountPayload `json:"instantDiscount"`
+}
+
+type instantDiscountPayload struct {
+	DiscountAmount int64  `json:"discountAmount"`
+	DiscountType   string `json:"discountType"`
 }
 
 func ParseStatusDocument(document []byte) (core.ReceiptRequestStatusSnapshot, error) {
@@ -197,6 +255,79 @@ func ParseDownloadDocument(document []byte) (receiptworkflow.Download, error) {
 		Metadata: core.ReceiptDownloadMetadata{Filename: filename, ContentType: contentType, Bytes: len(content)},
 		Content:  content,
 	}, nil
+}
+
+func ParseVendorDocument(document []byte, request core.VendorReceiptRequest) (core.VendorReceiptSnapshot, error) {
+	var raw vendorDocument
+	if decode(document, &raw) != nil || raw.SourceRef != request.SourceRef || raw.PagesScanned < 1 || raw.PagesScanned > 1000 || len(raw.Vendors) > 200 {
+		return core.VendorReceiptSnapshot{}, ErrReceiptDataMissing
+	}
+	if !raw.Found {
+		return core.VendorReceiptSnapshot{}, core.ErrVendorReceiptNotFound
+	}
+	result := core.VendorReceiptSnapshot{
+		SourceRef: request.SourceRef, PagesScanned: raw.PagesScanned,
+		Vendors: make([]core.VendorReceiptVendor, 0, len(raw.Vendors)),
+	}
+	for vendorIndex, vendor := range raw.Vendors {
+		if len(vendor.ProductList) > 1000 || !validVendorAmounts(vendor) || !validPaymentDetails(vendor.PaymentDetails) {
+			return core.VendorReceiptSnapshot{}, ErrReceiptDataMissing
+		}
+		normalized := core.VendorReceiptVendor{
+			VendorIndex: vendorIndex, VendorName: cleanText(vendor.RepresentedVendorName, 200),
+			MainPaymentType: cleanText(vendor.MainPayType, 80), MainPaymentTypeName: cleanText(vendor.MainPayTypeName, 120),
+			MainPaymentTypeDescription: cleanText(vendor.MainPayTypeDescription, 200), MainPaymentAmountKRW: vendor.MainPayTypePrice,
+			PaidByMobile: vendor.MainPayedByMobile, PaidWithCoupangCash: vendor.PayedWithCoupangCash,
+			ReceiptDisplayAvailable: vendor.NeedToDisplayReceipt, CashableCashReceiptDisplayAvailable: vendor.NeedToDisplayCashableCashReceipt,
+			ProductAmountKRW: vendor.TotalProductPrice, DeliveryFeeKRW: vendor.TotalDeliveryFee, IssuedAmountKRW: vendor.TotalIssuedPrice,
+			GiftWrappingAmountKRW: vendor.TotalGiftWrappingPrice, OverseasProductAmountKRW: vendor.TotalOverseasProductPrice,
+			OverseasDeliveryFeeKRW: vendor.OverseasDeliveryFee, Payment: normalizePaymentDetails(vendor.PaymentDetails),
+			Products: make([]core.VendorReceiptProduct, 0, len(vendor.ProductList)),
+		}
+		for productIndex, product := range vendor.ProductList {
+			if product.Quantity < 0 || product.CanceledQuantity < 0 || product.CancelHoldingQuantity < 0 || product.UnitPrice < 0 || product.CombinedUnitPrice < 0 || !validPaymentDetails(product.PaymentDetails) {
+				return core.VendorReceiptSnapshot{}, ErrReceiptDataMissing
+			}
+			vendorItemID := ""
+			if product.VendorItemID > 0 {
+				vendorItemID = strconv.FormatInt(product.VendorItemID, 10)
+			}
+			normalized.Products = append(normalized.Products, core.VendorReceiptProduct{
+				ProductIndex: productIndex, Name: cleanText(product.VendorItemName, 300), VendorItemID: vendorItemID,
+				Quantity: product.Quantity, CanceledQuantity: product.CanceledQuantity, CancelHoldingQuantity: product.CancelHoldingQuantity,
+				UnitPriceKRW: product.UnitPrice, CombinedUnitPriceKRW: product.CombinedUnitPrice,
+				Payment: normalizePaymentDetails(product.PaymentDetails),
+			})
+		}
+		result.Vendors = append(result.Vendors, normalized)
+	}
+	result.VendorCount = len(result.Vendors)
+	return result, nil
+}
+
+func validVendorAmounts(value vendorReceiptPayload) bool {
+	return value.MainPayTypePrice >= 0 && value.TotalProductPrice >= 0 && value.TotalDeliveryFee >= 0 && value.TotalIssuedPrice >= 0 &&
+		value.TotalGiftWrappingPrice >= 0 && value.TotalOverseasProductPrice >= 0 && value.OverseasDeliveryFee >= 0
+}
+
+func validPaymentDetails(value paymentDetailsPayload) bool {
+	return value.OriginalPaymentPrice >= 0 && value.OriginalPaymentCancelPrice >= 0 &&
+		value.CoupangCashPrice >= 0 && value.CoupangCashCancelPrice >= 0 &&
+		value.CashableCoupangCashPrice >= 0 && value.CashableCoupangCashCancelPrice >= 0 &&
+		value.DiscountCouponPrice >= 0 && value.DiscountCouponCancelPrice >= 0 &&
+		value.CreditCardInstantDiscountPrice >= 0 && value.CreditCardInstantDiscountCancelPrice >= 0 &&
+		value.InstantDiscount.DiscountAmount >= 0
+}
+
+func normalizePaymentDetails(value paymentDetailsPayload) core.ReceiptPaymentBreakdown {
+	return core.ReceiptPaymentBreakdown{
+		OriginalPaymentAmountKRW: value.OriginalPaymentPrice, OriginalPaymentCanceledAmountKRW: value.OriginalPaymentCancelPrice,
+		CoupangCashAmountKRW: value.CoupangCashPrice, CoupangCashCanceledAmountKRW: value.CoupangCashCancelPrice,
+		CashableCoupangCashAmountKRW: value.CashableCoupangCashPrice, CashableCoupangCashCanceledAmountKRW: value.CashableCoupangCashCancelPrice,
+		CouponDiscountAmountKRW: value.DiscountCouponPrice, CouponDiscountCanceledAmountKRW: value.DiscountCouponCancelPrice,
+		CardInstantDiscountAmountKRW: value.CreditCardInstantDiscountPrice, CardInstantDiscountCanceledAmountKRW: value.CreditCardInstantDiscountCancelPrice,
+		InstantDiscountAmountKRW: value.InstantDiscount.DiscountAmount, InstantDiscountType: cleanText(value.InstantDiscount.DiscountType, 80),
+	}
 }
 
 func decode(document []byte, target any) error {

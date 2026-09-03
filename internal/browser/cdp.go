@@ -332,6 +332,256 @@ func (s *chromeSession) ReadReceiptStatusDocument(ctx context.Context) ([]byte, 
 	})()`)
 }
 
+func (s *chromeSession) ReadReceiptResearchMetadata(ctx context.Context, samples []ReceiptResearchOrderSample) ([]byte, error) {
+	encodedSamples, err := json.Marshal(samples)
+	if err != nil {
+		return nil, ErrStructuredReceiptDataMissing
+	}
+	expression := `(async () => {
+		const orderSamples = ` + string(encodedSamples) + `;
+		const jsonType = (value) => value === null ? 'null'
+			: Array.isArray(value) ? 'array'
+			: typeof value === 'object' ? 'object'
+			: typeof value === 'number' ? 'number'
+			: typeof value === 'boolean' ? 'boolean'
+			: typeof value === 'string' ? 'string' : 'unknown';
+		const describeShape = (value, depth) => {
+			if (depth <= 0) return jsonType(value);
+			if (Array.isArray(value)) return {
+				type: 'array',
+				length: value.length,
+				...(value.length > 0 ? { item: describeShape(value[0], depth - 1) } : {}),
+			};
+			if (!value || typeof value !== 'object') return jsonType(value);
+			return Object.fromEntries(Object.keys(value).sort().map((key) => [key, describeShape(value[key], depth - 1)]));
+		};
+		const candidateKey = (key) => /vendor|receipt|statement|installment|transaction|invoice|tax/i.test(key);
+		const evidenceKey = (key) => /amount|count|date|fee|method|month|number|path|status|total|type|url/i.test(key);
+		const paths = new Map();
+		const record = (path, value) => {
+			const type = jsonType(value);
+			const existing = paths.get(path) ?? { path, json_types: new Set(), occurrences: 0, non_empty: 0 };
+			existing.json_types.add(type);
+			existing.occurrences += 1;
+			if ((Array.isArray(value) && value.length > 0) ||
+				(value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0) ||
+				(typeof value === 'string' && value.trim() !== '') ||
+				(typeof value === 'number' && value !== 0) || value === true) existing.non_empty += 1;
+			paths.set(path, existing);
+		};
+		const walk = (value, path, withinCandidate, recordCurrent, depth) => {
+			if (depth > 14) return;
+			if (recordCurrent) record(path, value);
+			if (Array.isArray(value)) {
+				for (const item of value) walk(item, path + '[]', withinCandidate, false, depth + 1);
+				return;
+			}
+			if (!value || typeof value !== 'object') return;
+			for (const key of Object.keys(value).sort()) {
+				const keyIsCandidate = candidateKey(key);
+				walk(value[key], path + '.' + key, withinCandidate || keyIsCandidate,
+					keyIsCandidate || (withinCandidate && evidenceKey(key)), depth + 1);
+			}
+		};
+		let domain = null;
+		try {
+			domain = JSON.parse(document.getElementById('__NEXT_DATA__')?.textContent ?? 'null')
+				?.props?.pageProps?.domains?.paymentReceipt ?? null;
+		} catch {}
+		walk(domain, 'paymentReceipt', false, false, 0);
+
+		const controlKinds = {};
+		for (const element of document.querySelectorAll('a,button,[role="tab"],[role="button"]')) {
+			const text = (element.textContent ?? '').replace(/\s+/g, ' ').trim();
+			const kind = /거래명세/.test(text) ? 'vendor_statement'
+				: /현금.*영수증/.test(text) ? 'cash_receipt'
+				: /카드.*(전표|영수증)/.test(text) ? 'card_receipt'
+				: /할부/.test(text) ? 'installment'
+				: /조회|검색/.test(text) ? 'query'
+				: /신청|요청|발급/.test(text) ? 'request'
+				: null;
+			if (kind) controlKinds[kind] = (controlKinds[kind] ?? 0) + 1;
+		}
+
+		const endpointPaths = new Set();
+		const tokenFlags = { vendor_receipt: false, installment: false, transaction_statement: false };
+		const staticIdentifiers = { vendor_receipt: new Set(), installment: new Set(), transaction_statement: new Set() };
+		const vendorEndpointHints = new Map();
+		const inspectSource = (source) => {
+			if (typeof source !== 'string' || source.length === 0) return;
+			for (const match of source.matchAll(/\/(?:ssr\/api\/)?payment-receipt(?:\/[A-Za-z0-9_.-]+)*/g)) {
+				const endpointPath = match[0];
+				endpointPaths.add(endpointPath);
+				if (/vendor-receipts/i.test(endpointPath)) {
+					const offset = match.index ?? 0;
+					const nearby = source.slice(Math.max(0, offset - 1500), Math.min(source.length, offset + endpointPath.length + 1500));
+					const hint = vendorEndpointHints.get(endpointPath) ?? { path: endpointPath, nearby_methods: new Set(), method_distances: new Map(), nearby_query_names: new Set(), nearby_keys: new Set(), call_shapes: new Set() };
+					const endpointOffset = Math.min(1500, offset);
+					const callShape = nearby.slice(Math.max(0, endpointOffset - 180), Math.min(nearby.length, endpointOffset + endpointPath.length + 220))
+						.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '<string>')
+						.replace(/\b(?:0x[0-9a-f]+|\d+(?:\.\d+)?(?:e[+-]?\d+)?)\b/gi, '<number>')
+						.replace(/\s+/g, ' ').slice(0, 500);
+					if (callShape) hint.call_shapes.add(callShape);
+					for (const methodMatch of nearby.matchAll(/['"](GET|POST|PUT|PATCH|DELETE)['"]/gi)) {
+						const method = methodMatch[1].toUpperCase();
+						hint.nearby_methods.add(method);
+						const distance = Math.abs((methodMatch.index ?? 0) - endpointOffset);
+						hint.method_distances.set(method, Math.min(hint.method_distances.get(method) ?? Number.MAX_SAFE_INTEGER, distance));
+					}
+					for (const methodMatch of nearby.matchAll(/\.(get|post|put|patch|delete)\s*\(/gi)) {
+						const method = methodMatch[1].toUpperCase();
+						hint.nearby_methods.add(method);
+						const distance = Math.abs((methodMatch.index ?? 0) - endpointOffset);
+						hint.method_distances.set(method, Math.min(hint.method_distances.get(method) ?? Number.MAX_SAFE_INTEGER, distance));
+					}
+					for (const queryMatch of nearby.matchAll(/(?:searchParams\.)?(?:set|append)\(\s*['"]([A-Za-z][A-Za-z0-9_-]{0,60})['"]/g)) {
+						hint.nearby_query_names.add(queryMatch[1]);
+					}
+					for (const keyMatch of nearby.matchAll(/(?:^|[,{}])\s*([A-Za-z_$][A-Za-z0-9_$]{0,60})\s*:/g)) {
+						hint.nearby_keys.add(keyMatch[1]);
+						if (hint.nearby_keys.size >= 100) break;
+					}
+					vendorEndpointHints.set(endpointPath, hint);
+				}
+				if (endpointPaths.size >= 100) break;
+			}
+			tokenFlags.vendor_receipt ||= /vendorReceipt|vendor-receipt/i.test(source);
+			tokenFlags.installment ||= /installment|할부/i.test(source);
+			tokenFlags.transaction_statement ||= /transactionStatement|거래명세/i.test(source);
+			for (const match of source.matchAll(/[A-Za-z_$][A-Za-z0-9_$]*(?:vendorReceipt|VendorReceipt|vendor_receipt)[A-Za-z0-9_$]*/g)) {
+				staticIdentifiers.vendor_receipt.add(match[0]);
+				if (staticIdentifiers.vendor_receipt.size >= 50) break;
+			}
+			for (const match of source.matchAll(/[A-Za-z_$][A-Za-z0-9_$]*(?:installment|Installment)[A-Za-z0-9_$]*/g)) {
+				staticIdentifiers.installment.add(match[0]);
+				if (staticIdentifiers.installment.size >= 50) break;
+			}
+			for (const match of source.matchAll(/[A-Za-z_$][A-Za-z0-9_$]*(?:transactionStatement|TransactionStatement)[A-Za-z0-9_$]*/g)) {
+				staticIdentifiers.transaction_statement.add(match[0]);
+				if (staticIdentifiers.transaction_statement.size >= 50) break;
+			}
+		};
+		const scripts = [...document.scripts];
+		for (const script of scripts) {
+			if (!script.src) inspectSource(script.textContent ?? '');
+		}
+		const scriptURLs = [...new Set(scripts.map((script) => script.src).filter(Boolean))]
+			.filter((raw) => {
+				try {
+					const target = new URL(raw, location.href);
+					return target.protocol === 'https:' && (target.origin === location.origin || target.hostname.endsWith('.coupangcdn.com'));
+				} catch { return false; }
+			}).slice(0, 24);
+		const sources = await Promise.all(scriptURLs.map(async (raw) => {
+			try {
+				const response = await fetch(raw, { credentials: 'omit', cache: 'force-cache' });
+				if (!response.ok) return '';
+				const length = Number(response.headers.get('content-length') ?? '0');
+				if (Number.isFinite(length) && length > 4_000_000) return '';
+				return (await response.text()).slice(0, 4_000_000);
+			} catch { return ''; }
+		}));
+		for (const source of sources) inspectSource(source);
+
+		const numericEvidence = (payload) => {
+			const result = new Map();
+			const walk = (value, path, depth) => {
+				if (depth > 12) return;
+				if (Array.isArray(value)) {
+					for (const item of value) walk(item, path + '[]', depth + 1);
+					return;
+				}
+				if (!value || typeof value !== 'object') return;
+				for (const [key, child] of Object.entries(value)) {
+					const childPath = path + '.' + key;
+					if (typeof child === 'number' && /amount|cancel|fee|price|quantity|total/i.test(key)) {
+						const current = result.get(childPath) ?? { path: childPath, occurrences: 0, negative: 0, zero: 0, positive: 0 };
+						current.occurrences += 1;
+						if (child < 0) current.negative += 1;
+						else if (child > 0) current.positive += 1;
+						else current.zero += 1;
+						result.set(childPath, current);
+					}
+					walk(child, childPath, depth + 1);
+				}
+			};
+			walk(payload, 'vendorReceipt', 0);
+			return [...result.values()].sort((a, b) => a.path.localeCompare(b.path));
+		};
+		const readVendorShape = async (sample) => {
+			const vendorTarget = new URL('/ssr/api/payment-receipt/vendor-receipts/' + encodeURIComponent(sample.order_id), location.origin);
+			const result = {
+				sample_state: sample.state,
+				method: 'GET',
+				origin: vendorTarget.origin,
+				path: '/ssr/api/payment-receipt/vendor-receipts/<redacted>',
+				query_names: [],
+				status: 0,
+				shape: null,
+				numeric_evidence: [],
+			};
+			try {
+				const response = await fetch(vendorTarget, { credentials: 'include', cache: 'no-store' });
+				result.status = response.status;
+				const finalTarget = new URL(response.url || vendorTarget.href);
+				if (finalTarget.origin === location.origin && finalTarget.pathname === vendorTarget.pathname &&
+					(response.headers.get('content-type') ?? '').includes('json')) {
+					const payload = await response.json();
+					result.shape = describeShape(payload, 8);
+					result.numeric_evidence = numericEvidence(payload);
+				}
+			} catch {}
+			return result;
+		};
+		const vendorOrderProbe = { order_samples: orderSamples.length, state_counts: {}, reads: [] };
+		for (const sample of orderSamples) {
+			vendorOrderProbe.state_counts[sample.state] = (vendorOrderProbe.state_counts[sample.state] ?? 0) + 1;
+			vendorOrderProbe.reads.push(await readVendorShape(sample));
+		}
+
+		return JSON.stringify({
+			schema_version: 1,
+			operation: 'read_only_get_metadata',
+			domain_present: domain !== null,
+			domain_keys: domain && typeof domain === 'object' ? Object.keys(domain).sort() : [],
+			form_shape: describeShape(domain?.form ?? null, 4),
+			candidate_paths: [...paths.values()].map((item) => ({
+				path: item.path,
+				json_types: [...item.json_types].sort(),
+				occurrences: item.occurrences,
+				non_empty: item.non_empty,
+			})).sort((a, b) => a.path.localeCompare(b.path)),
+			control_kinds: controlKinds,
+			endpoint_paths: [...endpointPaths].sort(),
+			static_token_flags: tokenFlags,
+			static_identifiers: {
+				vendor_receipt: [...staticIdentifiers.vendor_receipt].sort(),
+				installment: [...staticIdentifiers.installment].sort(),
+				transaction_statement: [...staticIdentifiers.transaction_statement].sort(),
+			},
+			vendor_endpoint_hints: [...vendorEndpointHints.values()].map((hint) => ({
+				path: hint.path,
+				nearby_methods: [...hint.nearby_methods].sort(),
+				method_distances: Object.fromEntries([...hint.method_distances.entries()].sort((a, b) => a[0].localeCompare(b[0]))),
+				nearby_query_names: [...hint.nearby_query_names].sort(),
+				nearby_keys: [...hint.nearby_keys].sort(),
+				call_shapes: [...hint.call_shapes].sort().slice(0, 3),
+			})).sort((a, b) => a.path.localeCompare(b.path)),
+			vendor_order_probe: vendorOrderProbe,
+			script_targets: scriptURLs.map((raw) => {
+				const target = new URL(raw, location.href);
+				return { origin: target.origin, path: target.pathname };
+			}).sort((a, b) => (a.origin + a.path).localeCompare(b.origin + b.path)),
+			script_count_scanned: sources.filter((source) => source.length > 0).length,
+			limitations: [
+				'Key paths and static tokens do not prove endpoint semantics.',
+				'No page-state value, receipt row, card identifier, cookie, or raw script is returned.'
+			],
+		});
+	})()`
+	return s.readReceiptPage(ctx, expression)
+}
+
 func (s *chromeSession) ReadReceiptHistoryDocument(ctx context.Context, request core.ReceiptHistoryRequest) ([]byte, error) {
 	if err := request.Validate(); err != nil {
 		return nil, ErrStructuredReceiptDataMissing
@@ -450,6 +700,35 @@ func (s *chromeSession) ReadReceiptDownloadDocument(ctx context.Context, request
 			base64: btoa(binary),
 		});
 	})()`, string(encoded), maxReceiptDownloadBytes)
+	return s.readReceiptPage(ctx, expression)
+}
+
+func (s *chromeSession) ReadVendorReceiptDocument(ctx context.Context, orderID, sourceRef string, pagesScanned int) ([]byte, error) {
+	if !numericURLValue(orderID) || len(sourceRef) != 64 || pagesScanned < 1 || pagesScanned > 1000 {
+		return nil, ErrStructuredReceiptDataMissing
+	}
+	encoded, err := json.Marshal(struct {
+		OrderID      string `json:"order_id"`
+		SourceRef    string `json:"source_ref"`
+		PagesScanned int    `json:"pages_scanned"`
+	}{OrderID: orderID, SourceRef: sourceRef, PagesScanned: pagesScanned})
+	if err != nil {
+		return nil, ErrStructuredReceiptDataMissing
+	}
+	expression := `(async () => {
+		const request = ` + string(encoded) + `;
+		const target = new URL('/ssr/api/payment-receipt/vendor-receipts/' + encodeURIComponent(request.order_id), location.origin);
+		const response = await fetch(target, { credentials: 'include', cache: 'no-store' });
+		if (!response.ok) throw new Error('vendor receipt unavailable');
+		const vendors = await response.json();
+		if (!Array.isArray(vendors) || vendors.length > 200) throw new Error('vendor receipt shape unavailable');
+		return JSON.stringify({
+			found: true,
+			source_ref: request.source_ref,
+			pages_scanned: request.pages_scanned,
+			vendors,
+		});
+	})()`
 	return s.readReceiptPage(ctx, expression)
 }
 

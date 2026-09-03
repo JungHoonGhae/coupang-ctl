@@ -3,6 +3,7 @@ package receipts_test
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -28,6 +29,85 @@ func TestReceiptParsersDiscardIdentifiersAndDownloadURLs(t *testing.T) {
 	}
 	if strings.Contains(strings.ToLower(strings.TrimSpace(history.Items[0].Status)), "https") {
 		t.Fatal("download URL leaked into typed history")
+	}
+}
+
+func TestParseVendorDocumentPreservesObservedPaymentComponents(t *testing.T) {
+	sourceRef := core.OrderSourceReference("synthetic-order")
+	document := []byte(`{
+  "found": true,
+  "source_ref": "` + sourceRef + `",
+  "pages_scanned": 2,
+  "vendors": [{
+    "mainPayType": "SYNTHETIC_CARD",
+    "mainPayTypeName": "Synthetic card",
+    "mainPayTypeDescription": "Synthetic description",
+    "mainPayTypePrice": 12000,
+    "mainPayedByMobile": true,
+    "payedWithCoupangCash": true,
+    "needToDisplayReceipt": true,
+    "needToDisplayCashableCashReceipt": false,
+    "representedVendorName": "Synthetic vendor",
+    "totalProductPrice": 15000,
+    "totalDeliveryFee": 0,
+    "totalIssuedPrice": 12000,
+    "paymentDetails": {
+      "originalPaymentPrice": 12000,
+      "originalPaymentCancelPrice": 3000,
+      "coupangCashPrice": 1000,
+      "coupangCashCancelPrice": 500,
+      "cashableCoupangCashPrice": 200,
+      "cashableCoupangCashCancelPrice": 0,
+      "discountCouponPrice": 3000,
+      "discountCouponCancelPrice": 1000,
+      "creditCardInstantDiscountPrice": 500,
+      "creditCardInstantDiscountCancelPrice": 100,
+      "instantDiscount": {"discountAmount": 250, "discountType": "SYNTHETIC"}
+    },
+    "productList": [{
+      "vendorItemId": 123,
+      "vendorItemName": "Synthetic product",
+      "quantity": 2,
+      "canceledQuantity": 1,
+      "cancelHoldingQuantity": 0,
+      "unitPrice": 7500,
+      "combinedUnitPrice": 7500,
+      "productPaymentDetails": {
+        "originalPaymentPrice": 6000,
+        "originalPaymentCancelPrice": 3000
+      }
+    }]
+  }]
+}`)
+
+	got, err := receiptparser.ParseVendorDocument(document, core.VendorReceiptRequest{SourceRef: sourceRef, MaxPages: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SourceRef != sourceRef || got.PagesScanned != 2 || got.VendorCount != 1 || len(got.Vendors) != 1 {
+		t.Fatalf("unexpected vendor receipt envelope: %#v", got)
+	}
+	vendor := got.Vendors[0]
+	if vendor.MainPaymentTypeName != "Synthetic card" || vendor.Payment.OriginalPaymentCanceledAmountKRW != 3000 || vendor.Payment.CouponDiscountCanceledAmountKRW != 1000 || len(vendor.Products) != 1 {
+		t.Fatalf("unexpected vendor payment evidence: %#v", vendor)
+	}
+	if vendor.Products[0].VendorItemID != "123" || vendor.Products[0].CanceledQuantity != 1 || vendor.Products[0].Payment.OriginalPaymentCanceledAmountKRW != 3000 {
+		t.Fatalf("unexpected product payment evidence: %#v", vendor.Products[0])
+	}
+	if vendor.Payment.OriginalPaymentAmountKRW-vendor.Payment.OriginalPaymentCanceledAmountKRW != 9000 {
+		t.Fatal("test fixture arithmetic is inconsistent")
+	}
+}
+
+func TestParseVendorDocumentRequiresMatchingSafeReference(t *testing.T) {
+	sourceRef := core.OrderSourceReference("synthetic-order")
+	_, err := receiptparser.ParseVendorDocument([]byte(`{"found":false,"source_ref":"`+sourceRef+`","pages_scanned":1,"vendors":[]}`), core.VendorReceiptRequest{SourceRef: sourceRef})
+	if !errors.Is(err, core.ErrVendorReceiptNotFound) {
+		t.Fatalf("missing vendor receipt error = %v", err)
+	}
+	_, err = receiptparser.ParseVendorDocument([]byte(`{"found":true,"source_ref":"`+core.OrderSourceReference("other")+`","pages_scanned":1,"vendors":[]}`), core.VendorReceiptRequest{SourceRef: sourceRef})
+	if err == nil {
+		t.Fatal("mismatched source reference accepted")
 	}
 }
 

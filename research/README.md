@@ -50,12 +50,24 @@ The probes default to `http://127.0.0.1:9223`. Override with `COUPANG_CDP_URL` w
   shapes, and normalized control kinds. Before opening request history it
   installs a route-level POST block, so a dry run cannot submit a receipt job;
   body values are never emitted even if a blocked request is observed.
+- `receipt-contract-metadata/`: uses the product's installed-Chrome session to
+  read only payment-receipt page key paths, control kinds, and same-origin
+  static endpoint paths. It performs no click, POST, request creation, or
+  download; `--headed` forces a visible Chrome verification.
 - `account-benefits-probe.ts`: uses the persisted authenticated session to
   discover WOW membership, payment-method, card, cash, and benefit surfaces.
   It emits only URL shapes, response shapes, and boolean DOM signals; cookie
   values, card identifiers, account text, and response bodies are discarded.
 - `order-shape/`: prints only order response keys/types, array lengths, and
   sanitized normalization status.
+- `order-refund-metadata/`: scans bounded authenticated order pages for
+  refund/cancellation/return/exchange/settlement key paths and emits only JSON
+  types, aggregate presence, sign/emptiness metadata, and coarse order-state
+  co-occurrence. It never emits source values, identifiers, dates, product
+  text, cursors, or raw payloads. Use `--headed` only for a visible installed
+  Chrome verification when headless-first access is rejected.
+  Cross-page reads are deliberately paced; `--page-delay` is bounded between
+  zero and ten seconds.
 - `pagination-sequence/`: prints pagination cursors only.
 
 ## Credential injection

@@ -118,11 +118,12 @@ type receiptWorkflow interface {
 	History(context.Context, core.ReceiptHistoryRequest) (core.ReceiptHistoryPage, error)
 	Summary(context.Context, core.ReceiptSummaryRequest) (core.ReceiptSummary, error)
 	Download(context.Context, core.ReceiptDownloadRequest) (receiptworkflow.Download, error)
+	Vendor(context.Context, core.VendorReceiptRequest) (core.VendorReceiptSnapshot, error)
 }
 
 func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow receiptWorkflow) error {
 	if len(args) == 0 {
-		return errors.New("usage: coupangctl receipts <status|list|summary|download>")
+		return errors.New("usage: coupangctl receipts <status|list|summary|vendor|download>")
 	}
 	switch args[0] {
 	case "status":
@@ -193,8 +194,22 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		}
 		download.Metadata.OutputPath = outputPath
 		return writeJSON(stdout, download.Metadata)
+	case "vendor":
+		flags := newFlagSet("receipts vendor")
+		sourceRef := flags.String("source-ref", "", "hashed source_ref returned by orders list")
+		maxPages := flags.Int("max-pages", 1000, "maximum order pages searched in memory")
+		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		const commandUsage = "usage: coupangctl receipts vendor --source-ref HASH [--max-pages N] [--headed]"
+		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *sourceRef == "" {
+			return errors.New(commandUsage)
+		}
+		result, err := workflow.Vendor(ctx, core.VendorReceiptRequest{SourceRef: *sourceRef, MaxPages: *maxPages})
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
 	default:
-		return errors.New("usage: coupangctl receipts <status|list|summary|download>")
+		return errors.New("usage: coupangctl receipts <status|list|summary|vendor|download>")
 	}
 }
 
@@ -862,6 +877,9 @@ func WriteError(w io.Writer, err error) {
 	case errors.Is(err, browser.ErrStructuredReceiptDataMissing), errors.Is(err, coupangreceipts.ErrReceiptDataMissing):
 		code = "structured_receipt_data_missing"
 		message = "the authenticated receipt read endpoint did not expose the expected structure"
+	case errors.Is(err, core.ErrVendorReceiptNotFound):
+		code = "vendor_receipt_not_found"
+		message = "the hashed order reference was not found within the requested page bound"
 	case errors.Is(err, receiptworkflow.ErrSourceUnavailable):
 		code = "receipt_source_unavailable"
 		message = "the authenticated receipt source was temporarily unavailable"

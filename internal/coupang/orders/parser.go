@@ -2,8 +2,6 @@ package orders
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -123,7 +121,7 @@ func normalizeOrder(raw map[string]any) (core.Order, error) {
 		currency = "KRW"
 	}
 	return core.Order{
-		SourceRef:        sourceReference(sourceID),
+		SourceRef:        core.OrderSourceReference(sourceID),
 		PurchasedAt:      date,
 		PurchasedAtTime:  purchasedAtTime,
 		TotalAmount:      total,
@@ -452,9 +450,4 @@ func normalizeDeliveryStatus(value string) string {
 	default:
 		return "other"
 	}
-}
-
-func sourceReference(sourceID string) string {
-	digest := sha256.Sum256([]byte("coupangctl:order:" + sourceID))
-	return hex.EncodeToString(digest[:])
 }

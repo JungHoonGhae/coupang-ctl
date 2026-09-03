@@ -18,6 +18,7 @@ being listed as `researched` does not make it a supported product API.
 | P1 | `GET https://mc.coupang.com/ssr/api/payment-receipt/{cash,card}/request-status` | none observed | `{success:boolean,message:string,data:boolean}` | required | read | experimental behind the receipt adapter |
 | P1 | `GET https://mc.coupang.com/ssr/api/payment-receipt/{cash,card}/download-request-histories` | `pageIndex`, `size` | paged request rows with date range, count, amount, status, and a bounded download list | required | read | experimental; URLs are consumed only in browser memory and discarded |
 | P1 | `GET https://mc.coupang.com/ssr/api/payment-receipt/{cash,card}/receipt-summary` | `from`, `to`; card reads also use `cardId`, `cardNumber`, `displayCardName` | date range, total count/amount, and card-list shape | required | read | experimental; identifiers/numbers are discarded before typed output |
+| P1 | `GET https://mc.coupang.com/ssr/api/payment-receipt/vendor-receipts/<orderId>` | none | array of vendor payment type, issued/product/delivery totals, payment and cancellation components, and product lines | required | read | adopted; raw order ID is resolved from a hashed `source_ref` in browser memory and never returned |
 | P1 | completed receipt artifact URL from one history row | none added by the client | bounded PDF, HTML, PNG, JPEG, or octet-stream document | required | read | experimental CLI-only save to a new private file; source/final hosts are allowlisted |
 | P1 | `POST https://mc.coupang.com/ssr/api/payment-receipt/{cash,card}/request-download-receipt` | request body contains a period and card selection where applicable | creates an asynchronous receipt archive request | required | external write | known but intentionally excluded from the product |
 | P1 | `GET https://www.coupang.com/vp/products/<id>` | optional `vendorItemId` | HTML with JSON-LD `BreadcrumbList`; category nodes contain `position:number`, `name:string`, and `item:https://www.coupang.com/np/categories/<id>` | session restored when available | read | experimental behind the product-category adapter |
@@ -36,12 +37,25 @@ being listed as `researched` does not make it a supported product API.
   HTTP replay is not the supported path.
 - The response parser accepts integral JSON numbers written either as `25900`
   or `25900.0`, but rejects fractional KRW values.
+- A bounded headed order-model metadata sample observed a cancellation bundle
+  with explicit canceled quantities, status, and item-price fields. Those
+  fields do not prove the settled refund after discounts, points, shipping,
+  fees, or later adjustments. Import-tax refund fields were also present but
+  null and remain scoped to import-tax over-collection. Exact post-refund net
+  spend therefore remains unadopted; see
+  [`refund-settlement-evidence.md`](refund-settlement-evidence.md).
 - Receipt state exposes separate cash, credit-card, and vendor domains plus
   download-history pagination. Status, cash/card history, and cash/card summary
   GETs are adopted. A completed history artifact is a bounded read; archive
   request creation is an external write and remains excluded. The credit-card
   summary exposes selected card metadata, period, amount, and count but no
   installment-month field, so installments remain explicitly unavailable.
+- Static bundle metadata placed `GET` six characters from the vendor-receipt
+  path template. Five bounded redacted order samples then returned status 200
+  with the same key/type shape. The response exposed payment type and explicit
+  cancellation component fields but no installment-month field. The adopted
+  command preserves those components as observed values without asserting a
+  completed refund settlement.
 - The live receipt UI exposed only cash/card request-history controls, refresh,
   pagination, period inputs, and summary query controls. A probe installed a
   route-level POST block before opening request history; no creation POST or
@@ -105,9 +119,9 @@ being listed as `researched` does not make it a supported product API.
 
 ## Next discovery queue
 
-1. Validate one already-completed receipt artifact with metadata-only output,
-   research whether its cash-receipt rows can identify membership fees, and
-   research the vendor-receipt read contract. Do not trigger request creation.
+1. Validate one already-completed receipt artifact with metadata-only output
+   and research whether its cash-receipt rows can identify membership fees. Do
+   not trigger request creation.
 2. Capture a redacted sales-slip detail shape and adopt installments only if an
    explicit installment-month field exists.
 3. Validate category breadcrumb stability across time and across more accounts.

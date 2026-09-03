@@ -26,6 +26,13 @@ func (syntheticSource) Download(context.Context, core.ReceiptDownloadRequest) (D
 	return Download{Metadata: core.ReceiptDownloadMetadata{Filename: "receipt.pdf", ContentType: "application/pdf"}, Content: []byte("synthetic")}, nil
 }
 
+func (syntheticSource) Vendor(_ context.Context, request core.VendorReceiptRequest) (core.VendorReceiptSnapshot, error) {
+	return core.VendorReceiptSnapshot{
+		SourceRef: request.SourceRef, PagesScanned: 2,
+		Vendors: []core.VendorReceiptVendor{{VendorIndex: 0, MainPaymentTypeName: "Synthetic card"}},
+	}, nil
+}
+
 func TestServiceAddsPrivateVersionedEnvelopeAndDefaults(t *testing.T) {
 	service := New(syntheticSource{})
 	service.now = func() time.Time { return time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC) }
@@ -52,6 +59,15 @@ func TestServiceAddsPrivateVersionedEnvelopeAndDefaults(t *testing.T) {
 	}
 	if download.Metadata.Bytes != len(download.Content) || download.Metadata.Visibility != "private_local" {
 		t.Fatalf("unexpected download metadata: %#v", download.Metadata)
+	}
+
+	sourceRef := core.OrderSourceReference("synthetic-order")
+	vendor, err := service.Vendor(context.Background(), core.VendorReceiptRequest{SourceRef: sourceRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vendor.Visibility != "private_local" || vendor.SourceRef != sourceRef || vendor.VendorCount != 1 || vendor.Installments.Status != "unavailable" || vendor.Settlement.Status != "source_components_observed" {
+		t.Fatalf("unexpected vendor receipt envelope: %#v", vendor)
 	}
 }
 

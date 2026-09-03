@@ -12,6 +12,7 @@ type DocumentSource interface {
 	FetchReceiptHistory(context.Context, core.ReceiptHistoryRequest) ([]byte, error)
 	FetchReceiptSummary(context.Context, core.ReceiptSummaryRequest) ([]byte, error)
 	FetchReceiptDownload(context.Context, core.ReceiptDownloadRequest) ([]byte, error)
+	FetchVendorReceipt(context.Context, core.VendorReceiptRequest) ([]byte, error)
 }
 
 type Client struct {
@@ -52,4 +53,12 @@ func (c *Client) Download(ctx context.Context, request core.ReceiptDownloadReque
 		return receiptworkflow.Download{}, err
 	}
 	return ParseDownloadDocument(document)
+}
+
+func (c *Client) Vendor(ctx context.Context, request core.VendorReceiptRequest) (core.VendorReceiptSnapshot, error) {
+	document, err := c.source.FetchVendorReceipt(ctx, request)
+	if err != nil {
+		return core.VendorReceiptSnapshot{}, err
+	}
+	return ParseVendorDocument(document, request)
 }

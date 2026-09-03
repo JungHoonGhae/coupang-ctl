@@ -1,11 +1,15 @@
 package core
 
 import (
+	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 )
 
 const ReceiptSchemaVersion = 1
+
+var ErrVendorReceiptNotFound = errors.New("vendor receipt order reference not found")
 
 type ReceiptKind string
 
@@ -175,4 +179,86 @@ type ReceiptDownloadMetadata struct {
 	ContentType   string      `json:"content_type"`
 	Bytes         int         `json:"bytes"`
 	OutputPath    string      `json:"output_path,omitempty"`
+}
+
+type VendorReceiptRequest struct {
+	SourceRef string `json:"source_ref" jsonschema:"Hashed source_ref returned by orders list"`
+	MaxPages  int    `json:"max_pages,omitempty" jsonschema:"Maximum order pages searched in memory,minimum=1,maximum=1000"`
+}
+
+func (r VendorReceiptRequest) Validate() error {
+	decoded, err := hex.DecodeString(r.SourceRef)
+	if err != nil || len(decoded) != 32 || r.SourceRef != strings.ToLower(r.SourceRef) {
+		return errors.New("source_ref must be a lowercase SHA-256 order reference")
+	}
+	if r.MaxPages < 0 || r.MaxPages > 1000 {
+		return errors.New("max_pages must be between 1 and 1000")
+	}
+	return nil
+}
+
+type VendorReceiptSnapshot struct {
+	SchemaVersion int                    `json:"schema_version"`
+	Visibility    string                 `json:"visibility"`
+	FetchedAt     time.Time              `json:"fetched_at"`
+	SourceRef     string                 `json:"source_ref"`
+	PagesScanned  int                    `json:"pages_scanned"`
+	VendorCount   int                    `json:"vendor_count"`
+	Vendors       []VendorReceiptVendor  `json:"vendors"`
+	Installments  ReceiptInstallmentInfo `json:"installments"`
+	Settlement    ReceiptSettlementInfo  `json:"settlement"`
+	Definitions   ReceiptDefinitions     `json:"definitions"`
+}
+
+type VendorReceiptVendor struct {
+	VendorIndex                         int                     `json:"vendor_index"`
+	VendorName                          string                  `json:"vendor_name,omitempty"`
+	MainPaymentType                     string                  `json:"main_payment_type,omitempty"`
+	MainPaymentTypeName                 string                  `json:"main_payment_type_name,omitempty"`
+	MainPaymentTypeDescription          string                  `json:"main_payment_type_description,omitempty"`
+	MainPaymentAmountKRW                int64                   `json:"main_payment_amount_krw"`
+	PaidByMobile                        bool                    `json:"paid_by_mobile,omitempty"`
+	PaidWithCoupangCash                 bool                    `json:"paid_with_coupang_cash,omitempty"`
+	ReceiptDisplayAvailable             bool                    `json:"receipt_display_available,omitempty"`
+	CashableCashReceiptDisplayAvailable bool                    `json:"cashable_cash_receipt_display_available,omitempty"`
+	ProductAmountKRW                    int64                   `json:"product_amount_krw"`
+	DeliveryFeeKRW                      int64                   `json:"delivery_fee_krw"`
+	IssuedAmountKRW                     int64                   `json:"issued_amount_krw"`
+	GiftWrappingAmountKRW               int64                   `json:"gift_wrapping_amount_krw"`
+	OverseasProductAmountKRW            int64                   `json:"overseas_product_amount_krw"`
+	OverseasDeliveryFeeKRW              int64                   `json:"overseas_delivery_fee_krw"`
+	Payment                             ReceiptPaymentBreakdown `json:"payment"`
+	Products                            []VendorReceiptProduct  `json:"products"`
+}
+
+type VendorReceiptProduct struct {
+	ProductIndex          int                     `json:"product_index"`
+	Name                  string                  `json:"name,omitempty"`
+	VendorItemID          string                  `json:"vendor_item_id,omitempty"`
+	Quantity              int                     `json:"quantity"`
+	CanceledQuantity      int                     `json:"canceled_quantity"`
+	CancelHoldingQuantity int                     `json:"cancel_holding_quantity"`
+	UnitPriceKRW          int64                   `json:"unit_price_krw"`
+	CombinedUnitPriceKRW  int64                   `json:"combined_unit_price_krw"`
+	Payment               ReceiptPaymentBreakdown `json:"payment"`
+}
+
+type ReceiptPaymentBreakdown struct {
+	OriginalPaymentAmountKRW             int64  `json:"original_payment_amount_krw"`
+	OriginalPaymentCanceledAmountKRW     int64  `json:"original_payment_canceled_amount_krw"`
+	CoupangCashAmountKRW                 int64  `json:"coupang_cash_amount_krw"`
+	CoupangCashCanceledAmountKRW         int64  `json:"coupang_cash_canceled_amount_krw"`
+	CashableCoupangCashAmountKRW         int64  `json:"cashable_coupang_cash_amount_krw"`
+	CashableCoupangCashCanceledAmountKRW int64  `json:"cashable_coupang_cash_canceled_amount_krw"`
+	CouponDiscountAmountKRW              int64  `json:"coupon_discount_amount_krw"`
+	CouponDiscountCanceledAmountKRW      int64  `json:"coupon_discount_canceled_amount_krw"`
+	CardInstantDiscountAmountKRW         int64  `json:"card_instant_discount_amount_krw"`
+	CardInstantDiscountCanceledAmountKRW int64  `json:"card_instant_discount_canceled_amount_krw"`
+	InstantDiscountAmountKRW             int64  `json:"instant_discount_amount_krw"`
+	InstantDiscountType                  string `json:"instant_discount_type,omitempty"`
+}
+
+type ReceiptSettlementInfo struct {
+	Status      string   `json:"status"`
+	Limitations []string `json:"limitations"`
 }
