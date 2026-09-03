@@ -11,17 +11,19 @@ import (
 
 const chromeNativeHostRegistryKey = `Software\Google\Chrome\NativeMessagingHosts\` + NativeHostName
 
-type windowsPlatformRegistration struct{}
+type windowsPlatformRegistration struct {
+	keyPath string
+}
 
 func newPlatformRegistration(goos string) (platformRegistration, error) {
 	if goos != "windows" {
 		return nil, fmt.Errorf("browser bridge installer target %s does not match Windows", goos)
 	}
-	return windowsPlatformRegistration{}, nil
+	return windowsPlatformRegistration{keyPath: chromeNativeHostRegistryKey}, nil
 }
 
-func (windowsPlatformRegistration) Preflight(manifestPath string) error {
-	key, err := registry.OpenKey(registry.CURRENT_USER, chromeNativeHostRegistryKey, registry.QUERY_VALUE)
+func (registration windowsPlatformRegistration) Preflight(manifestPath string) error {
+	key, err := registry.OpenKey(registry.CURRENT_USER, registration.keyPath, registry.QUERY_VALUE)
 	if errors.Is(err, registry.ErrNotExist) {
 		return nil
 	}
@@ -39,8 +41,8 @@ func (windowsPlatformRegistration) Preflight(manifestPath string) error {
 	return nil
 }
 
-func (windowsPlatformRegistration) Install(manifestPath string) error {
-	key, _, err := registry.CreateKey(registry.CURRENT_USER, chromeNativeHostRegistryKey, registry.SET_VALUE)
+func (registration windowsPlatformRegistration) Install(manifestPath string) error {
+	key, _, err := registry.CreateKey(registry.CURRENT_USER, registration.keyPath, registry.SET_VALUE)
 	if err != nil {
 		return err
 	}
@@ -49,7 +51,7 @@ func (windowsPlatformRegistration) Install(manifestPath string) error {
 }
 
 func (registration windowsPlatformRegistration) Check(manifestPath string) error {
-	key, err := registry.OpenKey(registry.CURRENT_USER, chromeNativeHostRegistryKey, registry.QUERY_VALUE)
+	key, err := registry.OpenKey(registry.CURRENT_USER, registration.keyPath, registry.QUERY_VALUE)
 	if err != nil {
 		return err
 	}
@@ -64,8 +66,8 @@ func (registration windowsPlatformRegistration) Check(manifestPath string) error
 	return nil
 }
 
-func (windowsPlatformRegistration) Uninstall(string) error {
-	if err := registry.DeleteKey(registry.CURRENT_USER, chromeNativeHostRegistryKey); err != nil {
+func (registration windowsPlatformRegistration) Uninstall(string) error {
+	if err := registry.DeleteKey(registry.CURRENT_USER, registration.keyPath); err != nil {
 		return err
 	}
 	return nil

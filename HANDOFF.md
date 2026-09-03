@@ -156,6 +156,11 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   synthetic data, then removes its ephemeral metadata. It never starts Chrome
   or reads a profile, cookie, Coupang page, or order. The installed macOS path
   passed this ping live.
+- Windows CI uses a unique ephemeral HKCU key to run the real Windows
+  registration adapter through install, seven-check doctor, conflict preflight,
+  and ownership-checked uninstall. A separate Windows ping test covers the
+  loopback/framing path. This is native Windows registry/filesystem evidence,
+  not yet a clean desktop with Chrome installed.
 - MCP now exposes `orders_sync_ordinary_browser` through a dedicated typed sync
   provider. It uses the same normalized order service and SQLite ledger as the
   CLI while keeping the ordinary-page source separate from the dedicated

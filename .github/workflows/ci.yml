@@ -79,3 +79,23 @@ jobs:
 
       - name: Verify release contents and checksums
         run: go run ./cmd/releasecheck --require-sbom ./dist
+
+  windows-browser-bridge:
+    name: Windows browser-bridge install contract
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Test isolated HKCU registration and synthetic native-host ping
+        shell: pwsh
+        run: |
+          go test ./internal/browserbridge -run '^TestWindows' -count=1
+          go test ./internal/browser -run '^TestOrdinaryBrowserNativeHostPing' -count=1

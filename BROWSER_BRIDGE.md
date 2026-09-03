@@ -103,7 +103,9 @@ Linux, macOS, Windows 바이너리는 CGO 없이 교차 빌드합니다. 실제 
 관리형 호스트 설치는 일곱 doctor 검사를 통과했고, 일반 Chrome에서
 CLI→Native Messaging→typed core→SQLite 한 페이지 읽기가 네 번 연속
 성공했습니다. 마지막 실행 전 Chrome 세부정보에서 관리형 `extension_path`가
-실제 로드 위치임을 확인했습니다. 깨끗한 Chrome 프로필, Linux·Windows 실설치,
+실제 로드 위치임을 확인했습니다. Ubuntu CI는 사용자 파일 등록 계약을 실행하고,
+Windows CI는 격리된 실제 HKCU 키에서 install→doctor/ping→uninstall 및 충돌
+거부를 실행합니다. 실제 Chrome이 설치된 깨끗한 Linux·Windows 데스크톱 검증과
 Chrome Web Store 심사는 아직 완료되지 않았으므로 상태는 `experimental`입니다.
 
 배포 snapshot은 CGO를 끈 macOS·Linux·Windows의 amd64·arm64 아카이브 여섯
