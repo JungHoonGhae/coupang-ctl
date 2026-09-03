@@ -233,8 +233,11 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   is separate, failures preserve canonical output, disclosure is definite,
   buyer price verification and self-purchase ineligibility are explicit, and
   CLI/MCP callers can opt out per request or process-wide. Business signup is
-  complete; final activity-channel approval and live API-key validation remain
-  pending, so the capability is experimental.
+  complete. A 2026-09-03 authenticated portal check reached the Partners API
+  page, which stated that keys require final approval and exposed its generate
+  control as disabled. Final activity-channel approval and live API-key
+  validation therefore remain external dependencies, so the capability is
+  experimental.
 - Typed product search supports an ordinary query or a numeric source-native
   category ID. Verified source controls are `scoreDesc` (쿠팡 랭킹순),
   `saleCountDesc` (판매량순), `latestAsc`, `salePriceAsc`, and

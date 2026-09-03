@@ -110,8 +110,8 @@ func CurrentCapabilities() CapabilityReport {
 			UserValue:   "optional Coupang Partners deep links alongside canonical URLs, with commission disclosure, price verification notice, and per-request or global opt-out",
 			Interface:   []string{"cli", "mcp"},
 			Implemented: []string{"official signed Partners deeplink adapter", "canonical and affiliate URLs kept separate", "definite commission disclosure, price notice, self-purchase exclusion, and opt-out"},
-			NextWork:    "await final channel approval, issue API keys, and validate the official deeplink response live without recording credentials", NextStepKind: CapabilityNextExternalDependency,
-			BlockedBy: []string{"Coupang Partners final channel approval and official API key issuance"}, LastVerified: "2026-09-03",
+			NextWork:    "complete final channel approval, then issue API keys and validate the official deeplink response live without recording credentials", NextStepKind: CapabilityNextExternalDependency,
+			BlockedBy: []string{"the live Partners API page disables API-key generation until final approval is complete"}, LastVerified: "2026-09-03",
 		},
 		{
 			ID: "explicit_cart_add", Priority: "P1", Status: CapabilityExperimental,
