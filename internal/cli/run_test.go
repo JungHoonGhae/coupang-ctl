@@ -316,6 +316,39 @@ func TestVersionIsStructuredAndHasNoEnvironmentDependency(t *testing.T) {
 	}
 }
 
+func TestTopLevelHelpIsStructuredAndHasNoEnvironmentDependency(t *testing.T) {
+	t.Setenv("COUPANGCTL_STATE_DIR", "relative-would-fail")
+	for _, args := range [][]string{nil, {"help"}, {"--help"}, {"-h"}} {
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if err := Run(context.Background(), args, &stdout, &stderr, "v0.1.0-test"); err != nil {
+				t.Fatal(err)
+			}
+			var got struct {
+				SchemaVersion int `json:"schema_version"`
+				Name          string
+				Usage         string
+				Commands      []struct {
+					Name    string
+					Summary string
+				} `json:"commands"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if got.SchemaVersion != 1 || got.Name != "coupangctl" || got.Usage == "" || len(got.Commands) < 10 {
+				t.Fatalf("unexpected help response: %#v", got)
+			}
+			if got.Commands[0].Name != "auth" || got.Commands[0].Summary == "" {
+				t.Fatalf("commands are not documented and ordered: %#v", got.Commands)
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("stderr = %q", stderr.String())
+			}
+		})
+	}
+}
+
 func TestCapabilitiesAreStructuredAndOrderedByPriority(t *testing.T) {
 	t.Setenv("COUPANGCTL_STATE_DIR", "relative-would-fail")
 	var stdout, stderr bytes.Buffer
