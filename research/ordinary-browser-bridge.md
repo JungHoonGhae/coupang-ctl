@@ -17,9 +17,12 @@ fixtures and redacted metadata, never real customer payloads.
 ## Decision
 
 Use **Chrome Native Messaging as the production browser-to-Go transport**.
-Keep an authenticated, short-lived loopback transport only as an explicitly
-experimental fallback for environments where native-host registration is not
-possible.
+The Chrome-spawned native host connects to a separately running CLI through a
+private, authenticated, short-lived loopback rendezvous. The browser never
+contacts that listener, so this internal Go-to-Go IPC does not require CORS,
+host permission, or Chrome Local Network Access. A direct browser-to-loopback
+transport remains only an explicitly experimental fallback for environments
+where native-host registration is not possible.
 
 The minimum first-release permission tier is:
 
@@ -295,6 +298,11 @@ Required protocol rules:
 
 ## Loopback fallback
 
+This section concerns a direct extension/browser-to-loopback transport. It does
+not describe the implemented native-host-to-CLI rendezvous, which is invisible
+to Chrome and carries only the closed bridge protocol between two local Go
+processes.
+
 A browser-to-loopback Go server is easier to prototype because the already
 running CLI can own the listener, but it is not the least-privilege production
 choice.
@@ -483,10 +491,12 @@ data returned by Coupang or the native host.
 2. **Permission tier sufficiency:** confirm on supported Chrome versions that
    `activeTab` plus `scripting` covers the full selected-tab operation and that
    every redirect/navigation invalidates the job as designed.
-3. **Native-host broker lifecycle:** decide whether the Chrome-spawned Go host
-   owns the pending-job broker or connects to a separate per-user CLI process.
-   Either design needs same-user IPC authentication, crash recovery, and a
-   single-writer rule; none of this should widen the browser permission set.
+3. **Native-host broker lifecycle:** resolved for the experimental CLI path.
+   The Chrome-spawned Go host connects to the separate waiting CLI using an
+   exact loopback address and 32-byte one-time token from a private `0600`
+   rendezvous. The file expires after two minutes, is removed immediately after
+   authentication, rejects a second writer, and cannot be deleted by an older
+   owner. Clean-machine crash and update recovery remain packaging gates.
 4. **Chrome Web Store review:** local order-data processing, optional host
    access, and native messaging require complete single-purpose and privacy
    disclosures. Approval is an external release gate, not something unit tests
@@ -501,14 +511,14 @@ data returned by Coupang or the native host.
 
 ## Implementation order
 
-1. Define the closed, versioned request/result/error schema and synthetic
+1. **Done:** define the closed, versioned request/result/error schema and synthetic
    fixtures in the typed browser adapter package.
-2. Build the Go native-host framing layer and origin/size/state-machine tests.
-3. Build the MV3 action flow with only `activeTab`, `nativeMessaging`, and
+2. **Done:** build the Go native-host framing layer and origin/size/state-machine tests.
+3. **Done:** build the MV3 action flow with only `activeTab`, `nativeMessaging`, and
    `scripting`; use an isolated synthetic test origin first.
-4. Add one redacted ordinary-Chrome live read behind the existing
-   `ProtectedDocumentSource` interface and run the repeatability gate.
-5. Package the extension and native-host installer for the supported desktop
+4. **Partial:** add the typed `PageSource` CLI path and complete one redacted
+   ordinary-Chrome first-page live read. Multi-run live repeatability remains.
+5. **Next:** package the extension and native-host installer for the supported desktop
    OSes, then complete Store privacy/review work.
 6. Evaluate the optional persistent-origin tier only after P0 is reliable.
 7. Retain loopback as experimental unless native-host registration proves to be

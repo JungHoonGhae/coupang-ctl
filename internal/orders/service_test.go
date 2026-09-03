@@ -21,6 +21,16 @@ type fixtureSource struct {
 	categoryError    error
 }
 
+type fixturePageSource struct {
+	page core.OrderPage
+	seen []*core.OrderCursor
+}
+
+func (f *fixturePageSource) FetchPage(_ context.Context, cursor *core.OrderCursor) (core.OrderPage, error) {
+	f.seen = append(f.seen, cursor)
+	return f.page, nil
+}
+
 func (f *fixtureSource) Fetch(_ context.Context, cursor *core.OrderCursor) ([]byte, error) {
 	key := cursorKey(cursor)
 	f.seen = append(f.seen, key)
@@ -237,6 +247,39 @@ func TestSyncResumesAfterFailureWithoutDuplicates(t *testing.T) {
 	}
 	if len(stored) != 2 {
 		t.Fatalf("stored orders = %d, want 2: %#v", len(stored), stored)
+	}
+}
+
+func TestSyncAcceptsAnAlreadyNormalizedPageSource(t *testing.T) {
+	ctx := context.Background()
+	ledger, err := store.Open(ctx, filepath.Join(t.TempDir(), "coupangctl.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	source := &fixturePageSource{page: core.OrderPage{Orders: []core.Order{{
+		SourceRef:   "synthetic-normalized-source",
+		PurchasedAt: "2026-09-03",
+		TotalAmount: 4200,
+		Currency:    "KRW",
+		Items: []core.OrderItem{{
+			Name: "Synthetic normalized item", Quantity: 1, UnitPrice: 4200, PaidPrice: 4200,
+		}},
+	}}}}
+	workflow := orders.NewWithPageSource(ledger, source)
+	result, err := workflow.Sync(ctx, core.SyncRequest{MaxPages: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Complete || result.OrdersSeen != 1 || result.ItemsSeen != 1 || len(source.seen) != 1 || source.seen[0] != nil {
+		t.Fatalf("normalized sync result=%#v cursors=%#v", result, source.seen)
+	}
+	stored, err := workflow.List(ctx, core.OrderFilter{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].SourceRef != "synthetic-normalized-source" {
+		t.Fatalf("stored normalized orders = %#v", stored)
 	}
 }
 

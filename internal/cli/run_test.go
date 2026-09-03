@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/auth"
 	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
@@ -432,6 +434,123 @@ func TestOrdersListReturnsDocumentedObjectShape(t *testing.T) {
 	if len(got.Orders) != 1 || got.Orders[0].TotalAmount != 1200 {
 		t.Fatalf("unexpected orders response: %#v", got)
 	}
+}
+
+func TestOrdersSyncCanUseTheExplicitlySelectedOrdinaryBrowser(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stateDir := t.TempDir()
+	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
+	var stdout, stderr bytes.Buffer
+	cliResult := make(chan error, 1)
+	go func() {
+		cliResult <- Run(ctx, []string{"orders", "sync", "--max-pages", "1", "--ordinary-browser"}, &stdout, &stderr, "test")
+	}()
+
+	rendezvousPath := filepath.Join(stateDir, "ordinary-browser-rendezvous.json")
+	for {
+		if _, err := os.Stat(rendezvousPath); err == nil {
+			break
+		}
+		select {
+		case err := <-cliResult:
+			t.Fatalf("CLI exited before browser rendezvous: %v", err)
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	extensionToHostReader, extensionToHostWriter := io.Pipe()
+	hostToExtensionReader, hostToExtensionWriter := io.Pipe()
+	hostResult := make(chan error, 1)
+	go func() {
+		hostResult <- browser.RunOrdinaryBrowserNativeHost(
+			ctx,
+			stateDir,
+			"chrome-extension://"+browser.OrdinaryBrowserExtensionID+"/",
+			browser.OrdinaryBrowserExtensionID,
+			extensionToHostReader,
+			hostToExtensionWriter,
+		)
+	}()
+	requestPayload, err := readSyntheticNativeFrame(hostToExtensionReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request browser.OrdinaryBridgeRequest
+	if err := json.Unmarshal(requestPayload, &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.Operation != browser.OrdinaryBridgeReadOrders || request.Cursor != nil {
+		t.Fatalf("ordinary-browser request = %#v", request)
+	}
+	responsePayload, err := json.Marshal(browser.OrdinaryBridgeResponse{
+		SchemaVersion: browser.OrdinaryBridgeSchemaVersion,
+		RequestID:     request.RequestID,
+		Status:        browser.OrdinaryBridgeOK,
+		Page:          &core.OrderPage{Orders: []core.Order{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeSyntheticNativeFrame(extensionToHostWriter, responsePayload); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-cliResult; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-hostResult; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr.String(), "Chrome") {
+		t.Fatalf("ordinary-browser instruction missing: %q", stderr.String())
+	}
+	var result core.SyncResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.Complete || result.PagesProcessed != 1 || result.OrdersSeen != 0 {
+		t.Fatalf("ordinary-browser sync result = %#v", result)
+	}
+}
+
+func TestChromeNativeHostInvocationRejectsEveryOtherExtensionOrigin(t *testing.T) {
+	t.Setenv("COUPANGCTL_STATE_DIR", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	err := Run(
+		context.Background(),
+		[]string{"chrome-extension://" + strings.Repeat("a", 32) + "/"},
+		&stdout,
+		&stderr,
+		"test",
+	)
+	if !errors.Is(err, browser.ErrOrdinaryNativeOrigin) {
+		t.Fatalf("native host error = %v, want ErrOrdinaryNativeOrigin", err)
+	}
+	if stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("native host wrote non-frame output: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func readSyntheticNativeFrame(reader io.Reader) ([]byte, error) {
+	header := make([]byte, 4)
+	if _, err := io.ReadFull(reader, header); err != nil {
+		return nil, err
+	}
+	payload := make([]byte, binary.NativeEndian.Uint32(header))
+	_, err := io.ReadFull(reader, payload)
+	return payload, err
+}
+
+func writeSyntheticNativeFrame(writer io.Writer, payload []byte) error {
+	header := make([]byte, 4)
+	binary.NativeEndian.PutUint32(header, uint32(len(payload)))
+	if _, err := writer.Write(header); err != nil {
+		return err
+	}
+	_, err := writer.Write(payload)
+	return err
 }
 
 func TestOrdersStatsReturnsCancellationAndReturnRates(t *testing.T) {

@@ -13,6 +13,8 @@ import (
 var ErrOrdinaryNativeProtocol = errors.New("invalid ordinary browser native message")
 var ErrOrdinaryNativeOrigin = errors.New("ordinary browser extension origin rejected")
 
+const OrdinaryBrowserExtensionID = "kdpkegejlalobnlbgpjjibllolajjonf"
+
 type ordinaryNativeJobs interface {
 	Next(context.Context) (OrdinaryBridgeRequest, error)
 	Complete(context.Context, OrdinaryBridgeResponse) error
@@ -46,7 +48,9 @@ func runOrdinaryNativeHost(ctx context.Context, origin, allowedExtensionID strin
 		if err := writeOrdinaryNativeFrame(stdout, payload); err != nil {
 			return err
 		}
-		responsePayload, err := readOrdinaryNativeFrame(stdin)
+		operationContext, cancel := context.WithTimeout(ctx, ordinaryRendezvousOperationTimeout)
+		responsePayload, err := readOrdinaryNativeFrameContext(operationContext, stdin)
+		cancel()
 		if err != nil {
 			return err
 		}
@@ -60,10 +64,28 @@ func runOrdinaryNativeHost(ctx context.Context, origin, allowedExtensionID strin
 	}
 }
 
+func readOrdinaryNativeFrameContext(ctx context.Context, reader io.Reader) ([]byte, error) {
+	type result struct {
+		payload []byte
+		err     error
+	}
+	completed := make(chan result, 1)
+	go func() {
+		payload, err := readOrdinaryNativeFrame(reader)
+		completed <- result{payload: payload, err: err}
+	}()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case received := <-completed:
+		return received.payload, received.err
+	}
+}
+
 func readOrdinaryNativeFrame(reader io.Reader) ([]byte, error) {
 	header := make([]byte, 4)
 	if _, err := io.ReadFull(reader, header); err != nil {
-		return nil, fmt.Errorf("%w: frame header", ErrOrdinaryNativeProtocol)
+		return nil, fmt.Errorf("%w: frame header: %w", ErrOrdinaryNativeProtocol, err)
 	}
 	size := binary.NativeEndian.Uint32(header)
 	if size == 0 || size > ordinaryBridgeMaxFrameBytes {
@@ -71,7 +93,7 @@ func readOrdinaryNativeFrame(reader io.Reader) ([]byte, error) {
 	}
 	payload := make([]byte, int(size))
 	if _, err := io.ReadFull(reader, payload); err != nil {
-		return nil, fmt.Errorf("%w: frame payload", ErrOrdinaryNativeProtocol)
+		return nil, fmt.Errorf("%w: frame payload: %w", ErrOrdinaryNativeProtocol, err)
 	}
 	if !validOrdinaryNativeJSON(payload) {
 		return nil, fmt.Errorf("%w: frame JSON", ErrOrdinaryNativeProtocol)

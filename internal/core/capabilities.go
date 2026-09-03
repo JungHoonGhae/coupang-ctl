@@ -48,12 +48,12 @@ func CurrentCapabilities() CapabilityReport {
 			NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-03",
 		},
 		{
-			ID: "ordinary_browser_bridge", Priority: "P0", Status: CapabilityResearched,
+			ID: "ordinary_browser_bridge", Priority: "P0", Status: CapabilityExperimental,
 			UserValue:    "read protected structured data through the user's already-running ordinary browser when short-lived dedicated Chrome contexts are rejected",
-			Interface:    []string{"planned cli", "planned mcp"},
-			Implemented:  []string{"same-account ordinary-versus-dedicated Chrome comparison with redacted success markers", "official-source Native Messaging threat model and permission design", "closed normalized order-page protocol with strict schema, frame-size, request-ID, cursor, extension-origin, and native-frame validation"},
-			NextWork:     "build the native-host rendezvous and MV3 activeTab action adapter, then run synthetic and redacted live repeatability gates without copying cookies or depending on an agent runtime",
-			NextStepKind: CapabilityNextImplementation, LastVerified: "2026-09-03",
+			Interface:    []string{"cli", "planned mcp"},
+			Implemented:  []string{"same-account ordinary-versus-dedicated Chrome comparison with redacted success markers", "MV3 activeTab action with isolated top-frame execution and no cookie or host permission", "Chrome Native Messaging plus an authenticated single-use CLI rendezvous", "closed normalized order-page protocol with independent extension and Go validation", "one redacted live first-page CLI-to-SQLite read in ordinary Chrome"},
+			NextWork:     "pass multi-run live repeatability and clean-machine packaging gates, then add install/doctor flows and expose the same typed page source to MCP",
+			NextStepKind: CapabilityNextLiveValidation, LastVerified: "2026-09-03",
 		},
 		{
 			ID: "full_order_history", Priority: "P0", Status: CapabilityAvailable,

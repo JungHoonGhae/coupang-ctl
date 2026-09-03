@@ -42,8 +42,8 @@ func TestCapabilitiesExposeImplementedStateAndNextEvidence(t *testing.T) {
 	if !ok {
 		t.Fatal("missing ordinary_browser_bridge capability")
 	}
-	if bridge.Status != core.CapabilityResearched || bridge.NextStepKind != core.CapabilityNextImplementation || bridge.NextWork == "" || bridge.LastVerified == "" {
-		t.Fatalf("ordinary-browser bridge does not expose researched implementation state: %#v", bridge)
+	if bridge.Status != core.CapabilityExperimental || bridge.NextStepKind != core.CapabilityNextLiveValidation || bridge.NextWork == "" || bridge.LastVerified == "" {
+		t.Fatalf("ordinary-browser bridge does not expose experimental validation state: %#v", bridge)
 	}
 	for id, kind := range map[string]core.CapabilityNextStepKind{
 		"transparent_affiliate_deeplinks": core.CapabilityNextExternalDependency,

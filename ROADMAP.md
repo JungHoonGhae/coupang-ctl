@@ -15,7 +15,7 @@ license to guess the missing data or bypass an access control.
 | Priority | Capability | Status | Why it matters | Exit criterion / next work |
 | --- | --- | --- | --- | --- |
 | P0 | Native auth session | available | One human login can support later read-only runs, including headless runs where accepted. | Keep login renewal explicit and verify session rotation in release tests. |
-| P0 | Ordinary-browser protected-data bridge | researched | A same-account comparison found the order UI available in the user's already-running ordinary Chrome while both headed and headless dedicated Chrome contexts received HTTP 403. Official-source research selects Native Messaging with `activeTab`, `scripting`, and no cookie access; a closed normalized-page protocol and strict framing/origin validators are implemented. | Build the private CLI↔native-host rendezvous and MV3 action adapter, then pass synthetic lifecycle/security tests and a redacted live repeatability gate. Keep loopback experimental and normalized export/import as the browserless-server path. |
+| P0 | Ordinary-browser protected-data bridge | experimental | A same-account comparison found the order UI available in the user's already-running ordinary Chrome while both headed and headless dedicated Chrome contexts received HTTP 403. The CLI, single-use authenticated rendezvous, Chrome Native Messaging host, minimal-permission MV3 action, isolated page reader, typed core, and SQLite path are implemented. One redacted live first-page read completed without copying cookies or using an agent runtime. | Pass multi-run live repeatability and clean-machine packaging gates, add install/doctor flows and the MCP adapter, then complete Chrome Web Store privacy review. Normalized export/import remains the browserless-server path. |
 | P0 | Full order history | available | All later analytics depend on complete, non-looping history. | Keep the private order-model endpoint behind its narrow adapter and synthetic contract tests. |
 | P0 | Spend, cancellation, return stats | available | Keeps the gross ledger while separating observed product purchases, explicit membership fees, cancellations, and returns. | Vendor receipts expose source-native cancellation payment components; verify settlement status and multiple canceled/returned samples before labeling any figure exact post-refund net spend. |
 | P0 | WOW membership and benefits | experimental | Shows current membership state/fee, the source fee-change date as schedule metadata, the observed recent-benefit window, an explicitly inferred current-fee comparison, registered payment-method brands, and observed monthly WOW Card rewards. | Adopt membership-fee receipt evidence for exact historical costs. The complete live order history exposed no membership-specific item metadata, so it must not be treated as zero fees paid. |
@@ -42,10 +42,13 @@ license to guess the missing data or bypass an access control.
   context even when the same account works in an already-running ordinary
   Chrome window. The native adapter makes one delayed, idempotent retry before
   its existing headed fallback. This is resilience, not a bypass or a success
-  guarantee. Orca remains a research aid; the future ordinary-browser bridge
+  guarantee. Orca remains a research aid; the experimental ordinary-browser
+  bridge
   uses Chrome Native Messaging with a user-selected `activeTab`, packaged
   isolated-world code, and a closed normalized response protocol. It does not
-  request cookie access or a broad host wildcard.
+  request cookie access or a broad host wildcard. Chrome talks only to its
+  allowlisted native host; the native host then authenticates once to the
+  already-running CLI over a private short-lived loopback rendezvous.
 - Cart addition is the only supported commerce mutation. It is reversible,
   non-idempotent, explicitly confirmed, and separated from all purchase and
   payment controls.

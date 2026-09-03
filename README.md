@@ -58,6 +58,7 @@ go build -o ./bin/coupangctl ./cmd/coupangctl
 | 영역 | 상태 | 할 수 있는 일 |
 | --- | --- | --- |
 | 로그인·세션 | 사용 가능 | QR, 일회성 앱 링크, 수동 SMS 로그인과 세션 검증 |
+| 일반 Chrome 연결 | 실험적 | 기존 로그인 탭을 사용한 최소 권한 주문 동기화; 쿠키 복사 없음 |
 | 주문 기록 | 사용 가능 | 전체 이력 동기화, 이어받기, 목록·내보내기·가져오기 |
 | 소비 분석 | 사용 가능 | 지출, 멤버십 비용 분리, 취소·반품, 시간대, 배송 추세 |
 | 쇼핑 유형·리캡 | 사용 가능 | 근거가 보이는 4축 유형, 배지, 공개형·비공개형 HTML |
@@ -294,6 +295,14 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 
 로그인은 headed 브라우저에서만 진행합니다. 실측상 보호된 로그인 진입점은 진짜 headless Chrome을 거부할 수 있습니다. 로그인 뒤의 검증과 읽기는 headless 우선이며, 환경이 거부할 때만 설치된 브라우저의 headed 읽기로 한 번 재시도할 수 있습니다.
 
+전용 브라우저 컨텍스트가 보호된 주문 읽기를 거부할 때는 실험적인 일반 Chrome 경로를 사용할 수 있습니다.
+
+```bash
+coupangctl orders sync --max-pages 1 --ordinary-browser
+```
+
+명령을 먼저 실행한 뒤, 이미 로그인된 일반 Chrome의 쿠팡 주문목록 탭에서 `coupangctl 일반 브라우저 연결` 확장 버튼을 한 번 누릅니다. 확장은 그 탭에만 임시 접근하며 쿠키를 읽거나 복사하지 않습니다. Chrome은 정확히 허용된 로컬 네이티브 호스트와 통신하고, 호스트는 2분짜리 단일 사용 인증으로 대기 중인 CLI에 연결합니다. 현재는 개발자용 압축해제 확장과 네이티브 호스트 등록이 필요하며 자동 설치·진단과 Web Store 배포는 다음 릴리스 게이트입니다. 서버처럼 일반 Chrome을 직접 사용할 수 없는 환경은 `orders export`/`orders import`로 정규화 데이터를 옮깁니다.
+
 `--link` 출력은 짧게 살아 있는 인증 정보이므로 로그로 리디렉션하지 마세요. OTP, 쿠키, QR 링크는 JSON·세션 파일·테스트 fixture·오류 메시지에 넣지 않습니다.
 
 ## 데이터 저장과 개인정보
@@ -325,8 +334,9 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 ```text
 cmd/coupangctl
   ├─ CLI adapter ─────┐
-  │                   ├─ typed services ─┬─ native browser adapters
-  └─ MCP stdio adapter┘                  └─ SQLite repository
+  │                   ├─ typed services ─┬─ installed browser adapters
+  └─ MCP stdio adapter┘                  ├─ ordinary Chrome page-source bridge
+                                        └─ SQLite repository
 ```
 
 typed core, CLI adapter, MCP adapter를 분리합니다. CLI와 MCP가 각자 브라우저 로직을 갖지 않으며, 운영 코드에는 Playwright·Orca·특정 에이전트 런타임 의존성이 없습니다. 비공개·역공학 응답은 좁은 adapter에 격리하므로, 나중에 공식 API가 생겨도 core와 두 인터페이스를 유지할 수 있습니다.
@@ -363,6 +373,7 @@ coupangctl products inspect --product-id ID --no-affiliate
 - [`RECEIPTS.md`](RECEIPTS.md) — 영수증 조회·다운로드의 JSON 계약과 안전 경계
 - [`PRICES.md`](PRICES.md) — 옵션별 가격 이력과 재구매 비교 계약
 - [`PRODUCT_PRINCIPLES.md`](PRODUCT_PRINCIPLES.md) — 증거·개인정보·완료 기준
+- [`extension/README.md`](extension/README.md) — 일반 Chrome 연결의 개발자용 등록·검증 방법
 - [`research/ordinary-browser-bridge.md`](research/ordinary-browser-bridge.md) — 일반 Chrome 보호 데이터 브리지의 공식 자료 기반 설계·위협 모델
 - [`research/endpoint-catalog.md`](research/endpoint-catalog.md) — 가린 비공개 route 목록
 - [`research/README_BENCHMARKS.md`](research/README_BENCHMARKS.md) — 인기 CLI·MCP 저장소를 참고한 README 설계 근거

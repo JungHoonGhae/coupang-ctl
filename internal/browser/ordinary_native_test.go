@@ -9,9 +9,24 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
+
+type notifyingWriter struct {
+	once    chan struct{}
+	inner   io.Writer
+	written bool
+}
+
+func (w *notifyingWriter) Write(payload []byte) (int, error) {
+	if !w.written {
+		w.written = true
+		close(w.once)
+	}
+	return w.inner.Write(payload)
+}
 
 type fakeOrdinaryNativeJobs struct {
 	requests  []OrdinaryBridgeRequest
@@ -143,6 +158,41 @@ func TestOrdinaryNativeHostRejectsMismatchedResponseBeforeCompletion(t *testing.
 	}
 	if len(jobs.completed) != 0 {
 		t.Fatalf("mismatched response completed: %#v", jobs.completed)
+	}
+}
+
+func TestOrdinaryNativeHostStopsWaitingForExtensionOnContextCancellation(t *testing.T) {
+	extensionID := strings.Repeat("a", 32)
+	requestID := strings.Repeat("b", 32)
+	stdin, extensionWriter := io.Pipe()
+	defer extensionWriter.Close()
+	wroteRequest := make(chan struct{})
+	stdout := &notifyingWriter{once: wroteRequest, inner: io.Discard}
+	jobs := &fakeOrdinaryNativeJobs{requests: []OrdinaryBridgeRequest{{
+		SchemaVersion: OrdinaryBridgeSchemaVersion,
+		RequestID:     requestID,
+		Operation:     OrdinaryBridgeReadOrders,
+	}}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- runOrdinaryNativeHost(ctx, "chrome-extension://"+extensionID+"/", extensionID, stdin, stdout, jobs)
+	}()
+
+	select {
+	case <-wroteRequest:
+	case <-time.After(time.Second):
+		t.Fatal("native host did not send the pending request")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("host error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		_ = extensionWriter.Close()
+		t.Fatal("native host remained blocked after context cancellation")
 	}
 }
 

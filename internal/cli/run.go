@@ -33,6 +33,9 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 	if len(args) == 0 {
 		return usage(stderr)
 	}
+	if strings.HasPrefix(args[0], "chrome-extension://") {
+		return runChromeNativeHost(ctx, args, os.Stdin, stdout)
+	}
 	if args[0] == "version" {
 		return writeJSON(stdout, map[string]string{"name": "coupangctl", "version": version})
 	}
@@ -77,6 +80,17 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 			return err
 		}
 		defer ledger.Close()
+		if ordinaryBrowserReadRequested(args) {
+			bridge, err := browser.StartOrdinaryBrowserBridge(paths.StateDir)
+			if err != nil {
+				return err
+			}
+			defer bridge.Close()
+			if _, err := fmt.Fprintln(stderr, "일반 Chrome에서 쿠팡 주문목록을 연 뒤 coupangctl 확장 버튼을 한 번 누르세요."); err != nil {
+				return err
+			}
+			return runOrders(ctx, args[1:], stdout, orderworkflow.NewWithPageSource(ledger, bridge))
+		}
 		return runOrders(ctx, args[1:], stdout, orderworkflow.New(ledger, browserAdapter))
 	case "products":
 		ledger, err := store.Open(ctx, paths.Database)
@@ -111,6 +125,40 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 	default:
 		return usage(stderr)
 	}
+}
+
+func runChromeNativeHost(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) error {
+	if len(args) < 1 || len(args) > 2 {
+		return browser.ErrOrdinaryNativeProtocol
+	}
+	if len(args) == 2 && !validParentWindowArgument(args[1]) {
+		return browser.ErrOrdinaryNativeProtocol
+	}
+	paths, err := platform.DefaultPaths()
+	if err != nil {
+		return err
+	}
+	return browser.RunOrdinaryBrowserNativeHost(
+		ctx,
+		paths.StateDir,
+		args[0],
+		browser.OrdinaryBrowserExtensionID,
+		stdin,
+		stdout,
+	)
+}
+
+func validParentWindowArgument(value string) bool {
+	const prefix = "--parent-window="
+	if !strings.HasPrefix(value, prefix) || len(value) == len(prefix) {
+		return false
+	}
+	for _, character := range value[len(prefix):] {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 type receiptWorkflow interface {
@@ -492,9 +540,11 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 	case "sync":
 		flags := newFlagSet("orders sync")
 		maxPages := flags.Int("max-pages", 100, "maximum pages to process")
-		_ = flags.Bool("headed", false, "use headed browser fallback")
-		if err := parseFlags(flags, args[1:], "usage: coupangctl orders sync [--max-pages N] [--headed]"); err != nil {
-			return err
+		headed := flags.Bool("headed", false, "use headed browser fallback")
+		ordinaryBrowser := flags.Bool("ordinary-browser", false, "use the selected tab in ordinary Chrome")
+		const syncUsage = "usage: coupangctl orders sync [--max-pages N] [--headed|--ordinary-browser]"
+		if err := parseFlags(flags, args[1:], syncUsage); err != nil || (*headed && *ordinaryBrowser) {
+			return errors.New(syncUsage)
 		}
 		result, err := workflow.Sync(ctx, core.SyncRequest{MaxPages: *maxPages})
 		if err != nil {
@@ -761,6 +811,18 @@ func headedReadRequested(args []string) bool {
 	return false
 }
 
+func ordinaryBrowserReadRequested(args []string) bool {
+	if len(args) < 2 || args[0] != "orders" || args[1] != "sync" {
+		return false
+	}
+	for _, argument := range args[2:] {
+		if argument == "--ordinary-browser" || argument == "--ordinary-browser=true" {
+			return true
+		}
+	}
+	return false
+}
+
 type resendAssistant interface {
 	Resend(context.Context) (core.OTPResendResult, error)
 }
@@ -916,6 +978,9 @@ func WriteError(w io.Writer, err error) {
 	case errors.Is(err, browser.ErrBrowserAccessDenied):
 		code = "browser_access_denied"
 		message = "browser access was denied; retry later, or use --headed if the failed read was headless"
+	case errors.Is(err, browser.ErrOrdinaryRendezvous), errors.Is(err, browser.ErrOrdinaryBrowserUnavailable):
+		code = "ordinary_browser_unavailable"
+		message = "open the Coupang order-history page in ordinary Chrome and click the coupangctl extension before the pairing window expires"
 	case errors.Is(err, browser.ErrLocalPageRenderFailed):
 		code = "recap_image_render_failed"
 		message = "the installed browser could not render the local recap image"

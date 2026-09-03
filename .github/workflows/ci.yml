@@ -46,6 +46,9 @@ jobs:
       - name: Type-check research probes
         run: npm run typecheck
 
+      - name: Test ordinary-browser extension
+        run: npm run test:extension
+
   cross-build:
     name: Build ${{ matrix.target }}
     runs-on: ubuntu-latest

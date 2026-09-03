@@ -29,6 +29,10 @@ type DocumentSource interface {
 	Fetch(context.Context, *core.OrderCursor) ([]byte, error)
 }
 
+type PageSource interface {
+	FetchPage(context.Context, *core.OrderCursor) (core.OrderPage, error)
+}
+
 type CategoryDocumentSource interface {
 	FetchProductCategory(context.Context, core.ProductReference) ([]byte, error)
 }
@@ -36,6 +40,7 @@ type CategoryDocumentSource interface {
 type Service struct {
 	ledger         *store.SQLite
 	source         DocumentSource
+	pageSource     PageSource
 	categorySource CategoryDocumentSource
 	now            func() time.Time
 }
@@ -43,6 +48,10 @@ type Service struct {
 func New(ledger *store.SQLite, source DocumentSource) *Service {
 	categorySource, _ := source.(CategoryDocumentSource)
 	return &Service{ledger: ledger, source: source, categorySource: categorySource, now: time.Now}
+}
+
+func NewWithPageSource(ledger *store.SQLite, source PageSource) *Service {
+	return &Service{ledger: ledger, pageSource: source, now: time.Now}
 }
 
 func (s *Service) Sync(ctx context.Context, request core.SyncRequest) (core.SyncResult, error) {
@@ -53,7 +62,7 @@ func (s *Service) Sync(ctx context.Context, request core.SyncRequest) (core.Sync
 	if budget < 1 || budget > maxPageBudget {
 		return core.SyncResult{}, errors.New("max_pages must be between 1 and 1000")
 	}
-	if s.source == nil {
+	if s.source == nil && s.pageSource == nil {
 		return core.SyncResult{}, ErrDocumentSource
 	}
 	cursor, err := s.ledger.LoadSyncCursor(ctx)
@@ -83,13 +92,21 @@ func (s *Service) Sync(ctx context.Context, request core.SyncRequest) (core.Sync
 		}
 		seenCursors[key] = true
 
-		document, err := s.source.Fetch(ctx, cursor)
-		if err != nil {
-			return fail("document_source", errors.Join(ErrDocumentSource, err))
-		}
-		page, err := coupangorders.ParseOrderDocument(document)
-		if err != nil {
-			return fail("invalid_document", err)
+		var page core.OrderPage
+		if s.pageSource != nil {
+			page, err = s.pageSource.FetchPage(ctx, cursor)
+			if err != nil {
+				return fail("document_source", errors.Join(ErrDocumentSource, err))
+			}
+		} else {
+			document, fetchErr := s.source.Fetch(ctx, cursor)
+			if fetchErr != nil {
+				return fail("document_source", errors.Join(ErrDocumentSource, fetchErr))
+			}
+			page, err = coupangorders.ParseOrderDocument(document)
+			if err != nil {
+				return fail("invalid_document", err)
+			}
 		}
 		for _, order := range page.Orders {
 			seenOrderRefs[order.SourceRef] = struct{}{}

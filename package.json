@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test:extension": "node --test tests/ordinary-browser-extension.test.js",
     "probe:public": "tsx research/probes/network-probe.ts",
     "probe:product": "tsx research/probes/product-network-probe.ts",
     "probe:product-option": "tsx research/probes/product-option-metadata-probe.ts",

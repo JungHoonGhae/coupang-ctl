@@ -97,21 +97,43 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   Google Chrome: the order UI was present, with neither an access-denied marker
   nor a login form. This isolates browser context as a material variable and
   motivates a standard ordinary-browser bridge. Orca itself remains a research
-  aid rather than a runtime dependency; the bridge needs a threat-modeled,
-  explicitly paired extension transport before implementation.
-- Official-source follow-up selected Chrome Native Messaging, not loopback, as
+  aid rather than a runtime dependency.
+- Official-source follow-up selected Chrome Native Messaging, not browser-to-loopback, as
   the production browser-to-Go transport. The P0 permission tier is
   `activeTab`, `nativeMessaging`, and `scripting`, with isolated top-frame
   execution and no cookie, debugger, web-request, broad-host, external-message,
-  or incognito access. Loopback remains an experimental fallback because it
-  must recreate authentication and is exposed to changing Chrome Local Network
-  Access behavior.
+  or incognito access. Browser-to-loopback remains an experimental fallback
+  because it must recreate authentication and is exposed to changing Chrome
+  Local Network Access behavior.
 - The first ordinary-browser implementation slice defines a closed order-page
   request/result protocol and a Native Messaging frame codec. Requests carry
   only a bounded year/page cursor, never a URL. Successful responses carry at
   most five normalized orders in a 256 KiB frame; raw source IDs, invalid
   normalized fields, unknown JSON fields, trailing data, oversized frames, and
   non-exact extension origins fail closed. Synthetic tests cover those rules.
+- The end-to-end ordinary-browser slice is now implemented behind
+  `orders sync --ordinary-browser`. The CLI creates a `0700` state directory,
+  writes a `0600` two-minute rendezvous containing a 32-byte one-time token and
+  exact `127.0.0.1` ephemeral address, and removes it immediately after the
+  first authenticated native-host connection. The browser never contacts this
+  listener: Chrome communicates with the exact-ID native host over framed
+  stdio, and only that Go process connects to the waiting CLI.
+- The MV3 extension declares only `activeTab`, `nativeMessaging`, and
+  `scripting`; it has no host permission, external listener, web-accessible
+  resource, incognito access, cookie API, or persistence. One user action on
+  the exact selected order-list tab executes packaged code in the isolated top
+  frame. The extension normalizes at most five orders, preserves numeric source
+  identifiers before hashing, validates the closed response, and sends no raw
+  body or cookie to Go.
+- A 2026-09-03 live run in the user's ordinary logged-in Chrome completed one
+  first-page CLI-to-SQLite sync through this path. No raw order payload was
+  printed or captured. Synthetic tests cover repeated lifecycle, ownership,
+  malformed-frame, permission, validation, and CLI integration behavior. Live
+  multi-run repeatability and clean-machine install/doctor packaging remain the
+  next release gates, so the capability is `experimental`, not `available`.
+- Native-host reads now obey context cancellation and a bounded per-operation
+  deadline, preventing a disconnected or non-responsive extension port from
+  leaving the host blocked indefinitely.
 - `receipts download` can save an already-completed history artifact to a new
   private `0600` file. It re-reads the selected history row, keeps the source
   URL in browser memory, validates the final Coupang host and bounded content,
@@ -367,8 +389,9 @@ The pragmatic architecture is:
    source adapters.
 5. Keep newly discovered APIs in the redacted endpoint catalog and promote them
    only after read/write classification and synthetic contract tests.
-6. Treat the user's already-running ordinary browser as the preferred future
-   local protected-data context when its standard bridge is available. Keep
+6. Treat the user's already-running ordinary browser as the preferred
+   experimental local protected-data context through the explicit
+   `--ordinary-browser` flow. Keep
    dedicated Chrome for headless/server automation where accepted, and keep
    normalized export/import as the browserless-server boundary.
 
@@ -393,11 +416,11 @@ rest of the product.
 A later same-account comparison found that the already-running ordinary Chrome
 could open the order UI while short-lived dedicated headed and headless Chrome
 contexts received 403. The dedicated profile remains the implemented portable
-adapter, but it is no longer assumed to be the most reliable local context. The
-next architecture candidate is a standard, explicitly paired ordinary-browser
-bridge behind the same narrow document-source interface—not an Orca dependency,
-cookie-copying shortcut, stealth mode, or automation of a login challenge.
-The evidence-backed design and verification gates are recorded in
+adapter where it works, but it is no longer assumed to be the most reliable
+local context. A standard, explicitly paired ordinary-browser bridge is now
+implemented behind a narrow typed page-source interface—not as an Orca
+dependency, cookie-copying shortcut, stealth mode, or automation of a login
+challenge. The evidence-backed design and remaining verification gates are recorded in
 `research/ordinary-browser-bridge.md`.
 
 ## Roadmap
@@ -414,6 +437,9 @@ completed artifact validation remains. Exact-option local price history
 and repurchase comparison are experimental; the watch command and reviewable
 launchd, systemd, cron, and Windows daily scheduler artifacts are implemented.
 Real longitudinal price-change validation remains.
+The ordinary-browser order bridge is experimental after one redacted live
+first-page success; multi-run repeatability, clean-machine installation,
+doctor/uninstall, Web Store review, and MCP exposure remain.
 
 ## Security and compliance
 
