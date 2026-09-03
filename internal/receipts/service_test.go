@@ -41,7 +41,7 @@ func TestServiceAddsPrivateVersionedEnvelopeAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if history.SchemaVersion != 1 || history.Visibility != "private_local" || history.PageSize != 5 || history.Items == nil || history.Definitions.Provenance != "observed" {
+	if history.SchemaVersion != core.ReceiptSchemaVersion || history.Visibility != "private_local" || history.PageSize != 5 || history.Items == nil || history.Definitions.Provenance != "observed" {
 		t.Fatalf("unexpected history envelope: %#v", history)
 	}
 

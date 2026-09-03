@@ -32,14 +32,19 @@ typed core로 정규화합니다. 모든 결과는 `private_local`이며 원문 
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "visibility": "private_local",
   "fetched_at": "2026-09-03T00:00:00Z",
   "statuses": [
     {
       "kind": "cash",
-      "request_in_progress": false,
+      "availability": "possible",
       "can_request_new": true,
+      "request_in_progress": null,
+      "request_in_progress_status": "unavailable",
+      "limitations": [
+        "the source exposes request availability but does not identify why a request is impossible"
+      ],
       "provenance": "observed"
     }
   ],
@@ -56,7 +61,7 @@ typed core로 정규화합니다. 모든 결과는 `private_local`이며 원문 
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "visibility": "private_local",
   "kind": "card",
   "page_index": 0,
@@ -86,7 +91,7 @@ typed core로 정규화합니다. 모든 결과는 `private_local`이며 원문 
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "visibility": "private_local",
   "kind": "card",
   "from": "2026.08.01",
@@ -122,7 +127,7 @@ typed core로 정규화합니다. 모든 결과는 `private_local`이며 원문 
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "visibility": "private_local",
   "source_ref": "<synthetic-sha256>",
   "pages_scanned": 2,
@@ -164,7 +169,7 @@ typed core로 정규화합니다. 모든 결과는 `private_local`이며 원문 
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "visibility": "private_local",
   "kind": "card",
   "history_index": 0,
@@ -184,6 +189,10 @@ typed core로 정규화합니다. 모든 결과는 `private_local`이며 원문 
 ## 증거와 제한
 
 - `provenance: observed`는 영수증 읽기 응답에서 직접 확인한 값입니다.
+- request-status GET의 boolean은 정적 reducer가 `true → POSSIBLE`,
+  `false → IMPOSSIBLE`로 매핑하는 것을 확인했습니다. `IMPOSSIBLE`의 원인이
+  진행 중 요청인지 다른 제한인지는 원천이 구분하지 않으므로
+  `request_in_progress`는 `null`입니다.
 - 표시명별 합계처럼 관찰값을 더한 결과는 규칙을 위에 공개합니다.
 - 새 archive 요청 POST는 지원하지 않습니다. 판매자 영수증은 검증된 단건 GET만 지원합니다.
 - 완료 파일 다운로드는 합성 계약 테스트를 통과했지만, 라이브 계정의 현재

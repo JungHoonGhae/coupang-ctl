@@ -124,9 +124,9 @@ func CurrentCapabilities() CapabilityReport {
 		},
 		{
 			ID: "batch_receipts", Priority: "P1", Status: CapabilityExperimental,
-			UserValue:   "read cash and card request status, history, and summaries; inspect one order's vendor receipt by hashed reference; then privately download an already-completed archive without exposing its URL",
+			UserValue:   "read cash and card request availability, history, and summaries; inspect one order's vendor receipt by hashed reference; then privately download an already-completed archive without exposing its URL",
 			Interface:   []string{"cli", "mcp"},
-			Implemented: []string{"cash and card request status", "bounded existing request history", "period totals and payment-method aggregates", "source-native vendor receipt by hashed order reference", "private new-file download of an already-completed archive"},
+			Implemented: []string{"cash and card request availability", "bounded existing request history", "period totals and payment-method aggregates", "source-native vendor receipt by hashed order reference", "private new-file download of an already-completed archive"},
 			NextWork:    "validate a completed archive download live; request creation remains excluded", NextStepKind: CapabilityNextEvidenceRequired,
 			BlockedBy: []string{"the current receipt history has no completed archive item to validate"}, LastVerified: "2026-09-03",
 		},

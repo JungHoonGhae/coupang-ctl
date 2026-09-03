@@ -20,6 +20,7 @@ import (
 
 func main() {
 	headed := flag.Bool("headed", false, "force visible installed Chrome instead of headless-first mode")
+	skipOrderSamples := flag.Bool("skip-order-samples", false, "skip order lookup and per-order vendor reads")
 	timeout := flag.Duration("timeout", 90*time.Second, "overall read-only probe timeout")
 	flag.Parse()
 	if *timeout <= 0 || *timeout > 5*time.Minute {
@@ -38,7 +39,11 @@ func main() {
 		source = browser.NewNative(paths.ProfileDir)
 	}
 	defer source.Close()
-	orderSamples, orderSampleStatus := sampleOrders(ctx, source)
+	var orderSamples []browser.ReceiptResearchOrderSample
+	orderSampleStatus := "skipped"
+	if !*skipOrderSamples {
+		orderSamples, orderSampleStatus = sampleOrders(ctx, source)
+	}
 	document, err := source.FetchReceiptResearchMetadata(ctx, orderSamples)
 	if err != nil {
 		fail(safeErrorCode(err))

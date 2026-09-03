@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const ReceiptSchemaVersion = 1
+const ReceiptSchemaVersion = 2
 
 var ErrVendorReceiptNotFound = errors.New("vendor receipt order reference not found")
 
@@ -101,10 +101,13 @@ type ReceiptRequestStatusSnapshot struct {
 }
 
 type ReceiptRequestStatus struct {
-	Kind              ReceiptKind `json:"kind"`
-	RequestInProgress bool        `json:"request_in_progress"`
-	CanRequestNew     bool        `json:"can_request_new"`
-	Provenance        string      `json:"provenance"`
+	Kind                    ReceiptKind `json:"kind"`
+	Availability            string      `json:"availability"`
+	CanRequestNew           bool        `json:"can_request_new"`
+	RequestInProgress       *bool       `json:"request_in_progress"`
+	RequestInProgressStatus string      `json:"request_in_progress_status"`
+	Limitations             []string    `json:"limitations"`
+	Provenance              string      `json:"provenance"`
 }
 
 type ReceiptHistoryPage struct {
@@ -165,6 +168,7 @@ type ReceiptInstallmentInfo struct {
 type ReceiptDefinitions struct {
 	Source          string `json:"source"`
 	Provenance      string `json:"provenance"`
+	RequestStatus   string `json:"request_status"`
 	PaymentPrivacy  string `json:"payment_privacy"`
 	DownloadPrivacy string `json:"download_privacy"`
 }

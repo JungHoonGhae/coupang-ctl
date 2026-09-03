@@ -128,7 +128,7 @@ func addReceiptTools(server *mcp.Server, provider ReceiptProvider) {
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPointer(true)}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "receipts_status",
-		Description: "Read whether a cash or card receipt archive request is currently in progress. This never creates a request and exposes no receipt URL, card number, or account identifier.",
+		Description: "Read whether Coupang marks a new cash or card receipt archive request as possible or impossible. The source does not prove why an impossible state occurred, so request_in_progress remains null. This never creates a request and exposes no receipt URL, card number, or account identifier.",
 		Annotations: readOnly,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, core.ReceiptRequestStatusSnapshot, error) {
 		result, err := provider.Status(ctx)

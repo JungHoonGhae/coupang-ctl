@@ -180,6 +180,7 @@ func definitions() core.ReceiptDefinitions {
 	return core.ReceiptDefinitions{
 		Source:          "coupang_payment_receipt_read_endpoints",
 		Provenance:      "observed",
+		RequestStatus:   "source true maps to possible and false maps to impossible; request_in_progress stays null because impossibility does not prove its cause",
 		PaymentPrivacy:  "card identifiers and card numbers are discarded before the typed response",
 		DownloadPrivacy: "download URLs are used in memory and never returned or logged",
 	}

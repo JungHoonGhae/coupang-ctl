@@ -15,7 +15,7 @@ being listed as `researched` does not make it a supported product API.
 | P0 | `GET https://cash.coupang.com/api/cash/...` | endpoint discovered from same-origin resource entries; transaction page uses `page` | expected accumulation shape or paged cash list; transaction descriptions are used only for narrow reward classification and then discarded | required | read | experimental; exact unstable path remains dynamically discovered and allowlisted to same origin |
 | P1 | `GET https://payment.coupang.com/rocketpay/mypage` | none observed | registered RocketPay method management surface; does not prove per-order usage | required | read | researched; not adopted |
 | P1 | `GET https://mc.coupang.com/ssr/desktop/payment-receipt` | none observed | Next.js document containing `paymentReceipt.cash`, `creditCard`, `vendor`, and `form` | required | read | adopted as authenticated receipt bootstrap |
-| P1 | `GET https://mc.coupang.com/ssr/api/payment-receipt/{cash,card}/request-status` | none observed | `{success:boolean,message:string,data:boolean}` | required | read | experimental behind the receipt adapter |
+| P1 | `GET https://mc.coupang.com/ssr/api/payment-receipt/{cash,card}/request-status` | none observed | `{success:boolean,message:string,data:boolean}`; static reducer maps data true to `POSSIBLE` and false to `IMPOSSIBLE` | required | read | experimental behind the receipt adapter; does not claim why a request is impossible |
 | P1 | `GET https://mc.coupang.com/ssr/api/payment-receipt/{cash,card}/download-request-histories` | `pageIndex`, `size` | paged request rows with date range, count, amount, status, and a bounded download list | required | read | experimental; URLs are consumed only in browser memory and discarded |
 | P1 | `GET https://mc.coupang.com/ssr/api/payment-receipt/{cash,card}/receipt-summary` | `from`, `to`; card reads also use `cardId`, `cardNumber`, `displayCardName` | date range, total count/amount, and card-list shape | required | read | experimental; identifiers/numbers are discarded before typed output |
 | P1 | `GET https://mc.coupang.com/ssr/api/payment-receipt/vendor-receipts/<orderId>` | none | array of vendor payment type, issued/product/delivery totals, payment and cancellation components, and product lines | required | read | adopted; raw order ID is resolved from a hashed `source_ref` in browser memory and never returned |
@@ -56,6 +56,11 @@ being listed as `researched` does not make it a supported product API.
   cancellation component fields but no installment-month field. The adopted
   command preserves those components as observed values without asserting a
   completed refund settlement.
+- Static reducer evidence maps a successful request-status GET response's
+  `data=true` to `POSSIBLE` and `data=false` to `IMPOSSIBLE`. The same UI uses
+  `IMPOSSIBLE` during request submission, but the GET does not expose a reason.
+  Schema v2 therefore reports availability and leaves `request_in_progress`
+  null instead of guessing that every impossible state is an active request.
 - The live receipt UI exposed only cash/card request-history controls, refresh,
   pagination, period inputs, and summary query controls. A probe installed a
   route-level POST block before opening request history; no creation POST or

@@ -16,7 +16,7 @@ func TestReceiptParsersDiscardIdentifiersAndDownloadURLs(t *testing.T) {
   "cash":{"success":true,"message":"ok","data":false},
   "card":{"success":true,"message":"ok","data":true}
 }`))
-	if err != nil || len(status.Statuses) != 2 || status.Statuses[0].RequestInProgress || !status.Statuses[0].CanRequestNew || !status.Statuses[1].RequestInProgress {
+	if err != nil || len(status.Statuses) != 2 || status.Statuses[0].Availability != "impossible" || status.Statuses[0].CanRequestNew || status.Statuses[0].RequestInProgress != nil || status.Statuses[1].Availability != "possible" || !status.Statuses[1].CanRequestNew || status.Statuses[1].RequestInProgress != nil {
 		t.Fatalf("unexpected status: %#v %v", status, err)
 	}
 

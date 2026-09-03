@@ -155,9 +155,24 @@ func ParseStatusDocument(document []byte) (core.ReceiptRequestStatusSnapshot, er
 		return core.ReceiptRequestStatusSnapshot{}, ErrReceiptDataMissing
 	}
 	return core.ReceiptRequestStatusSnapshot{Statuses: []core.ReceiptRequestStatus{
-		{Kind: core.ReceiptKindCash, RequestInProgress: raw.Cash.Data, CanRequestNew: !raw.Cash.Data, Provenance: "observed"},
-		{Kind: core.ReceiptKindCard, RequestInProgress: raw.Card.Data, CanRequestNew: !raw.Card.Data, Provenance: "observed"},
+		normalizeRequestAvailability(core.ReceiptKindCash, raw.Cash.Data),
+		normalizeRequestAvailability(core.ReceiptKindCard, raw.Card.Data),
 	}}, nil
+}
+
+func normalizeRequestAvailability(kind core.ReceiptKind, possible bool) core.ReceiptRequestStatus {
+	availability := "impossible"
+	if possible {
+		availability = "possible"
+	}
+	return core.ReceiptRequestStatus{
+		Kind: kind, Availability: availability, CanRequestNew: possible,
+		RequestInProgressStatus: "unavailable",
+		Limitations: []string{
+			"the source exposes request availability but does not identify why a request is impossible",
+		},
+		Provenance: "observed",
+	}
 }
 
 func ParseHistoryDocument(document []byte, request core.ReceiptHistoryRequest) (core.ReceiptHistoryPage, error) {

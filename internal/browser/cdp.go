@@ -333,12 +333,15 @@ func (s *chromeSession) ReadReceiptStatusDocument(ctx context.Context) ([]byte, 
 }
 
 func (s *chromeSession) ReadReceiptResearchMetadata(ctx context.Context, samples []ReceiptResearchOrderSample) ([]byte, error) {
+	if samples == nil {
+		samples = []ReceiptResearchOrderSample{}
+	}
 	encodedSamples, err := json.Marshal(samples)
 	if err != nil {
 		return nil, ErrStructuredReceiptDataMissing
 	}
 	expression := `(async () => {
-		const orderSamples = ` + string(encodedSamples) + `;
+		const orderSamples = (` + string(encodedSamples) + `) ?? [];
 		const jsonType = (value) => value === null ? 'null'
 			: Array.isArray(value) ? 'array'
 			: typeof value === 'object' ? 'object'
@@ -355,7 +358,7 @@ func (s *chromeSession) ReadReceiptResearchMetadata(ctx context.Context, samples
 			if (!value || typeof value !== 'object') return jsonType(value);
 			return Object.fromEntries(Object.keys(value).sort().map((key) => [key, describeShape(value[key], depth - 1)]));
 		};
-		const candidateKey = (key) => /vendor|receipt|statement|installment|transaction|invoice|tax/i.test(key);
+		const candidateKey = (key) => /vendor|receipt|request|statement|installment|transaction|invoice|tax/i.test(key);
 		const evidenceKey = (key) => /amount|count|date|fee|method|month|number|path|status|total|type|url/i.test(key);
 		const paths = new Map();
 		const record = (path, value) => {
@@ -391,22 +394,35 @@ func (s *chromeSession) ReadReceiptResearchMetadata(ctx context.Context, samples
 		walk(domain, 'paymentReceipt', false, false, 0);
 
 		const controlKinds = {};
+		const controlStates = {};
 		for (const element of document.querySelectorAll('a,button,[role="tab"],[role="button"]')) {
 			const text = (element.textContent ?? '').replace(/\s+/g, ' ').trim();
 			const kind = /거래명세/.test(text) ? 'vendor_statement'
 				: /현금.*영수증/.test(text) ? 'cash_receipt'
 				: /카드.*(전표|영수증)/.test(text) ? 'card_receipt'
 				: /할부/.test(text) ? 'installment'
+				: /신청\s*내역/.test(text) ? 'request_history'
+				: /신청\s*하기|발급\s*신청|다운로드\s*신청/.test(text) ? 'request_submit'
 				: /조회|검색/.test(text) ? 'query'
 				: /신청|요청|발급/.test(text) ? 'request'
 				: null;
-			if (kind) controlKinds[kind] = (controlKinds[kind] ?? 0) + 1;
+			if (kind) {
+				controlKinds[kind] = (controlKinds[kind] ?? 0) + 1;
+				const state = controlStates[kind] ?? { total: 0, enabled: 0, disabled: 0 };
+				state.total += 1;
+				const disabled = element.disabled === true || element.getAttribute('aria-disabled') === 'true';
+				if (disabled) state.disabled += 1;
+				else state.enabled += 1;
+				controlStates[kind] = state;
+			}
 		}
 
 		const endpointPaths = new Set();
 		const tokenFlags = { vendor_receipt: false, installment: false, transaction_statement: false };
-		const staticIdentifiers = { vendor_receipt: new Set(), installment: new Set(), transaction_statement: new Set() };
+		const staticIdentifiers = { vendor_receipt: new Set(), installment: new Set(), transaction_statement: new Set(), request_status: new Set() };
 		const vendorEndpointHints = new Map();
+		const requestStatusEndpointHints = new Map();
+		const requestStatusStateShapes = new Set();
 		const inspectSource = (source) => {
 			if (typeof source !== 'string' || source.length === 0) return;
 			for (const match of source.matchAll(/\/(?:ssr\/api\/)?payment-receipt(?:\/[A-Za-z0-9_.-]+)*/g)) {
@@ -443,6 +459,23 @@ func (s *chromeSession) ReadReceiptResearchMetadata(ctx context.Context, samples
 					}
 					vendorEndpointHints.set(endpointPath, hint);
 				}
+				if (/request-status/i.test(endpointPath)) {
+					const offset = match.index ?? 0;
+					const nearby = source.slice(Math.max(0, offset - 1000), Math.min(source.length, offset + endpointPath.length + 1000));
+					const endpointOffset = Math.min(1000, offset);
+					const hint = requestStatusEndpointHints.get(endpointPath) ?? { path: endpointPath, nearby_methods: new Set(), nearby_keys: new Set(), call_shapes: new Set() };
+					for (const methodMatch of nearby.matchAll(/\.(get|post|put|patch|delete)\s*\(/gi)) hint.nearby_methods.add(methodMatch[1].toUpperCase());
+					for (const keyMatch of nearby.matchAll(/(?:^|[,{}])\s*([A-Za-z_$][A-Za-z0-9_$]{0,60})\s*:/g)) {
+						hint.nearby_keys.add(keyMatch[1]);
+						if (hint.nearby_keys.size >= 100) break;
+					}
+					const callShape = nearby.slice(Math.max(0, endpointOffset - 220), Math.min(nearby.length, endpointOffset + endpointPath.length + 260))
+						.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '<string>')
+						.replace(/\b(?:0x[0-9a-f]+|\d+(?:\.\d+)?(?:e[+-]?\d+)?)\b/gi, '<number>')
+						.replace(/\s+/g, ' ').slice(0, 600);
+					if (callShape) hint.call_shapes.add(callShape);
+					requestStatusEndpointHints.set(endpointPath, hint);
+				}
 				if (endpointPaths.size >= 100) break;
 			}
 			tokenFlags.vendor_receipt ||= /vendorReceipt|vendor-receipt/i.test(source);
@@ -459,6 +492,19 @@ func (s *chromeSession) ReadReceiptResearchMetadata(ctx context.Context, samples
 			for (const match of source.matchAll(/[A-Za-z_$][A-Za-z0-9_$]*(?:transactionStatement|TransactionStatement)[A-Za-z0-9_$]*/g)) {
 				staticIdentifiers.transaction_statement.add(match[0]);
 				if (staticIdentifiers.transaction_statement.size >= 50) break;
+			}
+			for (const match of source.matchAll(/[A-Za-z_$][A-Za-z0-9_$]*(?:requestStatus|RequestStatus|downloadRequestStatus|DownloadRequestStatus)[A-Za-z0-9_$]*/g)) {
+				staticIdentifiers.request_status.add(match[0]);
+				if (staticIdentifiers.request_status.size >= 50) break;
+			}
+			for (const match of source.matchAll(/downloadRequestStatus/g)) {
+				const offset = match.index ?? 0;
+				const shape = source.slice(Math.max(0, offset - 220), Math.min(source.length, offset + 260))
+					.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '<string>')
+					.replace(/\b(?:0x[0-9a-f]+|\d+(?:\.\d+)?(?:e[+-]?\d+)?)\b/gi, '<number>')
+					.replace(/\s+/g, ' ').slice(0, 600);
+				if (shape) requestStatusStateShapes.add(shape);
+				if (requestStatusStateShapes.size >= 12) break;
 			}
 		};
 		const scripts = [...document.scripts];
@@ -552,12 +598,14 @@ func (s *chromeSession) ReadReceiptResearchMetadata(ctx context.Context, samples
 				non_empty: item.non_empty,
 			})).sort((a, b) => a.path.localeCompare(b.path)),
 			control_kinds: controlKinds,
+			control_states: controlStates,
 			endpoint_paths: [...endpointPaths].sort(),
 			static_token_flags: tokenFlags,
 			static_identifiers: {
 				vendor_receipt: [...staticIdentifiers.vendor_receipt].sort(),
 				installment: [...staticIdentifiers.installment].sort(),
 				transaction_statement: [...staticIdentifiers.transaction_statement].sort(),
+				request_status: [...staticIdentifiers.request_status].sort(),
 			},
 			vendor_endpoint_hints: [...vendorEndpointHints.values()].map((hint) => ({
 				path: hint.path,
@@ -567,6 +615,13 @@ func (s *chromeSession) ReadReceiptResearchMetadata(ctx context.Context, samples
 				nearby_keys: [...hint.nearby_keys].sort(),
 				call_shapes: [...hint.call_shapes].sort().slice(0, 3),
 			})).sort((a, b) => a.path.localeCompare(b.path)),
+			request_status_endpoint_hints: [...requestStatusEndpointHints.values()].map((hint) => ({
+				path: hint.path,
+				nearby_methods: [...hint.nearby_methods].sort(),
+				nearby_keys: [...hint.nearby_keys].sort(),
+				call_shapes: [...hint.call_shapes].sort().slice(0, 3),
+			})).sort((a, b) => a.path.localeCompare(b.path)),
+			request_status_state_shapes: [...requestStatusStateShapes].sort(),
 			vendor_order_probe: vendorOrderProbe,
 			script_targets: scriptURLs.map((raw) => {
 				const target = new URL(raw, location.href);

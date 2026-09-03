@@ -69,26 +69,26 @@ type fixedAccountWorkflow struct{}
 type fixedReceiptWorkflow struct{}
 
 func (fixedReceiptWorkflow) Status(context.Context) (core.ReceiptRequestStatusSnapshot, error) {
-	return core.ReceiptRequestStatusSnapshot{SchemaVersion: 1, Statuses: []core.ReceiptRequestStatus{{Kind: core.ReceiptKindCard, CanRequestNew: true}}}, nil
+	return core.ReceiptRequestStatusSnapshot{SchemaVersion: core.ReceiptSchemaVersion, Statuses: []core.ReceiptRequestStatus{{Kind: core.ReceiptKindCard, Availability: "possible", CanRequestNew: true, RequestInProgressStatus: "unavailable"}}}, nil
 }
 
 func (fixedReceiptWorkflow) History(_ context.Context, request core.ReceiptHistoryRequest) (core.ReceiptHistoryPage, error) {
-	return core.ReceiptHistoryPage{SchemaVersion: 1, Kind: request.Kind, PageSize: request.PageSize}, nil
+	return core.ReceiptHistoryPage{SchemaVersion: core.ReceiptSchemaVersion, Kind: request.Kind, PageSize: request.PageSize}, nil
 }
 
 func (fixedReceiptWorkflow) Summary(_ context.Context, request core.ReceiptSummaryRequest) (core.ReceiptSummary, error) {
-	return core.ReceiptSummary{SchemaVersion: 1, Kind: request.Kind, From: request.From, To: request.To}, nil
+	return core.ReceiptSummary{SchemaVersion: core.ReceiptSchemaVersion, Kind: request.Kind, From: request.From, To: request.To}, nil
 }
 
 func (fixedReceiptWorkflow) Download(_ context.Context, request core.ReceiptDownloadRequest) (receiptworkflow.Download, error) {
 	return receiptworkflow.Download{
-		Metadata: core.ReceiptDownloadMetadata{SchemaVersion: 1, Kind: request.Kind, Filename: "receipt.pdf", ContentType: "application/pdf"},
+		Metadata: core.ReceiptDownloadMetadata{SchemaVersion: core.ReceiptSchemaVersion, Kind: request.Kind, Filename: "receipt.pdf", ContentType: "application/pdf"},
 		Content:  []byte("synthetic receipt"),
 	}, nil
 }
 
 func (fixedReceiptWorkflow) Vendor(_ context.Context, request core.VendorReceiptRequest) (core.VendorReceiptSnapshot, error) {
-	return core.VendorReceiptSnapshot{SchemaVersion: 1, Visibility: "private_local", SourceRef: request.SourceRef, VendorCount: 1}, nil
+	return core.VendorReceiptSnapshot{SchemaVersion: core.ReceiptSchemaVersion, Visibility: "private_local", SourceRef: request.SourceRef, VendorCount: 1}, nil
 }
 
 func (fixedAccountWorkflow) Snapshot(_ context.Context, request core.AccountBenefitsRequest) (core.AccountBenefitsSnapshot, error) {

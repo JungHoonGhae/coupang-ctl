@@ -57,9 +57,18 @@ the same key/type shape. Relevant observed fields included:
 - vendor payment type/name/description and issued/product/delivery totals.
 
 This is sufficient to adopt a private-local, single-order vendor-receipt read.
-It is not yet sufficient to call any cancel-price field a completed refund:
-the response shape contained no verified refund-settlement status, and the
-live canceled/returned cross-state value comparison remains incomplete.
+A subsequent bounded cross-state check covered four ordinary orders and one
+fully canceled order. All five same-origin reads returned HTTP 200. The four
+ordinary samples had zero `originalPaymentCancelPrice`, zero coupon/card/cash
+cancel components, and zero `canceledQuantity`. The fully canceled sample had
+positive `originalPaymentCancelPrice`, positive coupon cancel amount, and
+positive `canceledQuantity`; its other observed cancel components were zero.
+
+This comparison supports labeling these values as source-native cancellation
+components. It is still not sufficient to call any cancel-price field a
+completed refund: the response contained no verified refund-settlement status
+or processor completion timestamp, and the sample did not cover a partial
+return or every payment method.
 
 The first subsequent full-history attempt was stopped by
 `browser_access_denied` at its initial read. No bypass or repeated retry was

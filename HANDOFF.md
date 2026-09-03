@@ -48,6 +48,9 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   metadata-only checks verified status, empty history pagination, aggregate
   count/amount shapes, a card-method aggregate, and five vendor-receipt GET
   shapes without printing card identifiers, raw order IDs, or raw values.
+- Receipt schema v2 corrects the request-status interpretation: source
+  `data=true` means `POSSIBLE`, not “in progress.” Because `IMPOSSIBLE` has no
+  source reason, `request_in_progress` is explicitly null.
 - `receipts vendor --source-ref HASH` resolves the raw order ID only inside the
   browser adapter and returns source-native vendor payment types, products,
   and cancellation payment components. A live typed read succeeded. These

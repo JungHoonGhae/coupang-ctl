@@ -53,7 +53,8 @@ The probes default to `http://127.0.0.1:9223`. Override with `COUPANG_CDP_URL` w
 - `receipt-contract-metadata/`: uses the product's installed-Chrome session to
   read only payment-receipt page key paths, control kinds, and same-origin
   static endpoint paths. It performs no click, POST, request creation, or
-  download; `--headed` forces a visible Chrome verification.
+  download; `--headed` forces a visible Chrome verification and
+  `--skip-order-samples` omits the bounded per-order vendor GET checks.
 - `account-benefits-probe.ts`: uses the persisted authenticated session to
   discover WOW membership, payment-method, card, cash, and benefit surfaces.
   It emits only URL shapes, response shapes, and boolean DOM signals; cookie
