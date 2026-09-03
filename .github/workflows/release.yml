@@ -98,6 +98,11 @@ jobs:
       - name: Verify release contents and checksums
         run: go run ./cmd/releasecheck --require-sbom ./dist
 
+      - name: Attest the checksum manifest
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: dist/checksums.txt
+
       - name: Attest every checksummed artifact
         uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
         with:

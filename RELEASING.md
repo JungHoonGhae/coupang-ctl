@@ -1,6 +1,7 @@
 # 릴리스 계약
 
-현재 공개 태그 릴리스는 없으며 README의 소스 빌드가 유일한 설치 경로입니다.
+현재 공개 태그 릴리스는 없습니다. README의 `go install …@main`은 clone 없는
+개발 스냅샷 설치 경로이며 안정 릴리스로 취급하지 않습니다.
 이 문서는 첫 태그부터 동일하게 적용할 배포 계약을 설명합니다.
 
 ## 자동화된 태그 릴리스
@@ -16,8 +17,8 @@
 5. 각 아카이브의 SPDX JSON SBOM과 SHA-256 `checksums.txt` 생성
 6. 저장소의 `releasecheck`로 대상 조합, 파일 목록, SBOM 완전성, 모든
    체크섬을 재검증
-7. 체크섬에 열거된 열두 산출물 전체에 GitHub Actions provenance attestation
-   생성
+7. `checksums.txt` 자체와 그 파일에 열거된 열두 산출물 전체에 각각 GitHub
+   Actions provenance attestation 생성
 8. 앞 단계가 모두 성공했을 때만 draft 릴리스를 공개
 
 릴리스 아카이브의 허용 목록은 다음 네 파일뿐입니다.
@@ -68,14 +69,25 @@ key/extension ID, 개인정보 답안, 심사 게이트를 별도로 완료해�
 다음처럼 무결성과 빌드 출처를 각각 확인할 수 있습니다.
 
 ```bash
+gh attestation verify checksums.txt \
+  -R JungHoonGhae/coupang-ctl \
+  --signer-workflow JungHoonGhae/coupang-ctl/.github/workflows/release.yml \
+  --source-ref refs/tags/vVERSION
+
 shasum -a 256 -c checksums.txt
 gh attestation verify coupangctl_VERSION_OS_ARCH.tar.gz \
-  -R JungHoonGhae/coupang-ctl
+  -R JungHoonGhae/coupang-ctl \
+  --signer-workflow JungHoonGhae/coupang-ctl/.github/workflows/release.yml \
+  --source-ref refs/tags/vVERSION
 ```
 
 Windows 아카이브는 `.zip` 파일명을 사용합니다. SHA-256은 다운로드 파일의
 무결성을 확인하고, attestation은 해당 digest를 이 저장소의 GitHub Actions
 빌드와 연결합니다. 어느 쪽도 프로그램 자체의 안전성을 보증하지는 않습니다.
+
+설치·업그레이드·제거를 포함한 단일 바이너리 배포 결정과 패키지 관리자별
+단계는 [`research/cli-distribution.md`](research/cli-distribution.md)에 기록되어
+있습니다. Orca와 선택 탭 확장은 기본 설치 의존성이 아닙니다.
 
 ## 아직 남은 배포 게이트
 

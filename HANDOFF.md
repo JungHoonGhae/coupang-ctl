@@ -10,6 +10,17 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 
 ### Product implementation
 
+- Before the first public tag, users can install the moving development
+  snapshot directly with `go install .../cmd/coupangctl@main`; cloning the
+  repository is no longer required. The entrypoint falls back to Go's embedded
+  module pseudo-version when no GoReleaser linker version exists, so an
+  installed snapshot is identifiable and reproducible. An exact public-remote
+  commit install was verified in a new temporary `GOBIN`; `@main` is still
+  documented as a development snapshot, not a signed stable release.
+- The default distribution decision is one `coupangctl` binary using an
+  installed Chrome, not an Orca, Playwright, Node, or extension dependency.
+  The tag workflow separately attests `checksums.txt` and every artifact it
+  enumerates; native macOS and Windows signing remain external release gates.
 - The distributed product is now a Go 1.26 module; TypeScript remains limited
   to development probes.
 - GitHub CI runs all synthetic Go tests, `go vet`, research-probe TypeScript
