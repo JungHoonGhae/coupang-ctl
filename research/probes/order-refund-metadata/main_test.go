@@ -61,6 +61,28 @@ func TestClassifyReadErrorDoesNotExposeWrappedDetails(t *testing.T) {
 	}
 }
 
+func TestFinalizeReportPreservesRedactedPartialEvidenceOnTerminalReadError(t *testing.T) {
+	aggregated := map[string]*pathEvidence{}
+	mergeSample(aggregated, collectCandidatePaths(map[string]any{
+		"refundInfo": map[string]any{"status": "private-refund-value"},
+	}, "order", false, 0), "returned_units")
+	result := finalizeReport(report{
+		SchemaVersion: 1,
+		PagesScanned:  3,
+		TerminalError: "browser_access_denied",
+	}, aggregated, 100)
+	if result.Completed || result.StoppedAtPageLimit || result.TerminalError != "browser_access_denied" || result.PagesScanned != 3 || len(result.CandidatePaths) != 2 {
+		t.Fatalf("unexpected partial report: %#v", result)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "private-refund-value") {
+		t.Fatalf("partial report leaked a source value: %s", encoded)
+	}
+}
+
 func TestClassifyOrderStateUsesExplicitQuantities(t *testing.T) {
 	tests := []struct {
 		name  string

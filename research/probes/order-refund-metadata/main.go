@@ -1,7 +1,9 @@
 // order-refund-metadata scans authenticated order documents for refund,
 // cancellation, return, exchange, and settlement key shapes. It emits only
 // key paths, JSON types, aggregate presence counters, and sign/emptiness
-// metadata. It never emits source values, identifiers, cookies, or order rows.
+// metadata. A terminal read failure preserves already collected redacted
+// evidence with an explicit error code. It never emits source values,
+// identifiers, cookies, or order rows.
 package main
 
 import (
@@ -91,6 +93,7 @@ type report struct {
 	CandidatePaths     []pathEvidence `json:"candidate_paths"`
 	Completed          bool           `json:"completed"`
 	StoppedAtPageLimit bool           `json:"stopped_at_page_limit"`
+	TerminalError      string         `json:"terminal_error,omitempty"`
 	Limitations        []string       `json:"limitations"`
 }
 
@@ -136,32 +139,39 @@ func main() {
 	seenCursors := map[string]bool{}
 	var cursor *core.OrderCursor
 
+scanLoop:
 	for result.PagesScanned < *maxPages {
 		cursorKey := safeCursorKey(cursor)
 		if seenCursors[cursorKey] {
-			fail("pagination cycle detected")
+			result.TerminalError = "pagination_cycle_detected"
+			break
 		}
 		seenCursors[cursorKey] = true
 
 		document, err := source.Fetch(ctx, cursor)
 		if err != nil {
-			fail(classifyReadError(err))
+			result.TerminalError = classifyReadError(err)
+			break
 		}
 		page, err := coupangorders.ParseOrderDocument(document)
 		if err != nil {
-			fail("normalized order contract unavailable")
+			result.TerminalError = "normalized_order_contract_unavailable"
+			break
 		}
 		root, err := decodeRoot(document)
 		if err != nil {
-			fail("structured order document unavailable")
+			result.TerminalError = "structured_order_document_unavailable"
+			break
 		}
 		domain, ok := orderDomain(root)
 		if !ok {
-			fail("order domain unavailable")
+			result.TerminalError = "order_domain_unavailable"
+			break
 		}
 		orders, ok := domain["orderList"].([]any)
 		if !ok {
-			fail("order list shape unavailable")
+			result.TerminalError = "order_list_shape_unavailable"
+			break
 		}
 
 		result.PagesScanned++
@@ -176,7 +186,8 @@ func main() {
 		for _, raw := range orders {
 			order, ok := raw.(map[string]any)
 			if !ok {
-				fail("order entry shape unavailable")
+				result.TerminalError = "order_entry_shape_unavailable"
+				break scanLoop
 			}
 			state := classifyOrderState(order)
 			result.OrderStates[state]++
@@ -194,19 +205,25 @@ func main() {
 			select {
 			case <-ctx.Done():
 				timer.Stop()
-				fail("timeout")
+				result.TerminalError = "timeout"
+				break scanLoop
 			case <-timer.C:
 			}
 		}
 	}
-	result.StoppedAtPageLimit = !result.Completed
-	result.CandidatePaths = sortedEvidence(aggregated)
+	result = finalizeReport(result, aggregated, *maxPages)
 
 	encoded, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		fail("metadata encoding failed")
 	}
 	fmt.Println(string(encoded))
+}
+
+func finalizeReport(result report, aggregated map[string]*pathEvidence, maxPages int) report {
+	result.StoppedAtPageLimit = !result.Completed && result.TerminalError == "" && result.PagesScanned >= maxPages
+	result.CandidatePaths = sortedEvidence(aggregated)
+	return result
 }
 
 func decodeRoot(document []byte) (map[string]any, error) {
