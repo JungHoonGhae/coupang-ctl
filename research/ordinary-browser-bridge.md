@@ -462,11 +462,15 @@ data returned by Coupang or the native host.
 ## Verification gates before implementation is called available
 
 Implementation status on 2026-09-03: the macOS per-user host installer and all
-six local doctor checks passed, followed by four consecutive bounded one-page
+seven local doctor checks passed, followed by four consecutive bounded one-page
 reads through the selected ordinary Chrome tab into the typed SQLite sync
 path. Before the fourth run, Chrome's detail page confirmed the installer-
 managed `extension_path` as the loaded bundle location. The test retained only
-counts and cursors. Clean-profile and clean Linux/Windows gates remain open.
+counts and cursors. A separate clean macOS 26.3.1 arm64 VM with Chrome 152 then
+passed fresh install, all seven doctor checks including the synthetic native-
+host ping, ownership-checked uninstall, and a residue check without starting
+Chrome or accessing a profile or account. This narrows packaging uncertainty
+but does not close selected-tab clean-profile or Linux/Windows live gates.
 
 - Manifest test asserts the exact permission set and `incognito: not_allowed`;
   forbidden permissions and external listeners fail the build.

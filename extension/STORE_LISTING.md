@@ -56,11 +56,25 @@ host permission, 쿠키, 저장소, 외부 메시지, incognito 권한은 요청
 ## 제출 전 증거 체크리스트
 
 - [ ] `npm run test:extension`이 통과한다.
-- [ ] 제출 ZIP의 파일 허용 목록과 SHA-256 검사가 통과한다.
+- [x] 16·48·128 RGBA 아이콘이 manifest와 내장 번들에 포함되고 크기 계약 테스트를 통과한다.
+- [x] `cmd/extensionpack`이 열 개의 허용 파일만 ZIP 루트에 결정론적으로 기록하고 SHA-256을 반환한다.
+- [ ] 제출 직전 새 경로에서 ZIP을 만들고 `--verify`로 파일 허용 목록과 SHA-256 검사를 다시 통과한다.
 - [ ] 새 Chrome 프로필에서 팝업 고지 → 명시적 연결 → 로컬 동기화를 확인한다.
 - [ ] 잘못된 탭, 실행 중인 CLI 없음, 네이티브 호스트 없음 상태를 확인한다.
 - [ ] Web Store 대시보드의 데이터 사용 답안이 이 문서 및 `PRIVACY.md`와 같다.
 - [ ] 스토어 아이콘과 스크린샷이 실제 UI이며 쿠팡 상표나 실제 주문 데이터를
       오해하게 사용하지 않는다.
+- [ ] 최소 한 장의 실제 UI 스크린샷과 small promo tile을 규격에 맞춰 등록한다.
+- [ ] 첫 비공개 대시보드 업로드 뒤 Web Store public key와 할당된 extension ID가
+      native-host allowlist의 ID와 같은지 확인하고, 다르면 manifest key·Go 상수·
+      계약 테스트를 한 변경으로 맞춘다.
 - [ ] Chrome Web Store 검토 승인을 받기 전 자동 설치나 승인 상태를 주장하지
       않는다.
+
+기술 패키지는 다음 명령으로 생성·재검증합니다. ZIP 업로드, 공개 key 확인,
+개인정보 답안 입력, 심사 요청은 별도의 외부 작업입니다.
+
+```bash
+go run ./cmd/extensionpack --output /new/path/coupangctl-extension.zip
+go run ./cmd/extensionpack --verify /new/path/coupangctl-extension.zip
+```

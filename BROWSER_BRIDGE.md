@@ -19,7 +19,7 @@ coupangctl browser-bridge doctor
 macOS와 Linux는 Chrome의 사용자 NativeMessagingHosts 디렉터리를 사용하고,
 Windows는 상태 디렉터리의 매니페스트를 HKCU Chrome 키에 연결합니다.
 
-소유권 기록 schema v3는 일곱 개 확장 파일과 네이티브 호스트 매니페스트의
+소유권 기록 schema v3는 열 개 확장 파일과 네이티브 호스트 매니페스트의
 SHA-256을 저장합니다. 이후 바이너리의 내장 번들이 바뀌면 현재 파일이 기록된
 이전 digest와 정확히 일치할 때만 `upgrading` 전환 기록을 먼저 쓰고 파일을
 추가·교체·제거합니다. 중간에 프로세스가 끝나도 다음 `install`이 기록된 이전·목표
@@ -94,7 +94,7 @@ top frame에서 패키지 안의 isolated-world reader를 한 번 실행하고, 
 coupangctl browser-bridge uninstall
 ```
 
-제거 전에는 활성 설치 기록, 네이티브 매니페스트·등록, 일곱 개의 소유 번들 파일이
+제거 전에는 활성 설치 기록, 네이티브 매니페스트·등록, 열 개의 소유 번들 파일이
 현재 바이너리가 기대하는 내용과 모두 일치해야 합니다. 진행 중인 업그레이드나
 기록되지 않은 변경이 있으면 먼저 `install`로 복구해야 하며 제거는 거부됩니다.
 성공 시 `native_host_registration`, `extension_bundle`,
@@ -113,8 +113,25 @@ CLI→Native Messaging→typed core→SQLite 한 페이지 읽기가 네 번 연
 성공했습니다. 마지막 실행 전 Chrome 세부정보에서 관리형 `extension_path`가
 실제 로드 위치임을 확인했습니다. Ubuntu CI는 사용자 파일 등록 계약을 실행하고,
 Windows CI는 격리된 실제 HKCU 키에서 install→doctor/ping→uninstall 및 충돌
-거부를 실행합니다. 실제 Chrome이 설치된 깨끗한 Linux·Windows 데스크톱 검증과
+거부를 실행합니다. 별도의 깨끗한 macOS 26.3.1 arm64 VM과 설치된 Chrome 152에서는
+현재 바이너리의 fresh install→일곱 doctor 검사/native-host ping→소유권 기반
+uninstall→잔여 매니페스트 없음까지 통과했습니다. 이 검사는 Chrome이나 쿠팡
+계정 데이터를 열지 않았으므로 clean-profile selected-tab sync 성공으로 확대
+해석하지 않습니다. 실제 Chrome이 설치된 깨끗한 Linux·Windows 데스크톱 검증과
 Chrome Web Store 심사는 아직 완료되지 않았으므로 상태는 `experimental`입니다.
+
+스토어 제출용 ZIP은 저장소 루트에서 아래처럼 만듭니다. 생성기는 내장 번들의
+열 개 파일만 ZIP 루트에 결정론적으로 기록하고, 누락·추가·중첩·중복·변조 파일을
+거부한 뒤 파일 목록, 크기, SHA-256을 구조화 JSON으로 반환합니다. 기존 파일은
+덮어쓰지 않습니다.
+
+```bash
+go run ./cmd/extensionpack --output /new/path/coupangctl-extension.zip
+go run ./cmd/extensionpack --verify /new/path/coupangctl-extension.zip
+```
+
+이는 선택적 호환 경로의 기술 패키지 검증일 뿐 Web Store 업로드나 심사 완료를
+뜻하지 않습니다.
 
 배포 snapshot은 CGO를 끈 macOS·Linux·Windows의 amd64·arm64 아카이브 여섯
 개를 생성했고, 파일 허용 목록·SHA-256·플랫폼 조합과 여섯 SBOM을

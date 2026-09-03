@@ -3,6 +3,8 @@
 이 디렉터리는 `coupangctl orders sync --ordinary-browser`의 실험적
 Manifest V3 확장입니다. 사용자가 선택한 정확한 쿠팡 주문목록 탭에서만
 한 번 실행되며, 쿠키·브라우저 저장소·원본 응답을 내보내지 않습니다.
+전용 프로필로 한 번 로그인한 뒤 headless로 재사용하는 기본 흐름에는 이 확장이
+필요하지 않습니다.
 
 ## 연결하기
 
@@ -53,3 +55,17 @@ host permission, 쿠키 권한, 외부 메시지, incognito, telemetry는 사용
 제출 답안과 검증 게이트는 [`STORE_LISTING.md`](STORE_LISTING.md), 프로토콜과 위협 모델은
 [`research/ordinary-browser-bridge.md`](../research/ordinary-browser-bridge.md)에
 정리되어 있습니다.
+
+## 제출 ZIP
+
+유지관리자는 아래 명령으로 새 경로에 Chrome Web Store 제출 ZIP을 만들고 다시
+검증합니다. 일반 사용자의 설치 단계가 아닙니다.
+
+```bash
+go run ./cmd/extensionpack --output /new/path/coupangctl-extension.zip
+go run ./cmd/extensionpack --verify /new/path/coupangctl-extension.zip
+```
+
+생성기는 이 디렉터리의 내장 허용 목록만 ZIP 루트에 넣고 구조화된 파일 목록,
+크기, SHA-256을 출력합니다. 기존 ZIP을 덮어쓰지 않으며 누락·추가·중첩·중복·변조
+파일은 검증에서 거부합니다.

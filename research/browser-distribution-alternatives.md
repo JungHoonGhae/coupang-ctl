@@ -64,6 +64,17 @@ prompts during that process lifetime, but it would not eliminate the initial
 browser opt-in or Chrome approval. That is an implementation inference, not a
 Chrome guarantee, and must not be marketed as automatic reconnection.
 
+On 2026-09-03, a clean macOS 26.3.1 arm64 VM with Chrome 152 returned the
+expected passive `not_enabled` state without starting Chrome. A separate 0700
+temporary Chrome profile launched with a browser-selected loopback port then
+returned `endpoint_available`; two consecutive real CLI attachments both
+classified its intentionally logged-out order page as `authentication_required`
+and disconnected without closing Chrome. The exact process and temporary state
+were removed afterward. This is redacted evidence for discovery, repeated
+attachment, error normalization, and disconnect lifecycle. It does not verify
+Chrome's settings-page approval prompt or an authenticated order response, so
+the clean-profile release gate remains open.
+
 ### CDP remote-debugging flags
 
 Since Chrome 136, `--remote-debugging-port` and

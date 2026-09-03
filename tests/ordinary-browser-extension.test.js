@@ -28,7 +28,20 @@ test("MV3 manifest has only the selected-tab bridge permissions", async () => {
 		service_worker: "service-worker.js",
 		type: "module",
 	});
-	assert.equal(manifest.action.default_popup, "popup.html");
+	assert.deepEqual(manifest.icons, {
+		16: "icon16.png",
+		48: "icon48.png",
+		128: "icon128.png",
+	});
+	assert.deepEqual(manifest.action, {
+		default_title: "이 쿠팡 주문 탭을 coupangctl에 연결",
+		default_popup: "popup.html",
+		default_icon: {
+			16: "icon16.png",
+			48: "icon48.png",
+			128: "icon128.png",
+		},
+	});
 	assert.equal(
 		manifest.content_security_policy.extension_pages,
 		"script-src 'self'; object-src 'none'",
@@ -39,6 +52,17 @@ test("MV3 manifest has only the selected-tab bridge permissions", async () => {
 		.map((nibble) => String.fromCharCode("a".charCodeAt(0) + nibble))
 		.join("");
 	assert.equal(extensionID, "kdpkegejlalobnlbgpjjibllolajjonf");
+});
+
+test("extension icons are exact RGBA PNG sizes required by the manifest", async () => {
+	for (const size of [16, 48, 128]) {
+		const image = await readFile(new URL(`../extension/icon${size}.png`, import.meta.url));
+		assert.deepEqual([...image.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+		assert.equal(image.readUInt32BE(16), size);
+		assert.equal(image.readUInt32BE(20), size);
+		assert.equal(image[24], 8, `icon${size}.png must use 8-bit channels`);
+		assert.equal(image[25], 6, `icon${size}.png must be RGBA`);
+	}
 });
 
 test("popup discloses the exact local data flow before its affirmative button", async () => {

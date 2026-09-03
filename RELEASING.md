@@ -48,6 +48,18 @@ go run ./cmd/releasecheck --require-sbom ./dist
 `v1.42.3` 및 사용한 GitHub Actions를 고정된 버전·commit으로 실행합니다.
 실제 태그 생성과 push는 자동화하지 않습니다.
 
+선택적 일반 Chrome 호환 확장의 스토어 ZIP은 CLI 릴리스 아카이브와 분리해 새
+경로에 만들고 검증합니다. 이는 일반 사용자의 기본 설치물이 아닙니다.
+
+```bash
+go run ./cmd/extensionpack --output /new/path/coupangctl-extension.zip
+go run ./cmd/extensionpack --verify /new/path/coupangctl-extension.zip
+```
+
+CI도 같은 생성·재검증 계약을 실행합니다. 실제 Web Store 업로드 전에는
+[`extension/STORE_LISTING.md`](extension/STORE_LISTING.md)의 UI 미디어, public
+key/extension ID, 개인정보 답안, 심사 게이트를 별도로 완료해야 합니다.
+
 ## 다운로드 검증
 
 릴리스가 생긴 뒤 사용자는 원하는 태그의 산출물을 모두 받은 디렉터리에서

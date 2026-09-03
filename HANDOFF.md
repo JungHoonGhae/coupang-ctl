@@ -170,13 +170,14 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   closed on changed content without printing it, and uninstall removes only an
   exact matching ownership record, native registration, and bundle. It never
   removes Chrome profiles, cookies, extension data, or the order ledger.
-- Installation-record schema v2 stores SHA-256 digests for the four extension
-  files and native manifest. A legitimate bundle or executable-path update is
+- Installation-record schema v3 stores the exact extension file list and
+  SHA-256 digests for the current ten-file bundle and native manifest. A
+  legitimate bundle or executable-path update is
   accepted only when every existing artifact matches its recorded digest. The
   manager writes an `upgrading` transition first, resumes an interrupted mixed
   old/new state, and rejects unrecorded content or unexpected extension files.
-  The existing live macOS v1 record migrated to v2 with five active digests;
-  doctor remained fully ready and no extension code changed.
+  Legacy schema v2 digest records migrate only after the same ownership
+  verification; doctor remains fail-closed on unrecorded changes.
 - Doctor now adds a seventh `native_host_ping` check after the six static
   install checks. It executes the real authenticated rendezvous, exact-origin
   Native Messaging framing, and a typed empty-page round trip in-process using
@@ -188,6 +189,22 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   and ownership-checked uninstall. A separate Windows ping test covers the
   loopback/framing path. This is native Windows registry/filesystem evidence,
   not yet a clean desktop with Chrome installed.
+- A separate clean macOS 26.3.1 arm64 VM with Chrome 152 accepted the current
+  single binary, returned the passive current-browser `not_enabled` baseline,
+  and confirmed that passive status plus `doctor` launched no Chrome process.
+  The same VM completed fresh ordinary-bridge install, all seven doctor checks
+  including native-host ping, ownership-checked uninstall, and a no-manifest
+  residue check without reading a Chrome profile or Coupang account. This is
+  clean-host packaging evidence, not an approved current-browser attachment or
+  a clean-profile selected-tab sync result.
+- A temporary private Chrome profile on that VM then exposed a browser-selected
+  loopback endpoint to the current-browser adapter. Passive status returned
+  `endpoint_available`; two consecutive real `sync --current-browser` attempts
+  both returned typed `authentication_required` for the intentionally logged-
+  out profile, and the Chrome process survived both disconnects. The exact
+  process and temporary profile/state directories were removed afterward.
+  This verifies repeated attachment and disconnect behavior against Chrome 152,
+  but not the official settings-page approval prompt or authenticated sync.
 - MCP now exposes `orders_sync_ordinary_browser` through a dedicated typed sync
   provider. It uses the same normalized order service and SQLite ledger as the
   CLI while keeping the ordinary-page source separate from the dedicated
@@ -209,6 +226,14 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   GitHub provenance attestation from the complete checksum set, and publishes
   only afterward. No tag or release has been created. Native macOS/Windows code
   signing and Chrome Web Store distribution remain external release gates.
+- The ordinary-browser extension now includes exact RGBA 16/48/128 icons and a
+  maintainer-only `cmd/extensionpack` tool. It writes a deterministic ten-file
+  root ZIP, refuses overwrite, verifies every entry byte-for-byte against the
+  embedded bundle, rejects extra/missing/nested/duplicate files, and reports a
+  structured SHA-256 result. CI builds and re-verifies the package. This does
+  not make the extension a default dependency: the single-binary dedicated
+  profile remains the primary flow, while store media, dashboard key/ID
+  reconciliation, review, and publication remain external gates.
 - `receipts download` can save an already-completed history artifact to a new
   private `0600` file. It re-reads the selected history row, keeps the source
   URL in browser memory, validates the final Coupang host and bounded content,

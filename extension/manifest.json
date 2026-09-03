@@ -5,6 +5,11 @@
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjFK2TswjFdzWh+4tZ84tDlTJqqP37FXLewvBIbhj6nx4pRIqsMSLCwwnR5lMd7mP250LBMxHN2rgv4w3UuFN1GGgf1V4n6D7y8NrPwRMIZcWI2EOYJxJjfBJddWrXV4wrNC6Nv1Dwut4EqK8pG1fxKZc2tVG1nJhctc3W854PsCZHV/05PdKnCiVPqsH6jyVnoQoFA6LSRyQxviiOxoUxD0dcqsoZkLVuzUC8RvSHdaI23Zs2Cv5a/9pRKM4SsRlBCiYHCb6FGc2S7fz073Zk8NI//DEuTMqWGRcOSf6CrvtSgbd2hWz/i40TMyMDpaX2oUri8GtXY18Ku9PveBXcQIDAQAB",
   "description": "선택한 쿠팡 주문 탭의 정규화된 데이터를 로컬 coupangctl에 전달합니다.",
   "minimum_chrome_version": "105",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
   "permissions": ["activeTab", "nativeMessaging", "scripting"],
   "incognito": "not_allowed",
   "background": {
@@ -13,7 +18,12 @@
   },
   "action": {
     "default_title": "이 쿠팡 주문 탭을 coupangctl에 연결",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'"

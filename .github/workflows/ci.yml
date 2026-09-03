@@ -49,6 +49,11 @@ jobs:
       - name: Test ordinary-browser extension
         run: npm run test:extension
 
+      - name: Build and verify optional Chrome Web Store package
+        run: |
+          go run ./cmd/extensionpack --output "$RUNNER_TEMP/coupangctl-extension.zip"
+          go run ./cmd/extensionpack --verify "$RUNNER_TEMP/coupangctl-extension.zip"
+
   release-contract:
     name: Six-target release contract
     runs-on: ubuntu-latest
