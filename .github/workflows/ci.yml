@@ -35,10 +35,21 @@ jobs:
 
       - name: Enforce immutable action references
         run: |
-          if rg -n 'uses:[[:space:]]+[^[:space:]#]+@(?![0-9a-f]{40})([^[:space:]#]+)' .github/workflows --pcre2; then
-            echo "every GitHub Action must use a full commit SHA" >&2
-            exit 1
-          fi
+          awk '
+            /^[[:space:]]*uses:[[:space:]]*/ {
+              ref = $0
+              sub(/^[[:space:]]*uses:[[:space:]]*/, "", ref)
+              sub(/[[:space:]]+#.*$/, "", ref)
+              if (ref ~ /^\.\//) next
+              count = split(ref, parts, "@")
+              sha = parts[count]
+              if (count < 2 || length(sha) != 40 || sha !~ /^[0-9a-f]+$/) {
+                print FILENAME ":" FNR ": " $0
+                invalid = 1
+              }
+            }
+            END { exit invalid }
+          ' .github/workflows/*.yml
 
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -120,8 +131,8 @@ jobs:
       - name: Validate future signed Homebrew cask metadata
         run: |
           ruby -c dist/homebrew/Casks/coupangctl.rb
-          rg -q '^  binary "coupangctl"$' dist/homebrew/Casks/coupangctl.rb
-          if rg -n 'xattr|^[[:space:]]*zap[[:space:]]+do|^[[:space:]]*(trash|delete)[[:space:]]' dist/homebrew/Casks/coupangctl.rb; then
+          grep -Eq '^  binary "coupangctl"$' dist/homebrew/Casks/coupangctl.rb
+          if grep -En 'xattr|^[[:space:]]*zap[[:space:]]+do|^[[:space:]]*(trash|delete)[[:space:]]' dist/homebrew/Casks/coupangctl.rb; then
             echo "generated cask contains a forbidden trust-bypass or destructive stanza" >&2
             exit 1
           fi

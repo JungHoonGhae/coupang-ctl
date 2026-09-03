@@ -141,8 +141,8 @@ jobs:
       - name: Validate future signed Homebrew cask metadata
         run: |
           ruby -c dist/homebrew/Casks/coupangctl.rb
-          rg -q '^  binary "coupangctl"$' dist/homebrew/Casks/coupangctl.rb
-          if rg -n 'xattr|^[[:space:]]*zap[[:space:]]+do|^[[:space:]]*(trash|delete)[[:space:]]' dist/homebrew/Casks/coupangctl.rb; then
+          grep -Eq '^  binary "coupangctl"$' dist/homebrew/Casks/coupangctl.rb
+          if grep -En 'xattr|^[[:space:]]*zap[[:space:]]+do|^[[:space:]]*(trash|delete)[[:space:]]' dist/homebrew/Casks/coupangctl.rb; then
             echo "generated cask contains a forbidden trust-bypass or destructive stanza" >&2
             exit 1
           fi
