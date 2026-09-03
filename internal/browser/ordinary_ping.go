@@ -18,6 +18,9 @@ func PingOrdinaryBrowserNativeHost(ctx context.Context, stateDir string) error {
 	if ctx == nil {
 		return errors.New("native-host ping requires a context")
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	bridge, err := StartOrdinaryBrowserBridge(stateDir)
 	if err != nil {
 		return fmt.Errorf("start native-host ping rendezvous: %w", err)
