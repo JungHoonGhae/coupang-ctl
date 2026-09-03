@@ -59,6 +59,32 @@ sh -n ./installers/install.sh
 않습니다. 세부 설치·업그레이드·데이터 보존 규칙은
 [`installers/README.md`](installers/README.md)에 있습니다.
 
+## 패키지 관리자 메타데이터
+
+첫 태그와 릴리스 아카이브가 준비되면 유지관리자는 source archive와 Windows ZIP의
+실제 SHA-256으로 다음 명령을 실행합니다. 출력 경로는 존재하지 않는 새 디렉터리여야
+하며, 이 도구는 로컬 파일만 만들고 tap이나 WinGet 저장소에는 게시하지 않습니다.
+
+```bash
+go run ./cmd/packagemanifests \
+  --tag v0.1.0 \
+  --source-sha256 SOURCE_ARCHIVE_SHA256 \
+  --windows-amd64-sha256 WINDOWS_AMD64_ZIP_SHA256 \
+  --windows-arm64-sha256 WINDOWS_ARM64_ZIP_SHA256 \
+  --output /new/path/coupangctl-package-manifests
+```
+
+결과는 tagged source를 로컬에서 빌드하는 Homebrew formula 하나와 WinGet community
+repository용 version, installer, `ko-KR` default-locale manifest 세 개입니다. WinGet
+metadata는 현재 community repository의 고정된 multi-file schema `1.12.0`을
+사용하고, Windows ZIP 안의 portable 실행 파일과 사용자 범위 command alias를
+명시합니다. 생성기는 release-contract의 canonical URL·archive 이름을 사용하며
+기존 디렉터리를 덮어쓰거나 병합하지 않습니다.
+
+CI는 합성 tag와 hash만으로 같은 생성기를 실행해 Homebrew Ruby 문법, WinGet YAML
+파싱, x64·arm64 portable 계약을 확인합니다. 실제 tag URL과 hash의 원격 접근성,
+Homebrew tap 반영, WinGet community validation/PR은 릴리스 이후의 외부 단계입니다.
+
 선택적 일반 Chrome 호환 확장의 스토어 ZIP은 CLI 릴리스 아카이브와 분리해 새
 경로에 만들고 검증합니다. 이는 일반 사용자의 기본 설치물이 아닙니다.
 
@@ -104,6 +130,7 @@ Windows 아카이브는 `.zip` 파일명을 사용합니다. SHA-256은 다운�
   안 됩니다.
 - 일반 Chrome 확장의 자동 설치는 Chrome Web Store 검토와 배포가 끝나기
   전까지 지원하지 않습니다. 현재 바이너리는 검토된 번들을 풀어 주지만 사용자가
-  Chrome에서 그 경로를 직접 로드해야 합니다.
+  Chrome에서 그 경로를 직접 로드해야 합니다. 이 확장은 기본 설치나 첫 실행에는
+  필요하지 않은 선택적 호환 adapter입니다.
 - 깨끗한 macOS·Linux·Windows 사용자 환경에서 install/doctor/sync/uninstall
   전체 행렬을 통과하기 전 일반 Chrome 브리지는 `experimental`입니다.

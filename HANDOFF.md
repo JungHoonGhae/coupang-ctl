@@ -26,7 +26,14 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   verify SHA-256, enforce the four-file archive allowlist, execute the candidate
   `version` contract, install without elevation through a same-directory atomic
   replacement, preserve the previous binary on failure, and never touch user
-  browser or order state. Synthetic local-server E2E covers both adapters.
+  browser or order state. Both installers return stable structured JSON on
+  controlled failure. Synthetic local-server E2E covers both adapters.
+- A maintainer-only typed package-manifest generator renders one tagged-source
+  Homebrew formula and the frozen WinGet 1.12.0 three-file portable manifest
+  set from an immutable tag and three SHA-256 values. It writes only to a new
+  local directory, never publishes externally, shares Windows artifact names
+  with the release contract, and is checked with Ruby/YAML parsing plus native
+  Windows portable-alias assertions in CI.
 - The distributed product is now a Go 1.26 module; TypeScript remains limited
   to development probes.
 - GitHub CI runs all synthetic Go tests, `go vet`, research-probe TypeScript
@@ -545,11 +552,11 @@ The pragmatic architecture is:
    source adapters.
 5. Keep newly discovered APIs in the redacted endpoint catalog and promote them
    only after read/write classification and synthetic contract tests.
-6. Treat the user's already-running ordinary browser as the preferred
-   experimental local protected-data context through the explicit
-   `--ordinary-browser` flow. Keep
-   dedicated Chrome for headless/server automation where accepted, and keep
-   normalized export/import as the browserless-server boundary.
+6. Treat the explicit `--ordinary-browser` flow as an optional compatibility
+   path only when the dedicated profile and approved current-browser modes are
+   unsuitable. Keep dedicated Chrome as the default for unattended headless
+   retrieval where accepted, and keep normalized export/import as the
+   browserless-server boundary.
 
 ## Authentication architecture decision
 

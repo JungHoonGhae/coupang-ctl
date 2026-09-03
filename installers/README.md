@@ -46,6 +46,13 @@ pwsh -NoProfile -File .\install.ps1 -Version v0.1.0
 {"name":"coupangctl","version":"0.1.0","status":"installed"}
 ```
 
+실패도 경로나 원본 응답을 출력하지 않고 안정적인 code와 메시지를 가진 JSON으로
+반환합니다.
+
+```json
+{"error":{"code":"checksum_mismatch","message":"archive checksum mismatch"}}
+```
+
 SHA-256은 파일 손상과 manifest 불일치를 확인하지만 게시자 신원을 단독으로
 증명하지는 않습니다. 릴리스의 `checksums.txt`와 아카이브에 대한 GitHub provenance
 검증 및 운영체제 코드 서명 계약은 [`../RELEASING.md`](../RELEASING.md)를 따릅니다.

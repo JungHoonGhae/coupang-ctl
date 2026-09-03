@@ -140,3 +140,16 @@ func TestPOSIXInstallerRejectsUnexpectedArchiveContentAndPreservesExistingBinary
 		t.Fatalf("existing binary changed after rejected archive: %q", contents)
 	}
 }
+
+func TestPOSIXInstallerRejectsMovingVersionWithStructuredErrorBeforeNetwork(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX installer is covered on Unix runners")
+	}
+	command := exec.Command("/bin/sh", filepath.Join("..", "..", "installers", "install.sh"), "--version", "main")
+	command.Env = append(os.Environ(), "COUPANGCTL_INSTALL_BASE_URL=https://127.0.0.1:1")
+	output, err := command.CombinedOutput()
+	want := `{"error":{"code":"invalid_version","message":"version must be an immutable semantic release tag such as v0.1.0"}}`
+	if err == nil || strings.TrimSpace(string(output)) != want {
+		t.Fatalf("install.sh error = %v, output = %q, want %q", err, strings.TrimSpace(string(output)), want)
+	}
+}

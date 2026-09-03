@@ -148,11 +148,12 @@ Cask는 archive 안의 CLI를 `binary` artifact로 연결하고 SHA-256을 검�
 - 각 GitHub Release URL과 그 ZIP의 `InstallerSha256`
 - 기본 설치 범위는 `user`
 
-이 구조는 Microsoft의 manifest schema와 Windows Package Manager 저장소의 실제
-portable ZIP 사례가 지원한다.
-([WinGet manifest 작성법](https://learn.microsoft.com/windows/package-manager/package/manifest),
-[portable ZIP schema](https://github.com/microsoft/winget-cli/blob/master/schemas/JSON/manifests/latest/manifest.installer.latest.json),
-[실제 Node.js portable ZIP manifest](https://github.com/microsoft/winget-pkgs/blob/master/manifests/o/OpenJS/NodeJS/LTS/24.17.0/OpenJS.NodeJS.LTS.installer.yaml))
+이 구조는 Microsoft의 community repository 지침과 고정된 WinGet 1.12 installer
+schema가 지원한다. community repository는 multi-file manifest를 요구하고 ZIP
+installer에는 `NestedInstallerType`이 필요하다. 개발 중인 `latest` schema 대신
+현재 저장소가 받는 `1.12.0`을 생성 결과에 고정한다.
+([community manifest 지침](https://github.com/microsoft/winget-pkgs/blob/master/.github/instructions/manifests.instructions.md),
+[WinGet 1.12 installer schema](https://github.com/microsoft/winget-pkgs/blob/master/doc/manifest/schema/1.12.0/installer.md))
 
 첫 릴리스 뒤 `wingetcreate new`로 최초 PR을 만들고, 다음 릴리스부터
 `wingetcreate update`를 사용한다. Community Repository는 manifest PR을 자동
@@ -338,21 +339,25 @@ Signing 또는 신뢰된 CA의 인증서를 권장하며, EV 인증서도 즉시
 3. **완료 — 체크섬 파일 attestation**: 기존 12개 checksummed artifact
    attestation과 별도로 `checksums.txt` 자체를 attest하고, 검증 명령은
    `--signer-workflow`와 `--source-ref`를 고정한다.
-4. **P0 — uninstall/data 경계**: binary uninstall과 사용자 데이터 보존을 문서화하고,
-   전체 로컬 데이터 삭제가 필요하면 별도 confirmation-gated typed command 및
-   symlink/path ownership 테스트를 먼저 만든다.
-5. **P1 — Homebrew 생성 dry run**: 서명 전 source-build formula template이 tagged
-   source와 SHA-256, Go build dependency, `cmd/coupangctl`만 사용하는지 검사한다.
-   동시에 서명 후 전환할 `homebrew_casks`를 `skip_upload: true`로 준비해 생성된
-   cask가 amd64·arm64 archive, SHA-256, `binary "coupangctl"`만 포함하는지 검사한다.
+4. **완료 — uninstall/data 경계**: package manager와 직접 설치기의 수명주기는
+   binary만 소유하며 브라우저 프로필과 SQLite를 보존한다고 문서화했다. 현재
+   `orders purge`보다 넓은 전체 로컬 데이터 삭제는 제공하지 않으며, 향후 필요할
+   때에만 별도 confirmation-gated typed command와 symlink/path ownership 테스트를
+   먼저 만든다.
+5. **완료 — Homebrew source formula dry run**: typed generator가 tagged source와
+   SHA-256, Go build dependency, `std_go_args`, `cmd/coupangctl`만 사용하는 formula를
+   만든다. 새 출력 디렉터리만 허용하며 macOS CI가 실제 Ruby parser로 검사한다.
    실제 tap repository와 write token은 첫 release 직전에 별도로 준비한다.
-6. **P1 — WinGet template 검사**: x64·arm64 ZIP을 가리키는 세 파일 manifest template을
-   만들고 schema validation과 portable alias를 Windows CI에서 검사한다. URL과 hash는
-   release 후 생성하며 지금 Community Repository PR은 열지 않는다.
+6. **완료 — WinGet template dry run**: 같은 generator가 x64·arm64 ZIP을 가리키는
+   `1.12.0` multi-file version, installer, ko-KR default-locale manifest를 만든다.
+   Go contract test와 Windows CI가 portable alias·archive mapping을 확인하고 macOS
+   CI가 YAML을 파싱한다. 실제 URL/hash 생성과 Community Repository validation/PR은
+   첫 release 이후에 수행한다.
 7. **P1 — signed-build seams**: macOS codesign/notary와 Windows signing 단계를 아직
    실행하지 않더라도, unsigned release를 명시적으로 표시하고 signing credential이
-   없는 stable release는 실패하도록 opt-in gate를 설계한다. secret 이름만 참조하고
-   값은 fixture, log, artifact에 넣지 않는다.
+   없는 stable release는 실패하도록 opt-in gate를 설계한다. 서명 후 전환할
+   `homebrew_casks` dry run도 이 단계에서 최종 서명 archive를 대상으로 추가한다.
+   secret 이름만 참조하고 값은 fixture, log, artifact에 넣지 않는다.
 
 첫 공개 태그 이후에만 가능한 외부 작업은 tap repository publish, WinGet Community
 Repository PR, 실제 GitHub attestation 조회, macOS notarization, Windows publisher
@@ -362,8 +367,9 @@ identity 검증이다.
 
 사용자가 설치해야 할 것은 Orca도 확장 프로그램도 아닌 `coupangctl` 하나다. 태그
 전에는 검증된 `go install ...@main`이 clone 없는 개발 스냅샷 경로이고, 현재
-GoReleaser와 release-contract 기반은 첫 안정 릴리스의 올바른 출발점이다. 다음 제품
-작업은 이를 사용자 범위 설치기와 Homebrew/WinGet metadata로 연결하는 것이다.
+GoReleaser, release-contract, 사용자 범위 직접 설치기, Homebrew/WinGet metadata
+generator까지 하나의 배포 계약으로 연결되어 있다. 첫 공개 tag 뒤 남는 일은 실제
+hash로 metadata를 생성하고 외부 package repository의 검증·심사를 통과하는 것이다.
 
 다만 “서명 전에도 자동 설치되니 일반 사용자가 아무 경고 없이 쓸 수 있다”는 결론은
 근거가 없다. 패키지 관리자와 GitHub provenance는 공급망 검증과 생명주기를 크게

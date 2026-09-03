@@ -111,6 +111,21 @@ jobs:
           $env:COUPANGCTL_LIVE_BROWSER_LAUNCH = '1'
           go test ./internal/browser -run '^TestLiveInstalledChromeHeadlessLaunch$' -count=1
 
+      - name: Generate Windows package-manager metadata
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'coupangctl-package-manifests'
+          go run ./cmd/packagemanifests `
+            --tag v1.2.3 `
+            --source-sha256 ('a' * 64) `
+            --windows-amd64-sha256 ('b' * 64) `
+            --windows-arm64-sha256 ('c' * 64) `
+            --output $output
+          $installer = Get-Content -Raw -LiteralPath (Join-Path $output 'winget/manifests/j/JungHoonGhae/coupangctl/1.2.3/JungHoonGhae.coupangctl.installer.yaml')
+          if ($installer -notmatch 'NestedInstallerType: portable' -or $installer -notmatch 'PortableCommandAlias: coupangctl') {
+            throw 'generated WinGet portable manifest is incomplete'
+          }
+
   macos-browser-profile:
     name: macOS browser profile contracts
     runs-on: macos-latest
@@ -130,3 +145,15 @@ jobs:
           go test ./internal/releasecontract -run '^TestPOSIXInstaller' -count=1
           go test ./internal/browser -run '^(TestDedicatedProfileLock|TestProfileIdentity|TestCurrentBrowser|TestDefaultFetchNeverOpensAVisibleBrowserFallback)' -count=1
           COUPANGCTL_LIVE_BROWSER_LAUNCH=1 go test ./internal/browser -run '^TestLiveInstalledChromeHeadlessLaunch$' -count=1
+
+      - name: Parse generated Homebrew and WinGet metadata
+        run: |
+          output="$RUNNER_TEMP/coupangctl-package-manifests"
+          go run ./cmd/packagemanifests \
+            --tag v1.2.3 \
+            --source-sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            --windows-amd64-sha256 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+            --windows-arm64-sha256 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc \
+            --output "$output"
+          ruby -c "$output/homebrew/Formula/coupangctl.rb"
+          ruby -e 'require "yaml"; Dir[ARGV.fetch(0)].each { |file| document = YAML.safe_load(File.read(file), permitted_classes: [], permitted_symbols: [], aliases: false); abort(file) unless document["PackageIdentifier"] == "JungHoonGhae.coupangctl" && document["ManifestVersion"] == "1.12.0" }' "$output/winget/manifests/j/JungHoonGhae/coupangctl/1.2.3/*.yaml"

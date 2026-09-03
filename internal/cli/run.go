@@ -612,7 +612,7 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 		maxPages := flags.Int("max-pages", 100, "maximum pages to process")
 		headed := flags.Bool("headed", false, "explicitly use a visible browser")
 		currentBrowser := flags.Bool("current-browser", false, "use a user-approved connection to running Chrome")
-		ordinaryBrowser := flags.Bool("ordinary-browser", false, "use the selected tab in ordinary Chrome")
+		ordinaryBrowser := flags.Bool("ordinary-browser", false, "use the optional selected-tab extension compatibility path")
 		if err := parseFlags(flags, args[1:], orderSyncUsage); err != nil {
 			return err
 		}

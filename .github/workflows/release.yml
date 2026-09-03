@@ -41,6 +41,19 @@ jobs:
         if: runner.os != 'Windows'
         run: go test ./internal/releasecontract -run '^TestPOSIXInstaller' -count=1
 
+      - name: Parse generated Homebrew and WinGet metadata
+        if: runner.os == 'macOS'
+        run: |
+          output="$RUNNER_TEMP/coupangctl-package-manifests"
+          go run ./cmd/packagemanifests \
+            --tag v1.2.3 \
+            --source-sha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            --windows-amd64-sha256 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+            --windows-arm64-sha256 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc \
+            --output "$output"
+          ruby -c "$output/homebrew/Formula/coupangctl.rb"
+          ruby -e 'require "yaml"; Dir[ARGV.fetch(0)].each { |file| document = YAML.safe_load(File.read(file), permitted_classes: [], permitted_symbols: [], aliases: false); abort(file) unless document["PackageIdentifier"] == "JungHoonGhae.coupangctl" && document["ManifestVersion"] == "1.12.0" }' "$output/winget/manifests/j/JungHoonGhae/coupangctl/1.2.3/*.yaml"
+
       - name: Test native profile safety and quiet defaults
         env:
           COUPANGCTL_LIVE_BROWSER_LAUNCH: "1"

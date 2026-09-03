@@ -490,7 +490,7 @@ func addOrderTools(server *mcp.Server, provider OrderProvider) {
 func addOrdinaryOrderTools(server *mcp.Server, provider OrdinaryOrderProvider) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "orders_sync_ordinary_browser",
-		Description: "Refresh the normalized local ledger from the user-selected order-list tab in ordinary Chrome. Before calling, tell the user to keep that tab selected and click the installed coupangctl extension once while this tool is waiting. The extension uses activeTab for this one action, sends only normalized bounded order data through the local native host, and never copies cookies. This changes only the local ledger and never orders or pays.",
+		Description: "Optional compatibility path; use only when dedicated-profile and approved current-browser sync are unsuitable. Refresh the normalized local ledger from the user-selected order-list tab in ordinary Chrome. Before calling, tell the user to keep that tab selected and click the installed coupangctl extension once while this tool is waiting. The extension uses activeTab for this one action, sends only normalized bounded order data through the local native host, and never copies cookies. This changes only the local ledger and never orders or pays.",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint: false, DestructiveHint: boolPointer(false), IdempotentHint: true, OpenWorldHint: boolPointer(true),
 		},
