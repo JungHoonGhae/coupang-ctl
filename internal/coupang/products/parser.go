@@ -122,6 +122,14 @@ func ParseInspectionDocument(document []byte, request core.ProductInspectRequest
 	payload.Reviews = normalizeReviews(payload.Reviews)
 	payload.Coverage.ObservedFields = normalizedStrings(payload.Coverage.ObservedFields, 80, 100)
 	payload.Coverage.UnavailableFields = normalizedStrings(payload.Coverage.UnavailableFields, 80, 100)
+	hasCardBenefit := false
+	for _, benefit := range payload.Benefits {
+		if benefit.Kind == "card" {
+			hasCardBenefit = true
+			break
+		}
+	}
+	reconcileInspectionCoverage(&payload.Coverage, len(payload.SelectedOptions) > 0, hasCardBenefit)
 	if payload.Coverage.Source == "" {
 		payload.Coverage.Source = "coupang_product_document"
 	}
@@ -132,6 +140,41 @@ func ParseInspectionDocument(document []byte, request core.ProductInspectRequest
 		Reviews: payload.Reviews, Coverage: payload.Coverage,
 		Warnings: normalizedStrings(payload.Warnings, 20, 300),
 	}, nil
+}
+
+func reconcileInspectionCoverage(coverage *core.ProductCoverage, selectedOptionsObserved, cardBenefitObserved bool) {
+	fields := []struct {
+		name     string
+		observed bool
+	}{
+		{name: "selected_options", observed: selectedOptionsObserved},
+		{name: "card_benefit", observed: cardBenefitObserved},
+	}
+	for _, field := range fields {
+		coverage.ObservedFields = removeString(coverage.ObservedFields, field.name)
+		coverage.UnavailableFields = removeString(coverage.UnavailableFields, field.name)
+	}
+	observed := make([]string, 0, len(coverage.ObservedFields)+len(fields))
+	unavailable := make([]string, 0, len(coverage.UnavailableFields)+len(fields))
+	for _, field := range fields {
+		if field.observed {
+			observed = append(observed, field.name)
+		} else {
+			unavailable = append(unavailable, field.name)
+		}
+	}
+	coverage.ObservedFields = normalizedStrings(append(observed, coverage.ObservedFields...), 80, 100)
+	coverage.UnavailableFields = normalizedStrings(append(unavailable, coverage.UnavailableFields...), 80, 100)
+}
+
+func removeString(values []string, unwanted string) []string {
+	result := values[:0]
+	for _, value := range values {
+		if value != unwanted {
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 func ParseCartAddDocument(document []byte, request core.CartAddRequest) (core.CartAddResult, error) {

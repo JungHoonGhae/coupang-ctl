@@ -419,6 +419,10 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   stopping when an empty picker container first appears. The same MacBook
   option returned two selected rows and a 16GB/512GB normalized option in both
   headed and default headless-first verification.
+- The product parser now reconciles `selected_options` and `card_benefit`
+  coverage from the normalized values. Missing labels/benefits are explicitly
+  unavailable, present values are observed, and contradictory source coverage
+  cannot leak through to CLI or MCP responses.
 - A metadata-only headed probe found that the optional `quantity-info` request
   currently returns HTTP 403 with `text/html` on the sampled product. The page
   remained HTTP 200; coupon, promotion, cashback, delivery, image, and review

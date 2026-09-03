@@ -111,7 +111,7 @@ func CurrentCapabilities() CapabilityReport {
 			ID: "natural_language_product_discovery", Priority: "P0", Status: CapabilityAvailable,
 			UserValue:   "AI-friendly product search and inspection with current price, normalized computer-title specifications, public images, selected options when observed, delivery, benefits, ratings, and sanitized reviews",
 			Interface:   []string{"cli", "mcp"},
-			Implemented: []string{"typed natural-language search filters", "separate exact product inspection", "current price, public images, delivery, benefit, rating, review, and computer-spec evidence with per-field coverage", "bounded selected-option extraction with unavailable states for unobserved card benefits"},
+			Implemented: []string{"typed natural-language search filters", "separate exact product inspection", "current price, public images, delivery, benefit, rating, review, and computer-spec evidence with per-field coverage", "bounded selected-option extraction with parser-reconciled unavailable states for missing option labels and unobserved card benefits"},
 			NextWork:    "keep layout coverage and honest unavailable-field behavior in release checks", NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-03",
 		},
 		{

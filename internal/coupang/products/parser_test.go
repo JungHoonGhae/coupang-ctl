@@ -1,6 +1,8 @@
 package products
 
 import (
+	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -49,6 +51,67 @@ func TestParseInspectionRedactsObviousReviewerPIIAndOmitsUntrustedImages(t *test
 	if strings.Contains(result.Reviews[0].Content, "buyer@example.com") || strings.Contains(result.Reviews[0].Content, "010-1234-5678") {
 		t.Fatalf("review PII was not redacted: %q", result.Reviews[0].Content)
 	}
+}
+
+func TestParseInspectionMakesMissingOptionAndCardBenefitCoverageExplicit(t *testing.T) {
+	document := []byte(`{
+		"product":{"product_id":"101","vendor_item_id":"301","name":"Synthetic hub","url":"https://www.coupang.com/vp/products/101?vendorItemId=301","current_amount":79000},
+		"selected_options":[],
+		"benefits":[{"kind":"coupon","title":"Synthetic coupon","source":"product_page"}],
+		"coverage":{"source":"synthetic","observed_fields":["selected_options"],"unavailable_fields":[]}
+	}`)
+	result, err := ParseInspectionDocument(document, core.ProductInspectRequest{ProductID: "101", VendorItemID: "301"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if containsString(result.Coverage.ObservedFields, "selected_options") {
+		t.Fatalf("missing option labels remained observed: %#v", result.Coverage)
+	}
+	for _, field := range []string{"selected_options", "card_benefit"} {
+		if !containsString(result.Coverage.UnavailableFields, field) {
+			t.Fatalf("missing %q coverage: %#v", field, result.Coverage)
+		}
+	}
+}
+
+func TestParseInspectionKeepsObservedEvidenceAtCoverageLimit(t *testing.T) {
+	observed := make([]string, 80)
+	for index := range observed {
+		observed[index] = "a_source_field_" + strconv.Itoa(index)
+	}
+	document, err := json.Marshal(map[string]any{
+		"product": map[string]any{
+			"product_id": "101", "vendor_item_id": "301", "name": "Synthetic hub",
+			"url": "https://www.coupang.com/vp/products/101?vendorItemId=301", "current_amount": 79000,
+		},
+		"selected_options": []string{"Synthetic 16GB option"},
+		"benefits":         []map[string]any{{"kind": "card", "title": "Synthetic card benefit", "source": "product_page"}},
+		"coverage": map[string]any{
+			"source": "synthetic", "observed_fields": observed,
+			"unavailable_fields": []string{"selected_options", "card_benefit"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := ParseInspectionDocument(document, core.ProductInspectRequest{ProductID: "101", VendorItemID: "301"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"selected_options", "card_benefit"} {
+		if !containsString(result.Coverage.ObservedFields, field) || containsString(result.Coverage.UnavailableFields, field) {
+			t.Fatalf("observed %q evidence was lost or contradictory at the coverage limit: %#v", field, result.Coverage)
+		}
+	}
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func TestParseCartAddPreservesUnverifiedAttemptWithoutEncouragingRetry(t *testing.T) {

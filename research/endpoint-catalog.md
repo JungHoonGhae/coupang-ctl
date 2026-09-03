@@ -131,6 +131,10 @@ being listed as `researched` does not make it a supported product API.
   structured price, delivery, images, bounded reviews, and honest field
   coverage. No card-benefit text was present in those samples, so generic
   promotion text was not relabeled as a card benefit.
+- The typed product parser independently reconciles `selected_options` and
+  `card_benefit` coverage after normalization. A missing value is explicitly
+  unavailable even if a source document claimed it was observed, while a
+  present value removes a contradictory unavailable label.
 - A later bounded live pass reached zero pending product references without
   guessing missing categories. Both valid breadcrumb documents and explicit
   unavailable outcomes were observed; account-specific counts and labels were

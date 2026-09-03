@@ -198,6 +198,12 @@ coupangctl products search \
 
 MCP를 쓰면 AI가 “후기 좋은 10만 원 아래 맥북 허브, 광고 제외” 같은 요청을 `products_search`의 typed filter로 바꿉니다. 실제 카테고리 이름으로 찾고 싶으면 먼저 `orders_category_catalog`에서 관찰된 ID를 고른 뒤 `products_search.category_id`로 넘깁니다. 선택한 후보는 `product_inspect`로 가격, 배송, 이미지, 상세 내용, 관찰된 쿠폰·카드 혜택, 평점과 정제된 후기를 확인할 수 있습니다.
 
+`product_inspect.coverage`는 옵션명이나 카드 혜택을 관찰하지 못했을 때 이를
+빈 값으로만 넘기지 않습니다. `selected_options`와 `card_benefit`을
+`unavailable_fields`에 명시하고, 실제 값이 있으면 모순되는 unavailable 표기를
+제거해 `observed_fields`에 둡니다. 따라서 AI는 “없는 혜택”이라고 추측하지 않고
+정확한 `vendor_item_id`를 유지한 채 최종 화면 확인을 안내할 수 있습니다.
+
 정렬 의미는 섞지 않습니다.
 
 - `coupang_ranking`: 쿠팡 랭킹순
