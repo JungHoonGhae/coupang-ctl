@@ -545,6 +545,23 @@ func TestCurrentBrowserReadRequestedOnlyForExplicitOrderSync(t *testing.T) {
 	}
 }
 
+func TestBackgroundBrowserPolicyIsLimitedToUnattendedEntryPoints(t *testing.T) {
+	for _, test := range []struct {
+		args []string
+		want bool
+	}{
+		{args: []string{"mcp"}, want: true},
+		{args: []string{"products", "watch-refresh"}, want: true},
+		{args: []string{"products", "watch-refresh", "--headed"}, want: false},
+		{args: []string{"products", "search", "synthetic"}, want: false},
+		{args: []string{"orders", "sync"}, want: false},
+	} {
+		if got := backgroundReadRequested(test.args); got != test.want {
+			t.Fatalf("backgroundReadRequested(%#v) = %t, want %t", test.args, got, test.want)
+		}
+	}
+}
+
 func TestConvenienceCommandsExpandWithoutMutatingInput(t *testing.T) {
 	for _, test := range []struct {
 		input []string

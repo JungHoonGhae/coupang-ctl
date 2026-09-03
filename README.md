@@ -225,8 +225,9 @@ coupangctl products watch-schedule \
 
 기존 파일은 덮어쓰지 않으며, systemd/launchd/crontab/Task Scheduler 활성화는
 출력된 `activation` 안내를 검토한 뒤 사용자가 실행합니다. 생성 작업은 기본
-headless `watch-refresh`만 호출하므로 서버에서도 쓸 수 있지만, 보호된 세션이
-만료되면 headed 재로그인은 별도로 필요합니다.
+headless `watch-refresh`만 호출하며 접근이 거부되어도 창을 열지 않으므로
+서버에서도 쓸 수 있습니다. 보호된 세션이 만료되면 headed 재로그인은 별도로
+필요합니다.
 
 로컬 가격 관찰만 지우려면 명시적인 확인 문자열이 필요합니다.
 
@@ -280,6 +281,11 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
   }
 }
 ```
+
+MCP 서버는 장시간 백그라운드에서 실행되는 프로세스이므로 기본 브라우저 읽기가
+거부되어도 보이는 창을 임의로 열지 않습니다. 사용자가 화면을 보고 재시도하려면
+해당 CLI 명령의 `--headed`를 명시하거나, Chrome에서 직접 승인한
+`orders_sync_current_browser`를 사용합니다.
 
 대표 도구:
 

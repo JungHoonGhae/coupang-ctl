@@ -88,7 +88,9 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 		return err
 	}
 	browserAdapter := browser.NewNative(paths.ProfileDir)
-	if currentBrowserReadRequested(args) {
+	if backgroundReadRequested(args) {
+		browserAdapter = browser.NewNativeBackground(paths.ProfileDir)
+	} else if currentBrowserReadRequested(args) {
 		browserAdapter = browser.NewNativeCurrentBrowser()
 	} else if headedReadRequested(args) {
 		browserAdapter = browser.NewNativeHeadedSync(paths.ProfileDir)
@@ -896,6 +898,13 @@ func currentBrowserReadRequested(args []string) bool {
 		}
 	}
 	return false
+}
+
+func backgroundReadRequested(args []string) bool {
+	if len(args) == 1 && args[0] == "mcp" {
+		return true
+	}
+	return len(args) >= 2 && args[0] == "products" && args[1] == "watch-refresh" && !headedReadRequested(args)
 }
 
 func conflictingOrderSyncBrowserModes(args []string) bool {

@@ -121,6 +121,16 @@ func NewNativeHeadedSync(profileDir string) *Native {
 	return native
 }
 
+// NewNativeBackground creates a read adapter for unattended processes. It may
+// retry a transient denial in the same headless session, but it never opens a
+// visible browser fallback.
+func NewNativeBackground(profileDir string) *Native {
+	native := NewNative(profileDir)
+	native.headedSessionFactory = nil
+	native.allowHeadedFallback = nil
+	return native
+}
+
 // NewNativeCurrentBrowser connects only to a running Chrome-family browser
 // whose user explicitly enabled Chrome's remote-debugging approval flow. It
 // does not launch, close, or copy session state from that browser.

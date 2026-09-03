@@ -32,7 +32,10 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   without mislabeling them as unfinished code.
 - CLI and MCP share the same typed authentication and order services. MCP
   exposes authentication status, sync, list, spend, reorder-candidate, and
-  normalized-export tools. Destructive purge is intentionally CLI-only.
+  normalized-export tools. The MCP composition root and scheduled
+  `products watch-refresh` use a background browser adapter that never opens a
+  visible fallback; an interactive CLI `--headed` remains explicit.
+  Destructive purge is intentionally CLI-only.
 - `account benefits` and MCP `account_benefits` expose an experimental
   `private_local` account schema v3 snapshot: current membership state/fee, source-
   reported benefit aggregates, registered payment-method brand/type/issuer,

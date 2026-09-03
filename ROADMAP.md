@@ -42,8 +42,10 @@ license to guess the missing data or bypass an access control.
 - Protected reads can still be rejected in a short-lived dedicated Chrome
   context even when the same account works in an already-running ordinary
   Chrome window. The native adapter makes one delayed, idempotent retry before
-  its existing headed fallback. This is resilience, not a bypass or a success
-  guarantee. Orca remains a research aid; the experimental ordinary-browser
+  its existing headed fallback for an interactive CLI read. Unattended MCP and
+  scheduled watch-refresh processes use a background adapter that never opens
+  a visible browser. This is resilience, not a bypass or a success guarantee.
+  Orca remains a research aid; the experimental ordinary-browser
   bridge
   uses Chrome Native Messaging with a user-selected `activeTab`, packaged
   isolated-world code, and a closed normalized response protocol. It does not

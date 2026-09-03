@@ -241,6 +241,34 @@ func TestVerifyNeverOpensHeadedFallbackUnlessExplicitlyConfigured(t *testing.T) 
 	}
 }
 
+func TestBackgroundNativeNeverFallsBackToAVisibleBrowser(t *testing.T) {
+	executable := syntheticExecutable(t, "exit 0\n")
+	profile := filepath.Join(t.TempDir(), "browser-profile")
+	if err := os.MkdirAll(profile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	headless := &fakeDocumentSession{err: ErrBrowserAccessDenied}
+	native := NewNativeBackground(profile)
+	native.getenv = func(name string) string {
+		if name == "COUPANGCTL_BROWSER_PATH" {
+			return executable
+		}
+		return ""
+	}
+	native.waitBeforeAccessRetry = func(context.Context) error { return nil }
+	native.sessionFactory = func(context.Context, string, string) (documentSession, error) {
+		return headless, nil
+	}
+
+	_, err := native.Fetch(context.Background(), nil)
+	if !errors.Is(err, ErrBrowserAccessDenied) {
+		t.Fatalf("background fetch error = %v, want %v", err, ErrBrowserAccessDenied)
+	}
+	if native.headedSessionFactory != nil || native.allowHeadedFallback != nil {
+		t.Fatal("background adapter retained a visible fallback")
+	}
+}
+
 func TestFetchRetriesTransientAccessDenialInSameSession(t *testing.T) {
 	executable := syntheticExecutable(t, "exit 0\n")
 	profile := filepath.Join(t.TempDir(), "browser-profile")
