@@ -10,4 +10,7 @@
 - Evidence-first product work: before changing analytics, shopping types, recap
   visuals, or promotional claims, read `PRODUCT_PRINCIPLES.md` and preserve its
   observed/derived/inferred provenance boundary.
+- Accept releases from downloaded artifacts: verify checksums, SBOMs, and
+  attestations, then smoke-test `version`, no-argument help, and `--help` on the
+  packaged binary.
 - Doppler development config: `cli-mcp-lab/dev_coupang`; reference secret names only.
