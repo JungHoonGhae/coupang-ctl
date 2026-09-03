@@ -45,6 +45,13 @@ type fakeDocumentSession struct {
 	productDocument  []byte
 	productErr       error
 	productURLs      []string
+	receiptDocument  []byte
+	receiptErr       error
+	receiptErrors    []error
+	receiptReads     int
+	receiptHistory   []core.ReceiptHistoryRequest
+	receiptSummaries []core.ReceiptSummaryRequest
+	receiptDownloads []core.ReceiptDownloadRequest
 	closed           bool
 }
 
@@ -61,6 +68,34 @@ func (f *fakeDocumentSession) ReadProductCategoryDocument(_ context.Context, tar
 func (f *fakeDocumentSession) ReadProductSearchDocument(_ context.Context, targetURL string) ([]byte, error) {
 	f.productURLs = append(f.productURLs, targetURL)
 	return f.productDocument, f.productErr
+}
+
+func (f *fakeDocumentSession) ReadReceiptStatusDocument(context.Context) ([]byte, error) {
+	return f.nextReceiptDocument()
+}
+
+func (f *fakeDocumentSession) ReadReceiptHistoryDocument(_ context.Context, request core.ReceiptHistoryRequest) ([]byte, error) {
+	f.receiptHistory = append(f.receiptHistory, request)
+	return f.nextReceiptDocument()
+}
+
+func (f *fakeDocumentSession) ReadReceiptSummaryDocument(_ context.Context, request core.ReceiptSummaryRequest) ([]byte, error) {
+	f.receiptSummaries = append(f.receiptSummaries, request)
+	return f.nextReceiptDocument()
+}
+
+func (f *fakeDocumentSession) ReadReceiptDownloadDocument(_ context.Context, request core.ReceiptDownloadRequest) ([]byte, error) {
+	f.receiptDownloads = append(f.receiptDownloads, request)
+	return f.nextReceiptDocument()
+}
+
+func (f *fakeDocumentSession) nextReceiptDocument() ([]byte, error) {
+	index := f.receiptReads
+	f.receiptReads++
+	if index < len(f.receiptErrors) {
+		return f.receiptDocument, f.receiptErrors[index]
+	}
+	return f.receiptDocument, f.receiptErr
 }
 
 func (f *fakeDocumentSession) Close() error {
@@ -251,6 +286,62 @@ func TestFetchUsesReadOnlyCursorURLAndReusableSession(t *testing.T) {
 	}
 	if !session.closed {
 		t.Fatal("document session was not closed")
+	}
+}
+
+func TestReceiptReadsDefaultBoundsBeforeReachingNarrowSession(t *testing.T) {
+	executable := syntheticExecutable(t, "exit 0\n")
+	profile := filepath.Join(t.TempDir(), "browser-profile")
+	if err := os.MkdirAll(profile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	session := &fakeDocumentSession{receiptDocument: []byte(`{"success":true}`)}
+	native := NewNative(profile)
+	native.getenv = func(name string) string {
+		if name == "COUPANGCTL_BROWSER_PATH" {
+			return executable
+		}
+		return ""
+	}
+	native.sessionFactory = func(context.Context, string, string) (documentSession, error) { return session, nil }
+
+	if _, err := native.FetchReceiptHistory(context.Background(), core.ReceiptHistoryRequest{Kind: core.ReceiptKindCard}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := native.FetchReceiptSummary(context.Background(), core.ReceiptSummaryRequest{Kind: core.ReceiptKindCard, From: "2026-01-01", To: "2026-09-03"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := native.FetchReceiptDownload(context.Background(), core.ReceiptDownloadRequest{Kind: core.ReceiptKindCash, HistoryIndex: 0}); err != nil {
+		t.Fatal(err)
+	}
+	if len(session.receiptHistory) != 1 || session.receiptHistory[0].PageSize != 5 || len(session.receiptSummaries) != 1 || session.receiptSummaries[0].MaxCards != 20 || len(session.receiptDownloads) != 1 || session.receiptDownloads[0].PageSize != 5 {
+		t.Fatalf("unexpected receipt bounds: history=%#v summary=%#v download=%#v", session.receiptHistory, session.receiptSummaries, session.receiptDownloads)
+	}
+}
+
+func TestReceiptReadRetriesOneTransientStructuredMiss(t *testing.T) {
+	executable := syntheticExecutable(t, "exit 0\n")
+	profile := filepath.Join(t.TempDir(), "browser-profile")
+	if err := os.MkdirAll(profile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	session := &fakeDocumentSession{
+		receiptDocument: []byte(`{"kind":"card"}`),
+		receiptErrors:   []error{ErrStructuredReceiptDataMissing, nil},
+	}
+	native := NewNative(profile)
+	native.getenv = func(name string) string {
+		if name == "COUPANGCTL_BROWSER_PATH" {
+			return executable
+		}
+		return ""
+	}
+	native.sessionFactory = func(context.Context, string, string) (documentSession, error) { return session, nil }
+
+	request := core.ReceiptSummaryRequest{Kind: core.ReceiptKindCard, From: "2026-01-01", To: "2026-09-03"}
+	document, err := native.FetchReceiptSummary(context.Background(), request)
+	if err != nil || string(document) != `{"kind":"card"}` || len(session.receiptSummaries) != 2 {
+		t.Fatalf("transient read was not retried once: document=%q reads=%d err=%v", document, len(session.receiptSummaries), err)
 	}
 }
 

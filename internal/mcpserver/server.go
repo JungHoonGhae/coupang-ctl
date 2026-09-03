@@ -36,23 +36,33 @@ type AccountProvider interface {
 	Snapshot(context.Context, core.AccountBenefitsRequest) (core.AccountBenefitsSnapshot, error)
 }
 
+type ReceiptProvider interface {
+	Status(context.Context) (core.ReceiptRequestStatusSnapshot, error)
+	History(context.Context, core.ReceiptHistoryRequest) (core.ReceiptHistoryPage, error)
+	Summary(context.Context, core.ReceiptSummaryRequest) (core.ReceiptSummary, error)
+}
+
 func New(provider StatusProvider, version string) *mcp.Server {
-	return newServer(provider, nil, nil, nil, version)
+	return newServer(provider, nil, nil, nil, nil, version)
 }
 
 func NewWithOrders(authProvider StatusProvider, orderProvider OrderProvider, version string) *mcp.Server {
-	return newServer(authProvider, orderProvider, nil, nil, version)
+	return newServer(authProvider, orderProvider, nil, nil, nil, version)
 }
 
 func NewWithFeatures(authProvider StatusProvider, orderProvider OrderProvider, productProvider ProductProvider, version string) *mcp.Server {
-	return newServer(authProvider, orderProvider, productProvider, nil, version)
+	return newServer(authProvider, orderProvider, productProvider, nil, nil, version)
 }
 
 func NewWithAllFeatures(authProvider StatusProvider, orderProvider OrderProvider, productProvider ProductProvider, accountProvider AccountProvider, version string) *mcp.Server {
-	return newServer(authProvider, orderProvider, productProvider, accountProvider, version)
+	return newServer(authProvider, orderProvider, productProvider, accountProvider, nil, version)
 }
 
-func newServer(provider StatusProvider, orders OrderProvider, products ProductProvider, account AccountProvider, version string) *mcp.Server {
+func NewWithAllFeaturesAndReceipts(authProvider StatusProvider, orderProvider OrderProvider, productProvider ProductProvider, accountProvider AccountProvider, receiptProvider ReceiptProvider, version string) *mcp.Server {
+	return newServer(authProvider, orderProvider, productProvider, accountProvider, receiptProvider, version)
+}
+
+func newServer(provider StatusProvider, orders OrderProvider, products ProductProvider, account AccountProvider, receipts ReceiptProvider, version string) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "coupangctl",
 		Version: version,
@@ -80,6 +90,9 @@ func newServer(provider StatusProvider, orders OrderProvider, products ProductPr
 	if account != nil {
 		addAccountTools(server, account)
 	}
+	if receipts != nil {
+		addReceiptTools(server, receipts)
+	}
 
 	return server
 }
@@ -98,6 +111,49 @@ func RunWithFeatures(ctx context.Context, authProvider StatusProvider, orderProv
 
 func RunWithAllFeatures(ctx context.Context, authProvider StatusProvider, orderProvider OrderProvider, productProvider ProductProvider, accountProvider AccountProvider, version string) error {
 	return NewWithAllFeatures(authProvider, orderProvider, productProvider, accountProvider, version).Run(ctx, &mcp.StdioTransport{})
+}
+
+func RunWithAllFeaturesAndReceipts(ctx context.Context, authProvider StatusProvider, orderProvider OrderProvider, productProvider ProductProvider, accountProvider AccountProvider, receiptProvider ReceiptProvider, version string) error {
+	return NewWithAllFeaturesAndReceipts(authProvider, orderProvider, productProvider, accountProvider, receiptProvider, version).Run(ctx, &mcp.StdioTransport{})
+}
+
+func addReceiptTools(server *mcp.Server, provider ReceiptProvider) {
+	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPointer(true)}
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "receipts_status",
+		Description: "Read whether a cash or card receipt archive request is currently in progress. This never creates a request and exposes no receipt URL, card number, or account identifier.",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, core.ReceiptRequestStatusSnapshot, error) {
+		result, err := provider.Status(ctx)
+		if err != nil {
+			return nil, core.ReceiptRequestStatusSnapshot{}, safeReceiptToolError(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "receipts_list",
+		Description: "List bounded cash or card receipt download-request history. Download URLs and card numbers are discarded. This never creates or downloads a receipt.",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.ReceiptHistoryRequest) (*mcp.CallToolResult, core.ReceiptHistoryPage, error) {
+		result, err := provider.History(ctx, input)
+		if err != nil {
+			return nil, core.ReceiptHistoryPage{}, safeReceiptToolError(err)
+		}
+		return nil, result, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "receipts_summary",
+		Description: "Summarize observed cash or card receipt counts and amounts for a bounded date range. Card identifiers are discarded, and installment statistics remain explicitly unavailable because no installment-month field is verified.",
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input core.ReceiptSummaryRequest) (*mcp.CallToolResult, core.ReceiptSummary, error) {
+		result, err := provider.Summary(ctx, input)
+		if err != nil {
+			return nil, core.ReceiptSummary{}, safeReceiptToolError(err)
+		}
+		return nil, result, nil
+	})
 }
 
 func addAccountTools(server *mcp.Server, provider AccountProvider) {
@@ -260,4 +316,8 @@ func safeToolError(error) error {
 
 func safeProductToolError(error) error {
 	return errors.New("coupangctl could not complete the requested product operation")
+}
+
+func safeReceiptToolError(error) error {
+	return errors.New("coupangctl could not complete the requested receipt read")
 }

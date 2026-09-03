@@ -50,6 +50,13 @@ type accountBenefitsDocumentSession interface {
 	ReadAccountBenefitsDocument(context.Context, int) ([]byte, error)
 }
 
+type receiptDocumentSession interface {
+	ReadReceiptStatusDocument(context.Context) ([]byte, error)
+	ReadReceiptHistoryDocument(context.Context, core.ReceiptHistoryRequest) ([]byte, error)
+	ReadReceiptSummaryDocument(context.Context, core.ReceiptSummaryRequest) ([]byte, error)
+	ReadReceiptDownloadDocument(context.Context, core.ReceiptDownloadRequest) ([]byte, error)
+}
+
 type qrPresenter func(context.Context, string, string, string, string, core.QRLinkPresenter) error
 type phonePresenter func(context.Context, string, string, string, string, core.OTPProvider) error
 
@@ -288,6 +295,92 @@ func (n *Native) FetchAccountBenefits(ctx context.Context, request core.AccountB
 		return nil, err
 	}
 	return read()
+}
+
+func (n *Native) FetchReceiptStatus(ctx context.Context) ([]byte, error) {
+	return n.fetchReceiptDocument(ctx, func(session receiptDocumentSession) ([]byte, error) {
+		return session.ReadReceiptStatusDocument(ctx)
+	})
+}
+
+func (n *Native) FetchReceiptHistory(ctx context.Context, request core.ReceiptHistoryRequest) ([]byte, error) {
+	if request.PageSize == 0 {
+		request.PageSize = 5
+	}
+	if err := request.Validate(); err != nil {
+		return nil, err
+	}
+	return n.fetchReceiptDocument(ctx, func(session receiptDocumentSession) ([]byte, error) {
+		return session.ReadReceiptHistoryDocument(ctx, request)
+	})
+}
+
+func (n *Native) FetchReceiptSummary(ctx context.Context, request core.ReceiptSummaryRequest) ([]byte, error) {
+	if request.MaxCards == 0 {
+		request.MaxCards = 20
+	}
+	if err := request.Validate(); err != nil {
+		return nil, err
+	}
+	return n.fetchReceiptDocument(ctx, func(session receiptDocumentSession) ([]byte, error) {
+		return session.ReadReceiptSummaryDocument(ctx, request)
+	})
+}
+
+func (n *Native) FetchReceiptDownload(ctx context.Context, request core.ReceiptDownloadRequest) ([]byte, error) {
+	if request.PageSize == 0 {
+		request.PageSize = 5
+	}
+	if err := request.Validate(); err != nil {
+		return nil, err
+	}
+	return n.fetchReceiptDocument(ctx, func(session receiptDocumentSession) ([]byte, error) {
+		return session.ReadReceiptDownloadDocument(ctx, request)
+	})
+}
+
+func (n *Native) fetchReceiptDocument(ctx context.Context, read func(receiptDocumentSession) ([]byte, error)) ([]byte, error) {
+	present, err := directoryPresent(n.profileDir)
+	if err != nil {
+		return nil, fmt.Errorf("inspect dedicated browser profile: %w", err)
+	}
+	if !present {
+		return nil, ErrAuthenticationRequired
+	}
+	path, err := n.discover()
+	if err != nil {
+		return nil, err
+	}
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.session == nil {
+		n.session, err = n.sessionFactory(ctx, path, n.profileDir)
+		if err != nil {
+			return nil, err
+		}
+	}
+	readCurrent := func() ([]byte, error) {
+		session, ok := n.session.(receiptDocumentSession)
+		if !ok {
+			return nil, ErrStructuredReceiptDataMissing
+		}
+		return read(session)
+	}
+	document, err := readCurrent()
+	if errors.Is(err, ErrStructuredReceiptDataMissing) {
+		document, err = readCurrent()
+	}
+	if !errors.Is(err, ErrBrowserAccessDenied) || n.headedSessionFactory == nil || n.allowHeadedFallback == nil || !n.allowHeadedFallback() {
+		return document, err
+	}
+	_ = n.session.Close()
+	n.session = nil
+	n.session, err = n.headedSessionFactory(ctx, path, n.profileDir)
+	if err != nil {
+		return nil, err
+	}
+	return readCurrent()
 }
 
 func (n *Native) fetchPublicProductDocument(ctx context.Context, retryMissingRead bool, read func(documentSession) ([]byte, error)) ([]byte, error) {

@@ -20,6 +20,20 @@ type fixedProductProvider struct{}
 
 type fixedAccountProvider struct{}
 
+type fixedReceiptProvider struct{}
+
+func (fixedReceiptProvider) Status(context.Context) (core.ReceiptRequestStatusSnapshot, error) {
+	return core.ReceiptRequestStatusSnapshot{Visibility: "private_local", Statuses: []core.ReceiptRequestStatus{{Kind: core.ReceiptKindCard, CanRequestNew: true}}}, nil
+}
+
+func (fixedReceiptProvider) History(_ context.Context, request core.ReceiptHistoryRequest) (core.ReceiptHistoryPage, error) {
+	return core.ReceiptHistoryPage{Visibility: "private_local", Kind: request.Kind, PageIndex: request.PageIndex, Items: []core.ReceiptHistoryItem{}}, nil
+}
+
+func (fixedReceiptProvider) Summary(_ context.Context, request core.ReceiptSummaryRequest) (core.ReceiptSummary, error) {
+	return core.ReceiptSummary{Visibility: "private_local", Kind: request.Kind, From: request.From, To: request.To, TotalCount: 3, TotalAmountKRW: 42000, Installments: core.ReceiptInstallmentInfo{Status: "unavailable"}}, nil
+}
+
 func (fixedAccountProvider) Snapshot(_ context.Context, request core.AccountBenefitsRequest) (core.AccountBenefitsSnapshot, error) {
 	return core.AccountBenefitsSnapshot{
 		SchemaVersion: 1,
@@ -183,6 +197,38 @@ func TestAccountBenefitsToolUsesTypedPrivateLocalResponse(t *testing.T) {
 	}
 	if !got.Membership.IsMember || got.Coverage.CashTransactionPagesRead != 7 {
 		t.Fatalf("unexpected account tool response: %#v", got)
+	}
+}
+
+func TestReceiptToolsUseTypedReadOnlyWorkflow(t *testing.T) {
+	ctx := context.Background()
+	server := NewWithAllFeaturesAndReceipts(fixedStatusProvider{}, fixedOrderProvider{}, fixedProductProvider{}, fixedAccountProvider{}, fixedReceiptProvider{}, "v0.1.0-test")
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSession.Close()
+
+	response, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name: "receipts_summary", Arguments: map[string]any{"kind": "card", "from": "2026-08-01", "to": "2026-08-31"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(response.StructuredContent)
+	var got core.ReceiptSummary
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Visibility != "private_local" || got.TotalCount != 3 || got.Installments.Status != "unavailable" {
+		t.Fatalf("unexpected receipt summary: %#v", got)
 	}
 }
 

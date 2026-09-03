@@ -20,10 +20,10 @@ The machine-readable view is `coupangctl capabilities`.
 | P0 | Private product insights | available | Shows which identified products lead by units, orders, and spend, plus paid-unit and spend-day receipts. | Keep exact names and dates outside shareable output; add current-price comparison only after its source contract is stable. |
 | P0 | Natural-language product discovery | experimental | Lets an AI turn an ordinary Korean shopping request into bounded search filters, then inspect current public product evidence. | Validate more layouts and structured card-benefit coverage; keep unknown fields unknown. |
 | P0 | Source-native product rankings | experimental | Supports product-type and real-category views using separate Coupang ranking, sales, latest, and price controls while labeling local rating/review sorts honestly. | Add source-native category-label discovery so callers do not need to know a numeric category ID; validate selected-option evidence across layouts. |
-| P0 | Transparent affiliate deep links | experimental | Adds an optional operator-owned Partners URL without replacing the canonical product URL, while exposing the definite commission disclosure, price notice, self-purchase exclusion, and opt-out state. | Complete channel approval, issue the official API keys, and run a credential-redacted live contract check. |
+| P0 | Transparent affiliate deep links | experimental | Adds an optional operator-owned Partners URL without replacing the canonical product URL, while exposing the definite commission disclosure, price notice, self-purchase exclusion, and opt-out state. | The repository channel and disclosure evidence are registered; await final approval, issue the official API keys, and run a credential-redacted live contract check. |
 | P1 | Explicit cart add | experimental | Completes the useful shopping loop without crossing into purchase or payment. | Run a separately authorized live mutation test; require exact vendor item plus confirmation and never auto-retry an unverified attempt. |
-| P1 | Batch receipts | researched | Enables accounting, reimbursement, and archive workflows. | Freeze cash/card/vendor read contracts; implement status/list/download before any request-creation operation. |
-| P1 | Payment method and installments | researched | Answers which payment methods actually funded orders and how much was lump-sum versus installment. | Capture a redacted credit-card sales-slip list shape; use only explicit installment-month fields and keep the response `unavailable` until then. |
+| P1 | Batch receipts | experimental | Enables accounting, reimbursement, and archive workflows. | Cash/card status, history, summaries, and private completed-archive download are implemented; validate a completed download live and add vendor-receipt reads without implementing request creation. |
+| P1 | Payment method and installments | experimental | Answers which payment methods funded observed receipt totals without confusing registered cards with usage. | Payment-method counts and amounts are implemented; capture a redacted sales-slip detail shape and keep installment status `unavailable` until an explicit installment-month field is observed. |
 | P1 | Product category enrichment | experimental | Enables source-native category totals without guessing from product names. | The first bounded live backfill completed; validate path stability over time and across more accounts while keeping coverage visible in every category chart. |
 | P2 | Price history and repurchase | planned | Helps decide when and what to buy again. | Build after category enrichment; never automate final purchase or payment. |
 
@@ -37,7 +37,10 @@ The machine-readable view is `coupangctl capabilities`.
 - Cart addition is the only supported commerce mutation. It is reversible,
   non-idempotent, explicitly confirmed, and separated from all purchase and
   payment controls.
-- Receipt generation/request submission is a write operation and will require a separate explicit command and confirmation if implemented.
+- Receipt status, history, and summaries are structured read operations. A
+  completed archive can be downloaded only to a new private `0600` file; its
+  source URL is never returned or logged. Receipt generation/request submission
+  is a write operation and is intentionally not implemented.
 - Category inference from product names is not used. The experimental source
   is the variable-length product-page breadcrumb path; no breadcrumb position
   is relabeled as a fixed Coupang “large/middle/small” field.

@@ -65,7 +65,7 @@ go build -o ./bin/coupangctl ./cmd/coupangctl
 | WOW·카드 혜택 | 실험적 | 현재 멤버십, 쿠팡이 표시한 혜택, 등록 카드 브랜드, 월별 적립 |
 | 카테고리 | 실험적 | 상품 페이지의 실제 breadcrumb 경로와 집계 커버리지 |
 | 장바구니 | 실험적 | 정확한 `vendor_item_id`와 명시적 확인이 있을 때 한 번 추가 |
-| 영수증 일괄 처리 | 조사 완료 | 현금·카드·거래명세서 계약 고정 후 구현 예정 |
+| 영수증 일괄 처리 | 실험적 | 현금·카드 요청 상태·이력·기간 합계와 완료된 파일의 비공개 저장 |
 | 주문·결제 | 지원 안 함 | 자동 주문, 결제, 구매 확정은 구현하지 않음 |
 
 현재 구현 상태와 다음 순서는 [`ROADMAP.md`](ROADMAP.md)와 `coupangctl capabilities`에서 확인할 수 있습니다.
@@ -136,6 +136,21 @@ coupangctl products cart-add \
 
 검색에서 관찰한 정확한 `vendor_item_id`와 `--confirm-add-to-cart`가 모두 필요합니다. 결과를 검증하지 못하면 자동 재시도하지 않으며, 구매·주문·결제 버튼으로 이동하지 않습니다.
 
+## 영수증과 결제수단 합계
+
+이미 존재하는 현금·카드 영수증 요청의 상태와 이력, 기간 합계를 읽을 수 있습니다.
+
+```bash
+coupangctl receipts status
+coupangctl receipts list --kind card --page 0 --size 5
+coupangctl receipts summary --kind card --from 2026-01-01 --to 2026-08-31
+coupangctl receipts download --kind card --history-index 0 --output ./receipt.pdf
+```
+
+`summary`의 전체 건수·금액은 영수증 화면의 관찰값이고, 결제수단 행은 관찰된 카드별 합계를 안전한 표시명으로 묶은 계산값입니다. 카드 식별자와 카드번호는 typed response 전에 버리고, 할부 개월 필드가 확인되지 않은 동안 할부 통계는 `unavailable`로 둡니다. `download`는 이미 완료된 이력의 파일만 새 `0600` 파일로 저장하며 기존 파일을 덮어쓰지 않습니다. 다운로드 URL은 출력하거나 로그에 남기지 않습니다.
+
+영수증 생성 요청은 외부 상태를 바꾸는 POST 작업이므로 구현하지 않았습니다. 현재 응답 계약은 [`RECEIPTS.md`](RECEIPTS.md)에 정리되어 있습니다.
+
 ## MCP 연결
 
 표준 stdio MCP 설정은 다음과 같습니다. `command`에는 빌드한 바이너리의 절대경로를 권장합니다.
@@ -158,8 +173,9 @@ coupangctl products cart-add \
 - `orders_insights`, `orders_product_insights`, `orders_reorder_candidates`
 - `orders_export`, `orders_enrich_categories`
 - `products_search`, `product_inspect`, `cart_add`
+- `receipts_status`, `receipts_list`, `receipts_summary`
 
-읽기 도구와 변경 도구는 MCP annotation과 입력 타입에서 구분됩니다. `cart_add`만 되돌릴 수 있는 외부 변경이며 별도 확인값을 요구합니다.
+읽기 도구와 변경 도구는 MCP annotation과 입력 타입에서 구분됩니다. 영수증 MCP 도구는 조회 전용이고 파일 다운로드는 CLI에만 있습니다. `cart_add`만 되돌릴 수 있는 외부 변경이며 별도 확인값을 요구합니다.
 
 ## 로그인 방식
 
@@ -188,6 +204,7 @@ coupangctl products cart-add \
 | --- | --- |
 | 쿠키·세션 | 전용 상태 디렉터리의 비공개 파일에 원자적으로 저장하고 출력하지 않음 |
 | OTP·비밀번호·QR 링크 | 저장·로그·구조화 출력 금지 |
+| 카드·영수증 | 카드 식별자·번호·다운로드 URL은 버리고, 다운로드 파일은 새 `0600` 경로에만 저장 |
 | 주문 원본 응답 | 저장·fixture·문서 포함 금지 |
 | 정규화 주문 DB | 내 컴퓨터에 저장, 내보내기는 명시적 명령으로만 수행 |
 | 공개형 리캡 | 상품명과 정확한 날짜를 제외한 `public_safe` |
@@ -236,6 +253,7 @@ coupangctl products inspect --product-id ID --no-affiliate
 - [`ROADMAP.md`](ROADMAP.md) — 기능 우선순위와 구현 상태
 - [`HANDOFF.md`](HANDOFF.md) — 검증된 동작과 아키텍처 결정
 - [`TYPE_SYSTEM.md`](TYPE_SYSTEM.md) — 네 가지 행동 축과 16개 유형
+- [`RECEIPTS.md`](RECEIPTS.md) — 영수증 조회·다운로드의 JSON 계약과 안전 경계
 - [`PRODUCT_PRINCIPLES.md`](PRODUCT_PRINCIPLES.md) — 증거·개인정보·완료 기준
 - [`research/endpoint-catalog.md`](research/endpoint-catalog.md) — 가린 비공개 route 목록
 - [`research/README_BENCHMARKS.md`](research/README_BENCHMARKS.md) — 인기 CLI·MCP 저장소를 참고한 README 설계 근거

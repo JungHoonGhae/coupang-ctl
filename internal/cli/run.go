@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	accountworkflow "github.com/JungHoonGhae/coupang-ctl/internal/account"
@@ -16,6 +17,7 @@ import (
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 	coupangaccount "github.com/JungHoonGhae/coupang-ctl/internal/coupang/account"
 	coupangproducts "github.com/JungHoonGhae/coupang-ctl/internal/coupang/products"
+	coupangreceipts "github.com/JungHoonGhae/coupang-ctl/internal/coupang/receipts"
 	"github.com/JungHoonGhae/coupang-ctl/internal/loginassist"
 	"github.com/JungHoonGhae/coupang-ctl/internal/mcpserver"
 	orderworkflow "github.com/JungHoonGhae/coupang-ctl/internal/orders"
@@ -23,6 +25,7 @@ import (
 	"github.com/JungHoonGhae/coupang-ctl/internal/platform"
 	productworkflow "github.com/JungHoonGhae/coupang-ctl/internal/products"
 	"github.com/JungHoonGhae/coupang-ctl/internal/recap"
+	receiptworkflow "github.com/JungHoonGhae/coupang-ctl/internal/receipts"
 	"github.com/JungHoonGhae/coupang-ctl/internal/store"
 )
 
@@ -52,6 +55,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 	authService := auth.NewService(browserAdapter)
 	productService := productworkflow.NewWithAffiliate(coupangproducts.New(browserAdapter), partners.NewFromEnvironment(os.Getenv))
 	accountService := accountworkflow.New(coupangaccount.New(browserAdapter))
+	receiptService := receiptworkflow.New(coupangreceipts.New(browserAdapter))
 
 	switch args[0] {
 	case "doctor":
@@ -69,6 +73,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 		return runProducts(ctx, args[1:], stdout, productService)
 	case "account":
 		return runAccount(ctx, args[1:], stdout, accountService)
+	case "receipts":
+		return runReceipts(ctx, args[1:], stdout, receiptService)
 	case "mcp":
 		if len(args) != 1 {
 			return errors.New("usage: coupangctl mcp")
@@ -78,10 +84,127 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 			return err
 		}
 		defer ledger.Close()
-		return mcpserver.RunWithAllFeatures(ctx, authService, orderworkflow.New(ledger, browserAdapter), productService, accountService, version)
+		return mcpserver.RunWithAllFeaturesAndReceipts(ctx, authService, orderworkflow.New(ledger, browserAdapter), productService, accountService, receiptService, version)
 	default:
 		return usage(stderr)
 	}
+}
+
+type receiptWorkflow interface {
+	Status(context.Context) (core.ReceiptRequestStatusSnapshot, error)
+	History(context.Context, core.ReceiptHistoryRequest) (core.ReceiptHistoryPage, error)
+	Summary(context.Context, core.ReceiptSummaryRequest) (core.ReceiptSummary, error)
+	Download(context.Context, core.ReceiptDownloadRequest) (receiptworkflow.Download, error)
+}
+
+func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow receiptWorkflow) error {
+	if len(args) == 0 {
+		return errors.New("usage: coupangctl receipts <status|list|summary|download>")
+	}
+	switch args[0] {
+	case "status":
+		flags := newFlagSet("receipts status")
+		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		if err := parseFlags(flags, args[1:], "usage: coupangctl receipts status [--headed]"); err != nil {
+			return err
+		}
+		result, err := workflow.Status(ctx)
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
+	case "list":
+		flags := newFlagSet("receipts list")
+		kind := flags.String("kind", "", "receipt family: cash or card")
+		page := flags.Int("page", 0, "zero-based request-history page")
+		size := flags.Int("size", 5, "history rows per page")
+		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		const commandUsage = "usage: coupangctl receipts list --kind <cash|card> [--page N] [--size N] [--headed]"
+		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *kind == "" {
+			return errors.New(commandUsage)
+		}
+		result, err := workflow.History(ctx, core.ReceiptHistoryRequest{Kind: core.ReceiptKind(*kind), PageIndex: *page, PageSize: *size})
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
+	case "summary":
+		flags := newFlagSet("receipts summary")
+		kind := flags.String("kind", "", "receipt family: cash or card")
+		from := flags.String("from", "", "inclusive YYYY-MM-DD start date")
+		to := flags.String("to", "", "inclusive YYYY-MM-DD end date")
+		maxCards := flags.Int("max-cards", 20, "maximum observed card methods to summarize")
+		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		const commandUsage = "usage: coupangctl receipts summary --kind <cash|card> --from YYYY-MM-DD --to YYYY-MM-DD [--max-cards N] [--headed]"
+		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *kind == "" || *from == "" || *to == "" {
+			return errors.New(commandUsage)
+		}
+		result, err := workflow.Summary(ctx, core.ReceiptSummaryRequest{Kind: core.ReceiptKind(*kind), From: *from, To: *to, MaxCards: *maxCards})
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, result)
+	case "download":
+		flags := newFlagSet("receipts download")
+		kind := flags.String("kind", "", "receipt family: cash or card")
+		page := flags.Int("page", 0, "zero-based request-history page")
+		size := flags.Int("size", 5, "history rows per page")
+		historyIndex := flags.Int("history-index", -1, "zero-based history row index")
+		downloadIndex := flags.Int("download-index", 0, "zero-based file index within the history row")
+		output := flags.String("output", "", "new private output file path")
+		_ = flags.Bool("headed", false, "use a headed browser fallback")
+		const commandUsage = "usage: coupangctl receipts download --kind <cash|card> --history-index N --output PATH [--download-index N] [--page N] [--size N] [--headed]"
+		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *kind == "" || *historyIndex < 0 || *output == "" {
+			return errors.New(commandUsage)
+		}
+		download, err := workflow.Download(ctx, core.ReceiptDownloadRequest{
+			Kind: core.ReceiptKind(*kind), PageIndex: *page, PageSize: *size,
+			HistoryIndex: *historyIndex, DownloadIndex: *downloadIndex,
+		})
+		if err != nil {
+			return err
+		}
+		outputPath, err := writePrivateReceipt(*output, download.Content)
+		if err != nil {
+			return err
+		}
+		download.Metadata.OutputPath = outputPath
+		return writeJSON(stdout, download.Metadata)
+	default:
+		return errors.New("usage: coupangctl receipts <status|list|summary|download>")
+	}
+}
+
+func writePrivateReceipt(path string, content []byte) (string, error) {
+	if len(content) == 0 {
+		return "", errors.New("receipt download was empty")
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve receipt output path: %w", err)
+	}
+	file, err := os.OpenFile(absolute, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return "", fmt.Errorf("create receipt output without overwriting: %w", err)
+	}
+	keep := false
+	defer func() {
+		_ = file.Close()
+		if !keep {
+			_ = os.Remove(absolute)
+		}
+	}()
+	if _, err := file.Write(content); err != nil {
+		return "", fmt.Errorf("write receipt output: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		return "", fmt.Errorf("sync receipt output: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return "", fmt.Errorf("close receipt output: %w", err)
+	}
+	keep = true
+	return absolute, nil
 }
 
 type accountWorkflow interface {
@@ -427,7 +550,8 @@ func headedReadRequested(args []string) bool {
 	eligible := (args[0] == "auth" && args[1] == "verify") ||
 		(args[0] == "orders" && (args[1] == "sync" || args[1] == "categories")) ||
 		(args[0] == "products" && (args[1] == "search" || args[1] == "inspect" || args[1] == "cart-add")) ||
-		(args[0] == "account" && args[1] == "benefits")
+		(args[0] == "account" && args[1] == "benefits") ||
+		args[0] == "receipts"
 	if !eligible {
 		return false
 	}
@@ -579,6 +703,12 @@ func WriteError(w io.Writer, err error) {
 	case errors.Is(err, browser.ErrStructuredAccountBenefitsDataMissing):
 		code = "structured_account_benefits_data_missing"
 		message = "the authenticated membership or reward document was not available"
+	case errors.Is(err, browser.ErrStructuredReceiptDataMissing), errors.Is(err, coupangreceipts.ErrReceiptDataMissing):
+		code = "structured_receipt_data_missing"
+		message = "the authenticated receipt read endpoint did not expose the expected structure"
+	case errors.Is(err, receiptworkflow.ErrSourceUnavailable):
+		code = "receipt_source_unavailable"
+		message = "the authenticated receipt source was temporarily unavailable"
 	case errors.Is(err, browser.ErrStructuredProductDataMissing), errors.Is(err, coupangproducts.ErrProductDataMissing):
 		code = "structured_product_data_missing"
 		message = "the product search or detail document did not expose the expected structured fields"

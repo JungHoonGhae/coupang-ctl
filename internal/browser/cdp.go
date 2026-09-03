@@ -29,12 +29,14 @@ const (
 	pageLoadTimeout         = 25 * time.Second
 	maxCDPMessageSize       = 10 << 20
 	maxProductDocumentBytes = 3 << 20
+	maxReceiptDownloadBytes = 5 << 20
 )
 
 var ErrStructuredOrderDataMissing = errors.New("structured order data missing")
 var ErrStructuredCategoryDataMissing = errors.New("structured category data missing")
 var ErrStructuredProductDataMissing = errors.New("structured product data missing")
 var ErrStructuredAccountBenefitsDataMissing = errors.New("structured account benefits data missing")
+var ErrStructuredReceiptDataMissing = errors.New("structured receipt data missing")
 var ErrBrowserAccessDenied = errors.New("browser access denied")
 
 type chromeSession struct {
@@ -77,8 +79,9 @@ type targetMetadata struct {
 }
 
 const (
-	wowMembershipURL = "https://loyalty.coupang.com/loyalty/management/home"
-	coupangCashURL   = "https://cash.coupang.com/coupang-cash/home"
+	wowMembershipURL  = "https://loyalty.coupang.com/loyalty/management/home"
+	coupangCashURL    = "https://cash.coupang.com/coupang-cash/home"
+	paymentReceiptURL = "https://mc.coupang.com/ssr/desktop/payment-receipt"
 )
 
 func newChromeSession(ctx context.Context, executable, profileDir string) (documentSession, error) {
@@ -312,6 +315,182 @@ func (s *chromeSession) ReadAccountBenefitsDocument(ctx context.Context, maxCash
 		return nil, err
 	}
 	return result, nil
+}
+
+func (s *chromeSession) ReadReceiptStatusDocument(ctx context.Context) ([]byte, error) {
+	return s.readReceiptPage(ctx, `(async () => {
+		const read = async (path) => {
+			const response = await fetch(path, { credentials: 'include' });
+			if (!response.ok) throw new Error('receipt status unavailable');
+			return await response.json();
+		};
+		const [cash, card] = await Promise.all([
+			read('/ssr/api/payment-receipt/cash/request-status'),
+			read('/ssr/api/payment-receipt/card/request-status'),
+		]);
+		return JSON.stringify({ cash, card });
+	})()`)
+}
+
+func (s *chromeSession) ReadReceiptHistoryDocument(ctx context.Context, request core.ReceiptHistoryRequest) ([]byte, error) {
+	if err := request.Validate(); err != nil {
+		return nil, ErrStructuredReceiptDataMissing
+	}
+	encoded, err := json.Marshal(request)
+	if err != nil {
+		return nil, ErrStructuredReceiptDataMissing
+	}
+	expression := `(async () => {
+		const request = ` + string(encoded) + `;
+		const path = request.kind === 'cash'
+			? '/ssr/api/payment-receipt/cash/download-request-histories'
+			: '/ssr/api/payment-receipt/card/download-request-histories';
+		const target = new URL(path, location.origin);
+		target.searchParams.set('pageIndex', String(request.page_index ?? 0));
+		target.searchParams.set('size', String(request.page_size));
+		const response = await fetch(target, { credentials: 'include' });
+		if (!response.ok) throw new Error('receipt history unavailable');
+		return JSON.stringify(await response.json());
+	})()`
+	return s.readReceiptPage(ctx, expression)
+}
+
+func (s *chromeSession) ReadReceiptSummaryDocument(ctx context.Context, request core.ReceiptSummaryRequest) ([]byte, error) {
+	if err := request.Validate(); err != nil {
+		return nil, ErrStructuredReceiptDataMissing
+	}
+	request.From = strings.ReplaceAll(request.From, "-", ".")
+	request.To = strings.ReplaceAll(request.To, "-", ".")
+	encoded, err := json.Marshal(request)
+	if err != nil {
+		return nil, ErrStructuredReceiptDataMissing
+	}
+	expression := `(async () => {
+		const request = ` + string(encoded) + `;
+		const path = request.kind === 'cash'
+			? '/ssr/api/payment-receipt/cash/receipt-summary'
+			: '/ssr/api/payment-receipt/card/receipt-summary';
+		const read = async (fields) => {
+			const target = new URL(path, location.origin);
+			for (const [name, value] of Object.entries(fields)) target.searchParams.set(name, String(value ?? ''));
+			let last = null;
+			for (let attempt = 0; attempt < 2; attempt += 1) {
+				const response = await fetch(target, { credentials: 'include', cache: 'no-store' });
+				if (response.ok) {
+					last = await response.json();
+					if (last?.success === true) return last;
+				}
+				if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 200));
+			}
+			if (last !== null) return last;
+			throw new Error('receipt summary unavailable');
+		};
+		const base = { from: request.from, to: request.to };
+		if (request.kind === 'cash') {
+			return JSON.stringify({ kind: 'cash', summary: await read(base), per_card: [] });
+		}
+		const summary = await read({ ...base, cardId: '', cardNumber: '', displayCardName: '' });
+		const cards = Array.isArray(summary?.data?.cardList) ? summary.data.cardList.slice(0, request.max_cards) : [];
+		const perCard = [];
+		for (const card of cards) {
+			perCard.push(await read({
+				...base,
+				cardId: card?.cardId ?? '',
+				cardNumber: card?.cardNumber ?? '',
+				displayCardName: card?.displayCardName ?? '',
+			}));
+		}
+		return JSON.stringify({ kind: 'card', summary, per_card: perCard });
+	})()`
+	return s.readReceiptPage(ctx, expression)
+}
+
+func (s *chromeSession) ReadReceiptDownloadDocument(ctx context.Context, request core.ReceiptDownloadRequest) ([]byte, error) {
+	if err := request.Validate(); err != nil {
+		return nil, ErrStructuredReceiptDataMissing
+	}
+	encoded, err := json.Marshal(request)
+	if err != nil {
+		return nil, ErrStructuredReceiptDataMissing
+	}
+	expression := fmt.Sprintf(`(async () => {
+		const request = %s;
+		const path = request.kind === 'cash'
+			? '/ssr/api/payment-receipt/cash/download-request-histories'
+			: '/ssr/api/payment-receipt/card/download-request-histories';
+		const historyTarget = new URL(path, location.origin);
+		historyTarget.searchParams.set('pageIndex', String(request.page_index ?? 0));
+		historyTarget.searchParams.set('size', String(request.page_size));
+		const historyResponse = await fetch(historyTarget, { credentials: 'include' });
+		if (!historyResponse.ok) throw new Error('receipt history unavailable');
+		const history = await historyResponse.json();
+		const item = history?.data?.list?.[request.history_index];
+		const rawURL = item?.downloadUrlList?.[request.download_index]?.downloadUrl;
+		if (typeof rawURL !== 'string' || rawURL.length > 4096) throw new Error('receipt download missing');
+		const allowed = (target) => target.protocol === 'https:' && (
+			target.hostname === 'mc.coupang.com' || target.hostname.endsWith('.coupang.com') ||
+			target.hostname === 'coupangcdn.com' || target.hostname.endsWith('.coupangcdn.com'));
+		const target = new URL(rawURL, location.origin);
+		if (!allowed(target)) throw new Error('receipt download blocked');
+		const response = await fetch(target, { credentials: 'include', redirect: 'follow' });
+		const finalTarget = new URL(response.url || target.href);
+		if (!response.ok || !allowed(finalTarget)) throw new Error('receipt download unavailable');
+		const content = new Uint8Array(await response.arrayBuffer());
+		if (content.length < 1 || content.length > %d) throw new Error('receipt download too large');
+		let binary = '';
+		for (let offset = 0; offset < content.length; offset += 32768) {
+			binary += String.fromCharCode(...content.subarray(offset, Math.min(content.length, offset + 32768)));
+		}
+		const disposition = response.headers.get('content-disposition') ?? '';
+		const filenameMatch = disposition.match(/filename\*?=(?:UTF-8''|["']?)([^"';]+)/i);
+		return JSON.stringify({
+			filename: filenameMatch ? decodeURIComponent(filenameMatch[1]) : 'coupang-receipt',
+			content_type: response.headers.get('content-type') ?? 'application/octet-stream',
+			bytes: content.length,
+			base64: btoa(binary),
+		});
+	})()`, string(encoded), maxReceiptDownloadBytes)
+	return s.readReceiptPage(ctx, expression)
+}
+
+func (s *chromeSession) readReceiptPage(ctx context.Context, expression string) ([]byte, error) {
+	var created struct {
+		TargetID string `json:"targetId"`
+	}
+	if err := s.browser.Call(ctx, "Target.createTarget", map[string]any{"url": "about:blank"}, &created); err != nil {
+		return nil, fmt.Errorf("create receipt page: %w", err)
+	}
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.browser.Call(closeCtx, "Target.closeTarget", map[string]any{"targetId": created.TargetID}, nil)
+	}()
+	target, err := s.waitForTarget(ctx, created.TargetID)
+	if err != nil {
+		return nil, err
+	}
+	page, err := dialCDP(ctx, target.WebSocketDebuggerURL)
+	if err != nil {
+		return nil, fmt.Errorf("connect receipt page: %w", err)
+	}
+	defer page.Close()
+	if err := page.Call(ctx, "Page.enable", struct{}{}, nil); err != nil {
+		return nil, fmt.Errorf("enable receipt page: %w", err)
+	}
+	if err := page.Call(ctx, "Page.navigate", map[string]any{"url": paymentReceiptURL}, nil); err != nil {
+		return nil, fmt.Errorf("navigate receipt page: %w", err)
+	}
+	if err := waitForReceiptPageReady(ctx, page); err != nil {
+		return nil, err
+	}
+	encodedDocument, err := evaluateBrowserString(ctx, page, expression, true)
+	if err != nil || len(encodedDocument) == 0 || len(encodedDocument) > maxCDPMessageSize || !json.Valid([]byte(encodedDocument)) {
+		return nil, ErrStructuredReceiptDataMissing
+	}
+	if err := s.persistBrowserSession(ctx); err != nil {
+		return nil, err
+	}
+	return []byte(encodedDocument), nil
 }
 
 func (s *chromeSession) readAccountPage(ctx context.Context, targetURL string, read func(context.Context, *cdpClient) ([]byte, error)) ([]byte, error) {
@@ -1162,6 +1341,66 @@ func waitForMembershipData(ctx context.Context, page *cdpClient) ([]byte, error)
 		select {
 		case <-waitCtx.Done():
 			return nil, ErrStructuredAccountBenefitsDataMissing
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForReceiptPageReady(ctx context.Context, page *cdpClient) error {
+	waitCtx, cancel := context.WithTimeout(ctx, pageLoadTimeout)
+	defer cancel()
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	const expression = `(() => {
+		const body = document.body?.innerText ?? '';
+		const navigation = performance.getEntriesByType('navigation')[0];
+		let paymentReceipt = null;
+		try {
+			paymentReceipt = JSON.parse(document.getElementById('__NEXT_DATA__')?.textContent ?? 'null')
+				?.props?.pageProps?.domains?.paymentReceipt ?? null;
+		} catch {}
+		return JSON.stringify({
+			href: location.href,
+			ready: document.readyState,
+			status: navigation?.responseStatus ?? 0,
+			paymentReceipt,
+			loginForm: document.querySelector('input[type="password"]') !== null,
+			challenge: /captcha|보안문자|자동입력방지/i.test(body),
+			accessDenied: /access denied|접근.{0,8}(거부|제한)|비정상.{0,8}접근/i.test(body)
+		});
+	})()`
+	for {
+		encoded, err := evaluateBrowserString(waitCtx, page, expression, false)
+		if err == nil {
+			var state struct {
+				Href           string          `json:"href"`
+				Ready          string          `json:"ready"`
+				Status         int             `json:"status"`
+				PaymentReceipt json.RawMessage `json:"paymentReceipt"`
+				LoginForm      bool            `json:"loginForm"`
+				Challenge      bool            `json:"challenge"`
+				AccessDenied   bool            `json:"accessDenied"`
+			}
+			if json.Unmarshal([]byte(encoded), &state) == nil {
+				if state.Status == http.StatusForbidden || state.AccessDenied || state.Challenge {
+					return ErrBrowserAccessDenied
+				}
+				if isLoginURL(state.Href) || state.LoginForm || state.Status == http.StatusUnauthorized {
+					return ErrAuthenticationRequired
+				}
+				parsed, parseErr := url.Parse(state.Href)
+				if parseErr == nil && parsed.Scheme == "https" && parsed.Host == "mc.coupang.com" && parsed.Path == "/ssr/desktop/payment-receipt" &&
+					len(state.PaymentReceipt) > 0 && string(state.PaymentReceipt) != "null" {
+					return nil
+				}
+				if state.Ready == "complete" && state.Status >= 400 {
+					return ErrStructuredReceiptDataMissing
+				}
+			}
+		}
+		select {
+		case <-waitCtx.Done():
+			return ErrStructuredReceiptDataMissing
 		case <-ticker.C:
 		}
 	}

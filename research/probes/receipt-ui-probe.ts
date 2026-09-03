@@ -145,16 +145,72 @@ try {
     const nextData = JSON.parse(nextDataText) as Record<string, any>;
     pageStateShape = describe(nextData?.props?.pageProps?.domains?.paymentReceipt ?? null, 7);
   }
+  const safeReads = await page.evaluate(async () => {
+    const now = new Date();
+    const from = `${now.getFullYear()}.01.01`;
+    const to = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
+    const reads = [
+      ["cash_history", "/ssr/api/payment-receipt/cash/download-request-histories", { pageIndex: "0", size: "5" }],
+      ["card_history", "/ssr/api/payment-receipt/card/download-request-histories", { pageIndex: "0", size: "5" }],
+      ["cash_summary", "/ssr/api/payment-receipt/cash/receipt-summary", { from, to }],
+      ["card_summary", "/ssr/api/payment-receipt/card/receipt-summary", { from, to, cardId: "", cardNumber: "", displayCardName: "" }],
+    ] as const;
+    const result: Record<string, unknown> = {};
+    for (const [key, path, query] of reads) {
+      const target = new URL(path, location.origin);
+      for (const [name, value] of Object.entries(query)) target.searchParams.set(name, value);
+      const response = await fetch(target, { credentials: "include" });
+      let payload: unknown = null;
+      try { payload = await response.json(); } catch {}
+      result[key] = {
+        method: "GET",
+        origin: target.origin,
+        path: target.pathname,
+        queryNames: [...target.searchParams.keys()].sort(),
+        status: response.status,
+        payload,
+      };
+    }
+    return result;
+  });
+  const safeReadShapes = Object.fromEntries(Object.entries(safeReads).map(([key, raw]) => {
+    const { payload, ...metadata } = raw as Record<string, unknown>;
+    const envelope = payload as { success?: unknown; data?: Record<string, unknown> } | null;
+    const data = envelope?.data;
+    return [key, {
+      ...metadata,
+      shape: describe(payload, 7),
+      facts: {
+        success: envelope?.success === true,
+        ...(key.endsWith("_history") ? {
+          pageIndex: typeof data?.pageIndex === "number" ? data.pageIndex : null,
+          pageSize: typeof data?.pageSize === "number" ? data.pageSize : null,
+          itemCount: Array.isArray(data?.list) ? data.list.length : null,
+        } : {}),
+      },
+    }];
+  }));
   const endpointPaths = new Set<string>();
-  const scriptURLs = await page.locator("script[src]").evaluateAll((scripts) => scripts
-    .map((script) => (script as HTMLScriptElement).src)
-    .filter((source) => source.startsWith("https://")));
+  const endpointLiterals = new Set<string>();
+  const scriptURLs = await page.evaluate(() => [...new Set([
+    ...[...document.querySelectorAll("script[src]")].map((script) => (script as HTMLScriptElement).src),
+    ...performance.getEntriesByType("resource").map((entry) => entry.name),
+  ].filter((source) => /^https:\/\/.+\.js(?:\?|$)/i.test(source)))].slice(0, 100));
   for (const scriptURL of scriptURLs) {
     const scriptResponse = await context.request.get(scriptURL).catch(() => null);
     if (!scriptResponse?.ok()) continue;
     const source = await scriptResponse.text();
-    for (const match of source.matchAll(/\/(?:ssr\/api\/)?payment-receipt\/[a-z0-9_./-]+/gi)) {
+    for (const match of source.matchAll(/\/(?:ssr\/api\/)?payment-receipt(?:\/[a-z0-9_./-]+)?/gi)) {
       endpointPaths.add(match[0].split("?")[0]);
+    }
+    if (!/payment-?receipt|downloadHistories|vendorReceipt/i.test(source)) continue;
+    for (const match of source.matchAll(/["'`]([^"'`]{0,160}(?:payment-?receipt|downloadHistories|vendorReceipt)[^"'`]{0,160})["'`]/gi)) {
+      const literal = match[1]
+        .replace(/\\\//g, "/")
+        .replace(/\d{5,}/g, "<redacted>")
+        .trim();
+      if (literal.length > 0 && literal.length <= 240) endpointLiterals.add(literal);
+      if (endpointLiterals.size >= 100) break;
     }
   }
   process.stdout.write(`${JSON.stringify({
@@ -169,7 +225,10 @@ try {
     currentTarget: safeTarget(page.url()),
     popupTarget,
     pageStateShape,
+    safeReadShapes,
     endpointPaths: [...endpointPaths].sort(),
+    endpointLiterals: [...endpointLiterals].sort(),
+    scriptTargets: scriptURLs.map(safeTarget),
   }, null, 2)}\n`);
   await browser.close();
 } finally {

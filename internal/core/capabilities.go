@@ -74,7 +74,7 @@ func CurrentCapabilities() CapabilityReport {
 		{
 			ID: "transparent_affiliate_deeplinks", Priority: "P0", Status: CapabilityExperimental,
 			UserValue: "optional Coupang Partners deep links alongside canonical URLs, with commission disclosure, price verification notice, and per-request or global opt-out",
-			Interface: []string{"cli", "mcp"}, NextWork: "complete final channel approval, issue API keys, and validate the official deeplink response live without recording credentials",
+			Interface: []string{"cli", "mcp"}, NextWork: "await final channel approval, issue API keys, and validate the official deeplink response live without recording credentials", LastVerified: "2026-09-03",
 		},
 		{
 			ID: "explicit_cart_add", Priority: "P1", Status: CapabilityExperimental,
@@ -82,14 +82,14 @@ func CurrentCapabilities() CapabilityReport {
 			Interface: []string{"cli", "mcp"}, NextWork: "verify the reversible mutation on an explicitly authorized live item; never auto-retry an unverified attempt",
 		},
 		{
-			ID: "batch_receipts", Priority: "P1", Status: CapabilityResearched,
-			UserValue: "query and download cash, card, and vendor receipts in batches",
-			Interface: []string{"cli"}, NextWork: "freeze credit-card list and read-only download contracts before implementing jobs",
+			ID: "batch_receipts", Priority: "P1", Status: CapabilityExperimental,
+			UserValue: "read cash and card request status, history, and summaries, then privately download an already-completed archive without exposing its URL",
+			Interface: []string{"cli", "mcp"}, NextWork: "validate a completed archive download live and research vendor-receipt reads; request creation remains excluded", LastVerified: "2026-09-03",
 		},
 		{
-			ID: "payment_method_installment_insights", Priority: "P1", Status: CapabilityResearched,
-			UserValue: "show actual payment-method usage and lump-sum versus installment counts, amounts, and shares when sales-slip evidence exposes them",
-			Interface: []string{"cli", "mcp"}, NextWork: "capture a redacted credit-card sales-slip response shape and adopt installment months only if explicitly observed",
+			ID: "payment_method_installment_insights", Priority: "P1", Status: CapabilityExperimental,
+			UserValue: "show observed payment-method counts and amounts while keeping lump-sum and installment statistics explicitly unavailable until sales-slip evidence exposes them",
+			Interface: []string{"cli", "mcp"}, NextWork: "capture a redacted sales-slip detail shape and adopt installment months only if explicitly observed", LastVerified: "2026-09-03",
 		},
 		{
 			ID: "product_categories", Priority: "P1", Status: CapabilityExperimental,

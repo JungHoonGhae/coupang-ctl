@@ -14,6 +14,7 @@ import (
 	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 	productworkflow "github.com/JungHoonGhae/coupang-ctl/internal/products"
+	receiptworkflow "github.com/JungHoonGhae/coupang-ctl/internal/receipts"
 	"github.com/JungHoonGhae/coupang-ctl/internal/store"
 )
 
@@ -64,6 +65,27 @@ type capturingProductWorkflow struct {
 
 type fixedAccountWorkflow struct{}
 
+type fixedReceiptWorkflow struct{}
+
+func (fixedReceiptWorkflow) Status(context.Context) (core.ReceiptRequestStatusSnapshot, error) {
+	return core.ReceiptRequestStatusSnapshot{SchemaVersion: 1, Statuses: []core.ReceiptRequestStatus{{Kind: core.ReceiptKindCard, CanRequestNew: true}}}, nil
+}
+
+func (fixedReceiptWorkflow) History(_ context.Context, request core.ReceiptHistoryRequest) (core.ReceiptHistoryPage, error) {
+	return core.ReceiptHistoryPage{SchemaVersion: 1, Kind: request.Kind, PageSize: request.PageSize}, nil
+}
+
+func (fixedReceiptWorkflow) Summary(_ context.Context, request core.ReceiptSummaryRequest) (core.ReceiptSummary, error) {
+	return core.ReceiptSummary{SchemaVersion: 1, Kind: request.Kind, From: request.From, To: request.To}, nil
+}
+
+func (fixedReceiptWorkflow) Download(_ context.Context, request core.ReceiptDownloadRequest) (receiptworkflow.Download, error) {
+	return receiptworkflow.Download{
+		Metadata: core.ReceiptDownloadMetadata{SchemaVersion: 1, Kind: request.Kind, Filename: "receipt.pdf", ContentType: "application/pdf"},
+		Content:  []byte("synthetic receipt"),
+	}, nil
+}
+
 func (fixedAccountWorkflow) Snapshot(_ context.Context, request core.AccountBenefitsRequest) (core.AccountBenefitsSnapshot, error) {
 	return core.AccountBenefitsSnapshot{
 		SchemaVersion: 1,
@@ -109,6 +131,33 @@ func TestAccountBenefitsCommandUsesTypedReadWorkflow(t *testing.T) {
 	}
 	if !got.Membership.IsMember || got.Membership.CurrentMonthlyFeeKRW != 7890 || got.Coverage.CashTransactionPagesRead != 7 {
 		t.Fatalf("unexpected account benefits response: %#v", got)
+	}
+}
+
+func TestReceiptCommandsUseTypedReadsAndPrivateNonOverwritingDownload(t *testing.T) {
+	var output bytes.Buffer
+	if err := runReceipts(context.Background(), []string{"list", "--kind", "card", "--size", "7"}, &output, fixedReceiptWorkflow{}); err != nil {
+		t.Fatal(err)
+	}
+	var history core.ReceiptHistoryPage
+	if err := json.Unmarshal(output.Bytes(), &history); err != nil {
+		t.Fatal(err)
+	}
+	if history.Kind != core.ReceiptKindCard || history.PageSize != 7 {
+		t.Fatalf("unexpected receipt history: %#v", history)
+	}
+
+	path := filepath.Join(t.TempDir(), "receipt.pdf")
+	output.Reset()
+	if err := runReceipts(context.Background(), []string{"download", "--kind", "cash", "--history-index", "0", "--output", path}, &output, fixedReceiptWorkflow{}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || string(content) != "synthetic receipt" {
+		t.Fatalf("unexpected receipt file: %q %v", content, err)
+	}
+	if err := runReceipts(context.Background(), []string{"download", "--kind", "cash", "--history-index", "0", "--output", path}, io.Discard, fixedReceiptWorkflow{}); err == nil {
+		t.Fatal("receipt download overwrote an existing file")
 	}
 }
 

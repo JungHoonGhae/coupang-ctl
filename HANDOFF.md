@@ -1,6 +1,6 @@
 # coupangctl research handoff
 
-Last validated: 2026-09-02 (Asia/Seoul)
+Last validated: 2026-09-03 (Asia/Seoul)
 
 ## Product thesis
 
@@ -24,6 +24,19 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
   reported benefit aggregates, registered payment-method brand/type/issuer,
   and expected plus monthly observed WOW Card reward aggregates. Account
   identifiers and raw cash transaction text are discarded.
+- `receipts status`, `receipts list`, and `receipts summary` now expose typed
+  `private_local` cash/card receipt reads through both CLI and MCP. Live,
+  metadata-only checks verified status, empty history pagination, aggregate
+  count/amount shapes, and a card-method aggregate without printing card
+  identifiers or raw values.
+- `receipts download` can save an already-completed history artifact to a new
+  private `0600` file. It re-reads the selected history row, keeps the source
+  URL in browser memory, validates the final Coupang host and bounded content,
+  and never overwrites a path. The parser and file behavior have synthetic
+  contracts; the current live history had no completed artifact to download.
+- Receipt request-creation POST routes are deliberately excluded. No supported
+  command creates a receipt job, and no final purchase or payment automation is
+  introduced.
 - Gross spend remains backward compatible while a typed `commerce` breakdown
   separates product-purchase orders, explicit membership-fee orders, and
   unclassified legacy rows. Product behavior/statistics exclude explicit
@@ -171,15 +184,15 @@ Build a local commerce data layer for consumers rather than another DOM-driven s
 - Order data includes order date/ID, totals, product and vendor-item IDs, names, quantities, list/discounted prices, images, shipment status, carrier and invoice information, estimated/promised/delivered dates, seller metadata, cancellation/return/exchange state, review eligibility, reorder eligibility, fees, and brand information.
 - Routine extraction does not require DOM selectors; parse the structured model
   directly.
-- The receipt page exposes structured cash, credit-card, vendor, and form
-  domains, plus paged download-history state. A read-only cash request-status
-  route is confirmed. Receipt list/download contracts remain researched rather
-  than supported; see `research/endpoint-catalog.md`.
+- The receipt page bootstraps same-origin cash/card request-status, paged
+  download-history, and period-summary reads. Those routes are adopted behind
+  a narrow adapter; response URLs and card identifiers do not cross into the
+  typed core.
 - The credit-card receipt summary exposes selected-card, date range, amount,
-  and count shapes, but no installment-month field is verified. The typed
-  account response therefore reports order-payment statistics as unavailable
-  rather than treating registered cards as actual usage or guessing
-  lump-sum/installment splits.
+  and count shapes, but no installment-month field is verified. Typed receipt
+  summaries therefore expose observed payment-method totals while reporting
+  installments as `unavailable` rather than guessing lump-sum/installment
+  splits.
 
 ## Important limitation
 
@@ -223,9 +236,9 @@ snapshots are implemented. Product-type/category rankings and computer-title
 spec normalization are experimental; category-label discovery and
 selected-option coverage across layouts are the next search tasks.
 Source-native purchase-category enrichment is also experimental while its
-stability is validated. Credit-card receipt and installment evidence is the
-next P1 account adapter; current product price history follows after those
-contracts stabilize.
+stability is validated. Cash/card receipt reads are now experimental; completed
+artifact and vendor-receipt validation remain. Current product price history
+and evidence-backed repurchase comparison are the next P2 work.
 
 ## Security and compliance
 
