@@ -4,7 +4,7 @@ import AppKit
 import ApplicationServices
 
 let args = CommandLine.arguments
-guard args.count == 3, ["hidden", "hidden-minimized", "no-window", "prepare-minimized", "restore-minimized", "visible-control", "make-minimized", "make-invisible-minimized", "make-invisible"].contains(args[1]),
+guard args.count == 3, ["extension-startup", "hidden", "hidden-minimized", "no-window", "prepare-minimized", "restore-minimized", "visible-control", "make-minimized", "make-invisible-minimized", "make-invisible"].contains(args[1]),
       args[2].hasPrefix("/tmp/coupangctl-lifecycle-profile."),
       FileManager.default.fileExists(atPath: args[2]) else { exit(2) }
 let mode = args[1], profile = args[2]
@@ -63,7 +63,7 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
     config.createsNewApplicationInstance = true
     config.arguments = ["--user-data-dir=" + profile, "--no-first-run", "--no-default-browser-check", "--disable-sync"]
     if mode == "hidden-minimized" || mode == "restore-minimized" { config.arguments.append("--start-minimized") }
-    if mode == "no-window" || mode.hasPrefix("make-") { config.arguments.append("--no-startup-window") }
+    if mode == "extension-startup" || mode == "no-window" || mode.hasPrefix("make-") { config.arguments.append("--no-startup-window") }
     else if mode == "restore-minimized" { config.arguments.append("--restore-last-session") }
     else { config.arguments.append("about:blank") }
     workspace.openApplication(at: URL(fileURLWithPath: "/Applications/Google Chrome.app"), configuration: config) { app, error in
@@ -72,10 +72,10 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
     }
 }
 DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-    if mode.hasPrefix("make-"), let app = launched, !before.contains(app.processIdentifier) {
+    if mode.hasPrefix("make-") || mode == "extension-startup", let app = launched, !before.contains(app.processIdentifier) {
         let command = Process(), output = Pipe()
         command.executableURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath + "/ordinary-window-create-prototype")
-        command.arguments = [String(app.processIdentifier), profile, mode]
+        command.arguments = [String(app.processIdentifier), profile, mode == "extension-startup" ? "inspect-bootstrap" : mode]
         command.standardOutput = output; command.standardError = FileHandle.nullDevice
         command.terminationHandler = { p in
             let data = output.fileHandleForReading.readDataToEndOfFile()

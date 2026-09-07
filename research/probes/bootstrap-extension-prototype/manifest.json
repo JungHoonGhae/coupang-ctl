@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "THROWAWAY coupangctl window startup probe",
+  "version": "0.1.0",
+  "description": "Scratch-profile window lifecycle experiment. No site access.",
+  "permissions": ["storage"],
+  "background": {"service_worker": "worker.js"},
+  "options_page": "setup.html",
+  "action": {"default_popup": "setup.html"}
+}

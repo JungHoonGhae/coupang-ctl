@@ -10,7 +10,7 @@ int main(int argc,const char **argv) { @autoreleasepool {
     pid_t pid=atoi(argv[1]); NSString *profile=@(argv[2]), *mode=@(argv[3]);
     NSRegularExpression *pattern=[NSRegularExpression regularExpressionWithPattern:@"^/tmp/coupangctl-lifecycle-profile\\.[A-Za-z0-9]+$" options:0 error:nil];
     if(pid<2||[pattern numberOfMatchesInString:profile options:0 range:NSMakeRange(0,profile.length)]!=1||
-       ![@[@"make-minimized",@"make-invisible-minimized",@"make-invisible"] containsObject:mode])return 2;
+       ![@[@"inspect-bootstrap",@"make-minimized",@"make-invisible-minimized",@"make-invisible"] containsObject:mode])return 2;
     NSRunningApplication *process=[NSRunningApplication runningApplicationWithProcessIdentifier:pid];
     if(![process.executableURL.path isEqualToString:@"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"])return 2;
     NSTask *task=[NSTask new];NSPipe *pipe=[NSPipe pipe];
@@ -33,6 +33,18 @@ int main(int argc,const char **argv) { @autoreleasepool {
         // Apple event reply timeouts use ticks (60 per second).
         SBApplication *app=[SBApplication applicationWithProcessIdentifier:pid];app.timeout=3*60;
         SBElementArray *windows=[app valueForKey:@"windows"];
+        if([mode isEqualToString:@"inspect-bootstrap"]) {
+            NSMutableArray *states=[NSMutableArray new];
+            for(SBObject *w in windows) {
+                SBElementArray *tabs=[w valueForKey:@"tabs"];
+                BOOL marker=NO;
+                for(SBObject *tab in tabs) {
+                    marker |= [[tab valueForKey:@"URL"] isEqualToString:@"about:blank#coupangctl-bootstrap-startup"];
+                }
+                [states addObject:@{@"minimized":[w valueForKey:@"minimized"],@"tabs":@(tabs.count),@"startup_marker":@(marker)}];
+            }
+            emit(@{@"status":app.lastError?@"unavailable":@"ok",@"windows":states});return app.lastError?1:0;
+        }
         if(app.lastError||windows.count!=0){emit(@{@"status":@"unavailable",@"stage":@"before",@"code":@(app.lastError.code)});return 1;}
         NSMutableDictionary *properties=[NSMutableDictionary new];
         if(![mode isEqualToString:@"make-invisible"])properties[@"minimized"]=@YES;
