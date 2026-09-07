@@ -23,6 +23,8 @@ function transition(previous,action) {
  case 'hiddenLaunch':s.process=true;s.window='노출 관측';s.quietStart='실측 실패';s.message='숨김/비활성 실행 설정만으로 창 노출을 막지 못한 실제 실험을 나타냅니다. 포커스 보존과 창 무노출은 다릅니다.';break;
  case 'noWindowLaunch':s.process=true;s.window='없음';s.message='창 없는 실행 실측을 나타냅니다. 화면 노출은 관측되지 않았지만 읽을 탭도 확인되지 않았습니다. 읽기 준비 성공이 아닙니다.';break;
  case 'restoreSaved':s.process=true;s.window='노출 관측';s.quietStart='실측 실패';s.message='빈 실험 프로필을 최소화·정상 종료한 뒤 세션 복원했을 때 창 노출과 앱 활성화를 관측했습니다. 기존 계정 프로필 검증은 아닙니다.';break;
+ case 'createQuietOnce':s.process=true;s.window='최소화';s.quietStart='한 번 무노출 관측';s.message='창 생성 시 최소화·숨김을 함께 전달한 한 번의 관측입니다. 탭이 생겨도 반복 무노출·실제 상품 읽기는 아직 입증되지 않았습니다.';break;
+ case 'createRepeatFailed':s.process=true;s.window='노출 관측';s.quietStart='반복 실측 실패';s.message='같은 속성 조합의 반복 실행 중 창 노출과 앱 활성화가 관측됐습니다. 다른 실행이 조용했어도 자동 시작 보장은 통과하지 못합니다.';break;
  case 'wake':s.authentication='미확인';s.message='절전 복귀 후 대상·최소화·권한·인증을 다시 확인해야 합니다. 실제 복귀 성공을 뜻하지 않습니다.';break;
  case 'renewal':s.authentication='갱신 필요';s.message='계정 읽기는 실제 사용자 로그인 갱신을 기다립니다. 임의로 창을 열지 않습니다.';break;
  }
@@ -30,11 +32,14 @@ function transition(previous,action) {
 }
 </script><script>
 const labels={register:'전용 연결 선택',prepare:'최초 준비·최소화',allow:'사용자 권한 허용',login:'사용자 로그인',read:'공개 검색 요청',restore:'사용자가 창 복원',closeWindow:'전용 창 닫힘',quit:'정상 종료',crash:'프로세스 비정상 종료',hiddenLaunch:'숨김 실행 실측 재현',restoreSaved:'저장된 세션 재시작 실측',noWindowLaunch:'창 없는 실행 실측 재현',wake:'절전 복귀',renewal:'사이트 인증 만료'};
+labels.createQuietOnce='최소화·숨김 창 생성: 한 번의 관측';
+labels.createRepeatFailed='같은 창 생성: 반복 중 실패';
 const scenarios=[
  ['정상 재사용','최초 준비 이후 두 읽기에 다시 연결하거나 창 상태를 바꾸지 않습니다.',['register','prepare','allow','read','read']],
  ['새 실행의 함정','숨김 실행 설정과 실제 창 무노출은 같지 않습니다.',['register','hiddenLaunch','allow','read']],
  ['최소화 저장 후 재시작','최소화 상태에서 정상 종료했어도 재시작 창 노출·포커스를 막지 못했습니다.',['register','prepare','quit','restoreSaved','read']],
  ['창 없는 프로세스','프로세스가 살아 있어도 Apple Events가 읽을 탭이 없습니다.',['register','noWindowLaunch','allow','read']],
+ ['한 번의 성공과 보장','동일한 창 생성 속성도 반복하면 노출됩니다. 호출 성공·마지막 최소화 상태와 과정 전체의 조용함은 다릅니다.',['register','noWindowLaunch','createQuietOnce','quit','noWindowLaunch','createRepeatFailed','read']],
  ['사용자와 경쟁','사용자가 복원한 창을 요청마다 다시 최소화하지 않습니다.',['register','prepare','allow','restore','read']],
  ['재시작·인증 분리','최초 허용, 실행 준비, 계정 인증은 각각 재확인합니다.',['register','prepare','allow','login','quit','noWindowLaunch','read']],
  ['절전·만료','공개 검색 가능성과 개인 계정 읽기 가능성은 별개입니다.',['register','prepare','allow','login','wake','renewal','read']]
