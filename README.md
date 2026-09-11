@@ -10,19 +10,23 @@
 > [!IMPORTANT]
 > `coupangctl`은 쿠팡의 공식 제품이 아닙니다. 내 계정의 데이터를 내가 요청한 범위에서 읽고 정리하며, 주문 확정과 결제는 지원하지 않습니다.
 
-<p align="center">
-  <img src="internal/recap/assets/type-roster.webp" width="760" alt="합성 데이터용 쇼핑 유형 캐릭터 16종">
-</p>
-<p align="center"><sub>구매 리듬과 장바구니 행동을 설명하는 16가지 쇼핑 유형 · 공개 가능한 합성 시각 예시</sub></p>
+[시작하기](#개발-소스-빠른-시작) · [주문 확인](#무엇을-할-수-있나요) · [상품 추천](#추천-조사-실험적) · [MCP 연결](#mcp-연결) · [개발](#개발)
 
 ## 한눈에 보기
 
-- **내 주문 기록** — 전체 주문을 중단 후 이어받을 수 있게 동기화하고 SQLite에 정규화합니다.
-- **내 소비 분석** — 월별 지출, 취소·반품, 구매 시간대, 배송 소요, 반복 구매, 카테고리를 계산합니다.
-- **공유용 리캡** — 근거와 표본을 함께 보여주는 독립형 HTML 리캡과 16가지 쇼핑 유형을 만듭니다.
-- **자연어 상품 탐색** — AI가 자연어 조건을 타입이 있는 검색·상세 조회로 바꿉니다.
-- **CLI와 MCP** — 같은 typed core를 터미널과 MCP 클라이언트에서 함께 사용합니다.
-- **구매 직전까지만** — 장바구니 추가는 명시적으로 확인한 한 상품만 가능하고, 주문·결제는 경계 밖입니다.
+- **현재 주문 확인** — 첫 페이지만 읽는 `preview`는 주문 DB를 열거나 저장하지 않습니다.
+- **주문 수집과 분석** — `sync`로 정규화해 저장한 범위에서 지출·취소·반품·반복 구매를 계산합니다.
+- **상품 탐색과 추천** — 현재 검색 필터를 발견하고 판매 옵션을 조사해 선택 이유와 미확인 근거를 남깁니다.
+- **개인 보고서와 공유용 리캡** — 상품·구매 맥락이 있는 비공개 결과와 공개 가능한 요약을 구분합니다.
+- **CLI와 MCP** — 같은 typed core를 사용합니다. 현재 장바구니 변경은 미지원이며 주문·결제는 자동화하지 않습니다.
+
+<p align="center">
+  <img src="docs/diagrams/architecture.png" width="720" alt="CLI와 MCP가 공통 서비스와 typed core를 호출합니다. 소스 읽기는 Camofox adapter, 주문·가격 저장은 SQLite repository로 분리하며 쿠팡은 외부 소스입니다.">
+</p>
+
+위 그림은 호출 방향입니다. 로컬 통계·동기화 상태 확인·HTML 보고서 렌더링은 브라우저를 시작하지 않습니다.
+소스 조회에 쓰는 전용 Camofox도 일상용 Chrome·Aside와 분리합니다.
+[구현 위치](#구조) · [다이어그램 원본과 재생성](docs/diagrams/README.md)
 
 ## 쿠팡 파트너스 고지
 
@@ -33,93 +37,176 @@
 상품 가격과 혜택은 쿠팡의 최종 화면에서 확인해야 합니다. 프로젝트 운영자의
 본인 구매는 수익 인정 대상이 아닙니다.
 
-## 3분 빠른 시작
+## 개발 소스 빠른 시작
 
-현재 공개 채널은 안정 릴리스가 아닌 `v0.1.0-rc.2` 후보 릴리스입니다. Go 1.26
-이상과 설치된 Chrome 계열 브라우저가 필요하지만, 저장소 clone이나
-Node·Playwright·Orca·확장 프로그램은 필요하지 않습니다.
+현재 개발 소스는 전용 Camofox를 유일한 쇼핑 브라우저로 사용합니다. 이전
+Chrome 기반 릴리스와 요구 의존성이 다릅니다. Go 빌드에는 Go 1.26 이상,
+실행에는 Node 22 이상과 검증해 설치한 Camofox 서버·Camoufox 엔진이 필요합니다.
+이 교체는 아직 새 릴리스로 배포하거나 릴리스 산출물로 검증한 상태가 아닙니다.
 
 ```bash
-go install github.com/JungHoonGhae/coupang-ctl/cmd/coupangctl@v0.1.0-rc.2
-
-coupangctl --help
-coupangctl version
-coupangctl doctor
-coupangctl login
-coupangctl sync
-coupangctl recap --output ./shopping-recap.html
+go build -o ./coupangctl ./cmd/coupangctl
+./coupangctl camofox setup --runtime /absolute/path/to/camofox --engine-dir /absolute/path/to/camoufox
+./coupangctl doctor
+./coupangctl login --manual
+./coupangctl products search --query '미니 식기' --limit 3 --no-affiliate
+./coupangctl orders preview
+./coupangctl orders sync --max-pages 1
+./coupangctl orders sync-status
+./coupangctl orders stats
 ```
 
-Go는 바이너리를 `GOBIN` 또는 기본 `GOPATH/bin`에 설치합니다. `coupangctl`을
-찾지 못하면 그 디렉터리를 `PATH`에 추가합니다. `version`이 출력하는 전체
-pseudo-version으로 같은 소스를 다시 지정할 수 있습니다. 이 후보 릴리스의 검증된
-아카이브와 체크섬도 [GitHub Releases](https://github.com/JungHoonGhae/coupang-ctl/releases)에서
-제공합니다. 저장소를 직접 수정하려는 개발자는 clone 후
-`go build -o ./bin/coupangctl ./cmd/coupangctl`을 사용합니다.
+조회는 headless로 실행하며 설치된 Aside, Chrome, 확장, Swift 도구나 Orca를
+사용하지 않습니다. 직접 인증을 선택했을 때만 전용 창을 엽니다.
+`doctor`는 로컬 설치 파일만 확인하며 로그인 완료를 보증하지 않습니다.
+실제 세션 확인에는 `auth status` 또는 `auth verify`를 사용합니다.
+확인은 사이트의 인증 상태만 읽으며 주문 목록을 파싱하지 않습니다. 성공 응답의
+`verification_scope: authenticated_session`은 로그인 확인만 뜻합니다. 계정 식별,
+주문 조회 가능 여부, 전체 이력 확보는 각각 별도로 검증합니다. 인증 응답이
+누락되거나 잘못됐으면 `authentication_status_unavailable`이며 재로그인을 자동으로
+시작하지 않습니다. 접근 차단도 세션 만료로 간주하지 않습니다.
+설정이 없거나 소스 읽기가 실패해도 다른 브라우저로 대체하지 않습니다.
 
-`coupangctl login`은 기존 세션을 화면 없이 먼저 확인합니다. 정상 세션은 그대로
-재사용하고, 명확히 미설정 또는 만료된 경우에만 실제 Chrome의 QR 로그인을
-엽니다. 일시적인 `access_blocked`를 로그아웃으로 오인해 불필요한 로그인 창을
-띄우지 않습니다. 휴대폰에서 승인하면 로그인 상태는 전용 브라우저 프로필 안에
-남고, 이후 기본 읽기는 화면 없는 headless 모드에서만 실행합니다. 실제 화면이
-필요한 경우에만 사용자가 같은 읽기 명령에 `--headed`를 명시합니다. 확장 프로그램,
-Node, Playwright, Orca는 기본 실행에 필요하지 않습니다. 모든 CLI 명령은
-문서화된 JSON 객체를 출력합니다.
-
-`doctor`는 보이는 창을 열지 않고 브라우저 설치, 백그라운드 세션 준비 상태,
-SQLite를 별도 체크로 반환합니다. 첫 로그인 전이나 headless 접근이 거부된
-환경에서는 설치가 정상이어도 전체 `ok`가 `false`일 수 있으며,
-`background_session.message`가 다음 동작을 설명합니다.
-
-후보 릴리스는 여섯 플랫폼 아카이브·각 SBOM·체크섬·GitHub provenance를 함께
-제공합니다. 현재 macOS와 Windows 산출물은 네이티브 서명되지 않았으므로 stable로
-취급하지 않습니다. 배포물의 정확한 파일 허용 목록과 검증 방법은
-[`RELEASING.md`](RELEASING.md)에 있습니다. 왜 Orca나 확장이 아니라 단일
-바이너리를 기본으로 삼았는지는 [`research/cli-distribution.md`](research/cli-distribution.md)에
-근거와 함께 정리했습니다.
-
-> [!CAUTION]
-> 생성된 세션과 주문 DB는 개인 데이터입니다. 공유용 리캡은 기본적으로 상품명과 정확한 날짜를 제외하지만, `--include-products`로 만든 HTML은 파일 자체에 실제 상품·금액·날짜가 들어 있으므로 공유하면 안 됩니다.
+> 생성된 세션과 주문 DB는 개인 데이터입니다. 실제 상품·금액·날짜를 포함한
+> `--include-products` 보고서는 공유하지 마세요. 다운로드한 릴리스를 사용할 때는
+> [RELEASING.md](RELEASING.md)의 체크섬·SBOM·attestation 검증을 별도로 수행하세요.
 
 ## 무엇을 할 수 있나요?
 
-| 영역 | 상태 | 할 수 있는 일 |
-| --- | --- | --- |
-| 로그인·세션 | 사용 가능 | QR, 일회성 앱 링크, 사용자 OTP 기반 SMS 로그인과 세션 검증 |
-| 현재 Chrome 연결 | 실험적 | Chrome의 명시적 승인 뒤 확장 없이 실행 중인 브라우저로 주문 동기화 |
-| 선택 탭 확장 연결 | 실험적 | 현재 Chrome 연결을 쓸 수 없을 때의 선택적 최소 권한 호환 경로 |
-| 주문 기록 | 사용 가능 | 전체 이력 동기화, 이어받기, 목록·내보내기·가져오기 |
-| 소비 분석 | 사용 가능 | 지출, 멤버십 비용 분리, 취소·반품, 시간대, 배송 추세 |
-| 쇼핑 유형·리캡 | 사용 가능 | 근거가 보이는 4축 유형, 배지, 공개형·비공개형 HTML |
-| 상품별 인사이트 | 사용 가능 | 구매 횟수·수량·기록된 결제액·최고/최저 지출일 |
-| 상품 검색·상세 | 사용 가능 | 가격, 배송, 이미지, 혜택, 평점, 정제된 후기, 정렬 의미 보존 |
-| 가격 이력·재구매 | 실험적 | 실제로 관찰한 옵션별 현재가와 마지막 실결제 단가 비교 |
-| WOW·카드 혜택 | 실험적 | 현재 멤버십, 쿠팡이 표시한 혜택, 등록 카드 브랜드, 월별 적립 |
-| 카테고리 | 실험적 | 실제 breadcrumb 경로, 집계 커버리지, 재관측 안정성 |
-| 장바구니 | 실험적 | 정확한 `vendor_item_id`와 명시적 확인이 있을 때 한 번 추가 |
-| 영수증 일괄 처리 | 실험적 | 현금·카드 상태·이력·기간 합계, 주문별 거래명세, 완료 파일의 비공개 저장 |
-| 주문·결제 | 지원 안 함 | 자동 주문, 결제, 구매 확정은 구현하지 않음 |
+지금 주문만 확인하려면 `orders preview`, 이력을 모아 분석하려면 `orders sync`부터 시작하세요.
 
-현재 구현 상태와 다음 순서는 [`ROADMAP.md`](ROADMAP.md)와 `coupangctl capabilities`에서 확인할 수 있습니다. capabilities schema v3는 전체 `summary`에서 추가 구현과 검증·외부 조정을 먼저 분리하고, 각 항목의 `implemented`, `next_step_kind`, `blocked_by`, `last_verified`를 이어서 보여줍니다. 따라서 AI도 “더 구현할 일”과 “외부 승인·사용자 확인·시간 경과가 필요한 검증”을 즉시 구별할 수 있습니다. 일반 Chrome 브리지의 설치·권한·제거 계약은 [`BROWSER_BRIDGE.md`](BROWSER_BRIDGE.md)에 있습니다.
+<p align="center">
+  <img src="docs/diagrams/orders.png" width="720" alt="orders preview는 첫 페이지를 비공개로 반환하고 주문 DB를 사용하지 않습니다. orders sync는 정규화한 주문과 커서를 SQLite에 저장합니다. 이후 로컬 분석은 개인 결과와 공유용 리캡으로 나뉩니다.">
+</p>
 
-모든 주문 동기화 결과는 schema v1의 `source`와 `provenance`를 함께 반환합니다.
-`source`는 `dedicated_browser_profile`, `current_browser_connection`,
-`ordinary_browser_selected_tab` 중 실제 선택된 수집 adapter이고,
-`provenance`는 쿠팡 주문 화면의 구조화 문서에서 관찰했다는 뜻의
-`observed_source_native_structured_order_document`입니다. 호출자가 이 값을
-입력해서 수집 출처를 가장할 수는 없습니다.
+로그인 확인, 현재 계정과 DB의 연결, 전체 이력 확보는 별도 검증입니다.
+수집이 끝났다는 표시만으로 세 가지가 모두 확인된 것은 아닙니다.
+
+### 저장하지 않고 현재 주문 확인
+
+`coupangctl orders preview` 또는 MCP `orders_preview`로 현재 로그인 세션의
+주문 첫 페이지를 확인합니다. 전용 Camofox로 한 페이지만 읽으며 주문 DB를
+열거나 저장하지 않습니다. 기존 체크포인트부터 이어 읽지도 않습니다.
+이 명령에는 페이지 수나 기간 옵션이 없습니다.
+
+응답은 `private_local`이며 정규화한 주문·상품 자료와 조회 시각 `captured_at`,
+건수 `order_count`, 다음 페이지 유무 `has_next_page`를 반환합니다.
+`scope: source_entry_page`는 원천의 첫 응답 범위만 뜻합니다. 빈 페이지도
+“구매한 적 없음”으로 해석하지 않습니다.
+
+`persisted`, `account_identity_verified`, `history_complete`는 모두 `false`입니다.
+현재 로그인 계정과 기존 DB의 연결, 전체 구매 이력, 구매 패턴을 검증한 결과가
+아닙니다. 브라우저가 자체 세션을 저장하는 동작은 주문 저장과 별개입니다.
+차단·로그인 필요·불완전한 응답은 오류로 반환하며 창을 열거나 자동 재시도하지 않습니다.
+
+### 주문 수집 범위 확인
+
+`orders sync-status`와 MCP `orders_sync_status`는 브라우저 없이 로컬 기록을
+읽습니다. 응답 v3의 바깥쪽 처리 건수는 **마지막 실행**만 뜻합니다.
+`scan`은 그 실행이 속한 수집의 누적 근거이며 여러 번 재개한 결과를 합칩니다.
+
+| 필드 | 의미 |
+| --- | --- |
+| `scan.attempts`, `scan.pages_processed` | 같은 수집의 실행 횟수와 저장에 성공한 누적 페이지 수 |
+| `scan.starts_from_beginning`, `scan.next` | 저장된 커서 없이 시작했는지와 다음 커서. 이전 체크포인트에서 시작했다면 앞부분은 확인하지 못한 상태 |
+| `scan.retained_orders_observed` | 이번 수집에서 한 번 이상 관측한 보존 주문 수. 중복 페이지에 나온 주문은 한 번만 집계 |
+| `scan.retained_orders_not_observed` | DB에 남아 있지만 이번 수집에서 관측하지 못한 주문 수. 삭제·취소된 주문이라는 뜻은 아님 |
+
+`scan.state=active`는 이어갈 수집 기록이 있다는 뜻이지 프로세스가 실행 중이라는
+증거가 아닙니다. `cursor_exhausted`도 계정 확인이나 전체 이력 완료를 보증하지
+않습니다. 미실행 또는 수집 연결 기록이 없는 기존 실행은 `scan:null`로 반환합니다.
+새로 시작한 수집의 `next:null` 역시 끝에 도달했다는 뜻은 아닙니다.
+
+누적 근거와 마지막 실행 상태는 같은 읽기 스냅샷을 사용합니다. 통계 응답의
+`evidence.latest_attempt.scan`에서도 확인할 수 있습니다. 이 건수는 DB 전체 범위이며
+통계에 요청한 날짜 범위의 완전성을 증명하지 않습니다. 현재 로그인 계정과 DB의
+연결은 아직 미검증이므로 `history_complete:false`를 유지합니다.
+
+현재 `orders sync`는 전용 Camofox DB를 사용하지만 로그인 계정을 자동으로
+구분하지 않습니다. 계정을 바꾼 뒤 기존 DB에 이어서 동기화하면 이력이 섞일 수
+있습니다. 계정 연결을 확인하기 전에는 `orders preview`로 현재 응답만 확인하세요.
+기존 DB를 현재 계정으로 자동 귀속하거나 계정별 분리가 완료됐다고 보장하지 않습니다.
+
+원천이 주문 페이지를 `partial:true`로 표시하면 `partial_order_data`로 중단합니다.
+해당 페이지는 저장하거나 건너뛰지 않고 마지막 체크포인트를 보존합니다.
+`orders sync-status`로 진행 상황을 확인한 뒤 나중에 `orders sync`를 다시 실행하면
+중단한 페이지부터 재개합니다. `partial:false`만으로 전체 이력 확보를 주장하지 않습니다.
+
+### Camofox 기본 연결 (개발 소스)
+
+일반 CLI와 MCP는 Camofox만 사용합니다. `camofox setup`은 실행할 전용 런타임을 등록합니다.
+일상용 브라우저와 분리된 전용 세션으로 창 없이 조회하며, 공통 상품·필터 판독기와
+기존 타입 검증을 재사용합니다. 검색 결과의
+`coverage.source`는 `camofox_search_document`입니다. 필터 발견 → 선택 → 최종 선택
+상태 확인 순서를 유지합니다. 검색 성공은 상세 조사나 최종 추천 완료를 의미하지 않습니다.
+
+이 경로는 Node 22 이상, 설치된 Camofox 서버와 Camoufox 엔진이 필요합니다.
+검증해 설치한 런타임을 다음 명령으로 등록하면 전용 저장소와 기본 선택을 준비합니다.
+런타임 다운로드·업데이트 자체는 이 명령에 포함하지 않습니다. 조회 중에는 다운로드,
+로그인 창 열기, 다른 브라우저로의 자동 대체를 하지 않습니다. Aside·Chrome 프로필은
+읽거나 변경하지 않습니다. 일반 검색은 DB 없이 실행합니다.
 
 ```bash
-coupangctl orders sync-status
+go run ./cmd/coupangctl camofox setup --runtime /absolute/path/to/camofox --engine-dir /absolute/path/to/camoufox
+go run ./cmd/coupangctl auth status
+go run ./cmd/coupangctl login --manual
+# 또는 창 없이 일회성 앱 링크와 확인 숫자로 승인
+go run ./cmd/coupangctl login --qr --link
 ```
 
-이 명령과 MCP `orders_sync_status`는 네트워크나 브라우저를 사용하지 않고 마지막
-로컬 동기화 시도만 읽습니다. 시작·완료 시각, 상태, source, provenance,
-처리한 페이지·주문 수, 전체 이력 완성 여부와 안정적인 오류 코드를 반환합니다.
-수집 증거 저장 기능 이전의 실행은 출처를 추측하지 않고 `unknown_legacy`로
-표시합니다.
+`--manual` 화면에서는 QR·휴대폰 등 쿠팡이 제공하는 인증 방식을 직접 선택합니다.
+SMS 발송·OTP 자동 입력은 지원 범위에서 제외합니다. 이미 인증된 세션이면 로그인 명령도 창을 열지 않습니다.
+인증 완료 후 새 headless 프로세스에서 보호된 주문 읽기로 다시 확인합니다.
+일회성 링크/확인 숫자는 요청한 안내 출력에만 전달하며 일반 JSON·로그·파일에 저장하지 않습니다.
+QR은 원본 캔버스/이미지를 메모리에서 해석합니다. 브라우저 확장, Swift 도구,
+운영체제 화면 캡처나 외부 QR 해석 서비스는 필요하지 않습니다.
+
+```bash
+go run ./cmd/coupangctl products search --query '조립PC' --limit 3 --no-affiliate
+# 바로 위 응답에 실제로 있는 필터만 선택하세요.
+go run ./cmd/coupangctl products search --query '조립PC' --facet '메모리용량=32GB 이상' --max-price 2000000 --limit 3 --no-affiliate
+go run ./cmd/coupangctl orders sync --max-pages 1
+go run ./cmd/coupangctl mcp
+```
+
+지원 범위는 검색·필터 좁히기·상품 상세·인증·구조화 주문 읽기와 로컬 주문 분석입니다.
+상세는 검색 후보의 상품·판매 옵션 식별자를 검증하며 미확인 필드는 누락으로 남깁니다.
+계정 혜택은 WOW 멤버십·쿠팡캐시의 확인된 필드와 조회 범위를 제공합니다.
+장바구니 변경·영수증 조회는 미지원이며 다른 브라우저로 자동 대체하지 않습니다.
+최종 구매·결제는 자동화하지 않습니다.
+전용 상태는 상태 디렉터리의 `camofox/` 아래 보관하고 동시 실행은
+프로필 잠금으로 막습니다. 각 조회는 자체 서버를 시작하고 종료하며, 강제 종료나
+저장 완료 여부를 확인할 수 없는 종료는 성공으로 반환하지 않습니다.
+설정은 상태 디렉터리(`COUPANGCTL_STATE_DIR` 또는 OS 기본 경로)의 `camofox.json`에
+권한 0600으로 저장됩니다. 이전 `default_browser`/`default_search` 필드는 읽기
+호환성만 유지하며 더 이상 브라우저를 선택하지 않습니다. `--camofox`는 생략 가능합니다.
+기본 조회 오류는 다른 브라우저로 자동 대체하지 않습니다.
+
+주문은 `camofox-coupangctl.sqlite3`에 분리합니다. Aside/Chrome DB를 합치지 않으므로
+새 저장소의 동기화 기간과 누락을 확인하세요. 통계·기존 보고서 읽기는 브라우저를 시작하지
+않습니다. 구매 이력을 사용하는 추천은 명시적 `--use-purchase-history`에서만 연결합니다.
+검색의 간헐적인 소스 오류 가능성은 남아 있으며, 특정 사이트의 차단 해제를 보장하지 않습니다.
+
+### 이전 브라우저 경로
+
+`--aside`, `--headed`, `--current-browser`, `--ordinary-browser`,
+`--apple-events`와 기존 연결/확장 설치 명령은 폐기됐습니다.
+이전 앱·프로필·DB는 자동 삭제하거나 가져오지 않습니다.
+과거 실험의 성공 기록은 현재 Camofox 검증과 구분하며
+[GitHub #28](https://github.com/JungHoonGhae/coupang-ctl/issues/28)에서 전환 상태를 추적합니다.
 
 ## 주문 분석과 리캡
+
+<details>
+<summary>공개 가능한 합성 시각 예시: 16가지 쇼핑 유형</summary>
+
+<p align="center">
+  <img src="internal/recap/assets/type-roster.webp" width="760" alt="합성 데이터용 쇼핑 유형 캐릭터 16종">
+</p>
+
+구매 리듬과 장바구니 행동을 설명하는 규칙 기반 유형입니다. 성격 진단이나 쿠팡의 공식 분류가 아닙니다.
+
+</details>
 
 ```bash
 coupangctl orders list --limit 20
@@ -156,6 +243,9 @@ provenance, 표본 수, 제외 필드를 JSON으로 미리 보여주며 파일�
 않습니다. 그 내용을 확인한 뒤 `--output`과
 `--confirm-public-safe-image`를 함께 줄 때만 새 `0600` PNG를 씁니다.
 PNG에는 상품명·금액·정확한 날짜·결제수단을 넣는 옵션 자체가 없습니다.
+PNG 렌더링도 설치된 Camoufox 엔진을 headless로 실행합니다. 별도 임시
+프로필에서 내장 폰트·이미지만 사용하고, 종료 후 임시 프로필을 지웁니다.
+로그인 세션, Chrome, 확장 프로그램이나 화면 캡처 도구는 사용하지 않습니다.
 응답 계약은 [`RECAP.md`](RECAP.md)에 있습니다.
 
 `orders category-catalog`은 그 breadcrumb에서 실제로 관찰한 카테고리
@@ -177,10 +267,17 @@ PNG에는 상품명·금액·정확한 날짜·결제수단을 넣는 옵션 자
 
 ## WOW 멤버십 비용과 혜택
 
+전용 Camofox에서 로그인한 뒤 멤버십·예상 적립금·캐시 이력을 headless로
+조회합니다. MCP `account_benefits`도 같은 계약을 사용합니다.
+
 ```bash
-coupangctl orders sync
-coupangctl account benefits
+coupangctl account benefits --cash-pages 2
 ```
+
+`--cash-pages`는 1–100페이지이며 기본값은 50입니다. 로그인이나 접근 제한이
+있으면 오류를 반환하고 창을 띄우지 않습니다. 미수집 페이지가 남으면
+`coverage.cash_transaction_status`가 `partial`이므로 전체 이력으로 해석하지 않습니다.
+과거 멤버십 비용의 후보 자료는 별도 `orders sync`로 확보한 로컬 주문 원장입니다.
 
 `membership_costs`는 상품명이나 결제액으로 추정하지 않고, 쿠팡 원천
 metadata에서 멤버십으로 명시된 주문만 합산합니다. 결제 횟수·gross·취소 제외
@@ -189,7 +286,11 @@ metadata에서 멤버십으로 명시된 주문만 합산합니다. 결제 횟�
 쿠팡 화면이 혜택 총액을 `최근 3개월`로 표시하는 경우 그 기간도 관찰값으로
 반환합니다. 실제 과거 회비가 없으면 현재 월회비×3을 비교용 비용으로만 사용해
 `estimated_net_value_krw`를 계산합니다. 이 값은 `inferred`이며
-`confirmed_net_value_krw`는 0으로 남습니다. 멤버십 중지·환불·무료기간·기간 중
+`confirmed_net_value_krw`는 생략합니다. 혜택 합계나 현재 회비가 미확인이면
+예상 순혜택도 계산하지 않습니다. 확인된 0과 누락은 구분합니다.
+계정 응답 v6은 세부 혜택 금액·이용 횟수·회원 상태·자동결제 여부도
+미확인이면 생략합니다. 생략된 필드를 0원·0회·비회원으로 해석하면 안 됩니다.
+멤버십 중지·환불·무료기간·기간 중
 요금 변경은 이 추정에 반영되지 않습니다. 화면에 원천 요금 변경일이 있으면 별도
 관찰 metadata로 반환하지만, 이를 과거 청구 이력으로 해석하지 않습니다.
 와우카드 적립과 공개된 카드 연회비도 기간 중복을 증명할 수 없어 멤버십 비교에서
@@ -198,7 +299,7 @@ metadata에서 멤버십으로 명시된 주문만 합산합니다. 결제 횟�
 
 ## 자연어로 상품 찾기
 
-CLI는 관찰 가능한 조건을 그대로 받습니다.
+CLI는 가격·배송 등 조회 조건과 상품명 기반 탐색 필터를 받습니다.
 
 ```bash
 coupangctl products search \
@@ -215,13 +316,82 @@ coupangctl products search \
   --sort sales
 ```
 
-MCP를 쓰면 AI가 “후기 좋은 10만 원 아래 맥북 허브, 광고 제외” 같은 요청을 `products_search`의 typed filter로 바꿉니다. 실제 카테고리 이름으로 찾고 싶으면 먼저 `orders_category_catalog`에서 관찰된 ID를 고른 뒤 `products_search.category_id`로 넘깁니다. 선택한 후보는 `product_inspect`로 가격, 배송, 이미지, 상세 내용, 관찰된 쿠폰·카드 혜택, 평점과 정제된 후기를 확인할 수 있습니다.
+MCP를 쓰면 AI가 “후기 좋은 10만 원 아래 맥북 허브, 광고 제외” 같은 요청을
+`products_search`의 typed filter로 바꿉니다. 검색어 `query` 또는 원천에서 확인한
+`category_id` 중 하나를 전달합니다. CLI의 대응 옵션은 `--query`와 `--category-id`입니다.
+두 방식을 함께 입력하면 검색어를 무시하지 않고 오류를 반환합니다.
+
+`--min-memory-gb`·`--min-storage-gb`는 상품명의 숫자를 추정해 후보를 줄이는
+탐색 필터입니다. 선택한 판매 옵션의 실제 사양을 보증하지 않습니다.
+`computer_specs`에는 `provenance=inferred`, `method=capacity_and_model_regex`와
+추정에 사용한 텍스트 종류를 반환합니다. 이를 확정 사양이나 조건 충족 근거로 쓰지 마세요.
+
+검색어·카테고리 조회 모두 먼저 `coverage.facets`를 읽고, 실제 제공된 항목만
+선택해 조건을 좁히세요. 카테고리가 바뀌면 필터도 다시 확인해야 합니다.
+사이드바는 첫 페이지에서 이전 카테고리 경로와 활성 필터를 합쳐 최대 6단계를 적용합니다. 카테고리 조회에서
+`카테고리` 항목을 선택해 경로가 바뀌면, 선택 표시와 새 페이지의 구조화된 분류
+경로가 일치할 때만 결과를 반환합니다. 요청한 정렬·페이지가 바뀌거나 검색어가
+사라진 이동은 허용하지 않습니다.
+
+검색 응답의 `applied_filters.category_id`는 시작 카테고리이고,
+`coverage.applied_category_id`는 검증된 이동 대상입니다. 추천 응답도 시작값
+`category_id`와 이동 대상 `applied_category_id`를 구분하며 이후 필터·정렬 조사는
+이동 대상에서 이어갑니다. `refinement.steps[].category_id`는 각 필터 목록의 범위입니다.
+새 카테고리로 별도 조회를 시작할 때는 확인된 이동 대상 ID를 사용하세요.
+검색어나 카테고리로 시작한 추천에서는 `answers`에 `facet:카테고리` 답변을 순서대로
+반복해 상위 분류에서 하위 분류로 이동할 수 있습니다. 매 단계마다 현재 선택지를
+검증하고 새 목록을 읽습니다. 이전 선택은 `refinement.steps`에 보존하고,
+`refinement.applied_selections`에는 마지막으로 검증된 카테고리와 나머지 조건만 남깁니다.
+전체 선택은 최대 6회입니다. 검색의 `facet_selections`는 동시에 적용할 조건이므로
+같은 그룹을 반복할 수 없습니다. 검색어로 시작하면 이전 카테고리는
+`refinement.category_trail`에 보존하고, 새 조회마다 그 경로를 다시 선택합니다.
+검색어는 바꾸지 않으며 마지막 카테고리와 나머지 활성 필터를 검증합니다.
+직접 검색할 때는 이전 선택을 `--category-trail LABEL`로 순서대로 전달하고,
+마지막 선택은 `--facet '카테고리=LABEL'`로 전달하세요. MCP 입력은
+`category_trail` 배열과 `facet_selections`입니다. 이전 경로도 조회 예산에 포함합니다.
+필터 선택은 상품 상세의 조건 충족을 보증하지 않으므로 최종 후보는
+`product_inspect`로 따로 확인합니다.
 
 `product_inspect.coverage`는 옵션명이나 카드 혜택을 관찰하지 못했을 때 이를
 빈 값으로만 넘기지 않습니다. `selected_options`와 `card_benefit`을
 `unavailable_fields`에 명시하고, 실제 값이 있으면 모순되는 unavailable 표기를
 제거해 `observed_fields`에 둡니다. 따라서 AI는 “없는 혜택”이라고 추측하지 않고
 정확한 `vendor_item_id`를 유지한 채 최종 화면 확인을 안내할 수 있습니다.
+
+`selected_attributes`는 원본 옵션의 항목명(`name`)과 선택된 값(`value`)입니다.
+원본 옵션 조합의 연결표가 상세 조회의 `item_id`·`vendor_item_id`와 모두 일치할 때만
+반환합니다. `field_evidence`에는 `source=product_options`, `provenance=observed`,
+`scope=selected_option`, 정확한 식별자와 관찰 시각을 보존합니다.
+값이나 연결 근거가 없으면 `coverage.unavailable_fields`에 표시합니다.
+
+“RAM용량 × 저장용량” 같은 복합 항목은 분리하지 않습니다. 실제 상품에서 항목명
+순서와 값 순서가 의심스럽거나 개수가 다른 사례를 확인했기 때문입니다.
+이는 판매자가 표시한 옵션 원문이지 하드웨어 실측 결과가 아닙니다.
+추천 보고서도 유효한 옵션 연결 근거가 있을 때만 원문과 관찰 시각을 표시합니다.
+
+추천의 `required_conditions`와 `comparison_axes`는 `specifications.memory_gb`와
+`specifications.storage_gb`를 지원합니다. 정확한 판매 옵션에 연결된 **독립 항목**
+`RAM용량`·`저장용량`만 사용합니다. 제목의 `computer_specs`, 검색 필터 선택,
+복합 옵션은 이 조건의 근거가 아닙니다. 해당 독립 항목이 없거나 근거가 불명확하면
+`unknown`으로 남기며 조건 충족 후보에서 제외합니다. 조사한 후보와 이유는 `inspected`에 보존합니다.
+
+입력은 GB 단위의 `integer`이며 조건 연산자는 `gte`·`lte`, 비교 방향은
+`maximize`·`minimize`입니다. 예를 들어 RAM 32GB 이상은 다음처럼 전달합니다.
+
+```json
+{"id":"ram","field":"specifications.memory_gb","operator":"gte","integer":32}
+```
+
+CLI에서는 조건 배열을 `--conditions-json`, 비교 축 배열을 `--comparison-axes-json`에
+전달합니다. 숫자 결과는 `observed_integer`가 아닌 `derived_integer`에 둡니다.
+`derivation`에는 원본 항목·값, `provenance=derived`, 환산 방법과 단위를,
+`evidence`에는 정확한 판매 옵션과 관찰 시각을 보존합니다.
+`GB`·`TB` 표기는 십진 단위로 해석합니다(1 TB = 1000 GB).
+`GiB`·`TiB`, 단위 없는 수, 복합 값, 정수 GB로 표현할 수 없는 값은 추측하지 않습니다.
+단위 구분은 [NIST 설명](https://physics.nist.gov/cuu/Units/binary.html)을 참고하세요.
+이는 판매자가 표시한 용량을 환산한 결과이며 실제 장착 용량이나 성능을 검증한 결과가 아닙니다.
+보고서는 같은 core 규칙으로 값을 다시 계산해 원문·파생값·미확인을 표시합니다.
+복합 옵션을 개별 사양으로 확인하는 기능은 여전히 미완료입니다.
 
 정렬 의미는 섞지 않습니다.
 
@@ -238,11 +408,126 @@ MCP를 쓰면 AI가 “후기 좋은 10만 원 아래 맥북 허브, 광고 제�
 
 상품 페이지 단위 후기 수를 옵션별 판매량처럼 표현하지 않습니다. 상품 가격과 프로모션은 바뀔 수 있으므로 최종 쿠팡 화면에서 다시 확인해야 합니다.
 
+### 추천 조사 (실험적)
+
+추천은 제품을 몇 개 나열하는 작업이 아닙니다. 먼저 검색 범위와 필터를 확인하고,
+실제 판매 옵션의 근거로 조건을 검토합니다.
+
+<p align="center">
+  <img src="docs/diagrams/recommendation.png" width="720" alt="요청을 조건으로 정리하고 기본 검색에서 필터를 발견합니다. 필터 적용을 검증한 뒤 정확한 판매 옵션의 상세 근거로 필수 조건을 재계산합니다. 충족 후보와 제외·미확인 이유를 보고서에 함께 남깁니다.">
+</p>
+
+1. **범위를 정합니다.** 예산과 명시한 조건을 typed 입력으로 전달합니다. 숨은 선호는 만들지 않습니다.
+2. **실제 필터를 씁니다.** 검색·카테고리에서 관찰한 선택지만 적용하고 최종 선택 상태를 확인합니다.
+3. **판매 옵션을 검증합니다.** 검색 제목이나 필터 선택을 확정 사양으로 쓰지 않습니다.
+4. **근거와 한계를 함께 제시합니다.** 조건부 후보, 제외 이유, 누락과 다음 확인 항목을 남깁니다.
+
+`--limit`은 표시 개수입니다. 조사 깊이나 좋은 추천의 근거가 아닙니다.
+`complete`도 제한된 조사의 완료일 뿐, 시장 전체 최고 제품이나 사용자 적합성을 보증하지 않습니다.
+이 그림은 기능 흐름이며 특정 제품의 검색 실행 기록이 아닙니다.
+
+추천 조사는 전용 Camofox에서 검색·필터·상세 조회를 이어 갑니다.
+일반 조회는 headless이며 설치된 Chrome이나 확장 연결을 사용하지 않습니다.
+과거 Apple Events 실험은 [검증 기록](intent/minimized-search.md)에 남겨 두었습니다.
+그 문서의 이전 명령은 현재 CLI에서 사용할 수 없습니다.
+
+`products recommend`와 MCP `products_recommend`는 기존 검색·상세 조회를 묶어
+비교 근거를 반환합니다. 구매 맥락은 `--use-purchase-history`를 지정할 때만
+별도 Camofox DB에서 읽습니다. 수집하지 못한 기간을 전체 이력으로 간주하지 않습니다.
+사이트 접근 실패를 숨기거나 자동으로 로그인 창을 열지 않습니다.
+
+`products recommend --help`와 `products report --help`는 브라우저 설정 없이
+도움말 JSON을 반환합니다. `schema_version: 1`, `usage`, `options`를 포함하며
+각 옵션의 `name`, `description`, `default`를 확인할 수 있습니다.
+
+```bash
+coupangctl products recommend --query '미니 식기' --max-price 20000 --proceed --no-affiliate
+```
+
+검색에서 쿠팡 카테고리 ID를 확인했다면 `--query` 대신 `--category-id`를 사용합니다.
+MCP에서는 `query` 대신 `category_id`를 전달합니다. 추천은 시작 카테고리 또는
+사이드바에서 이동이 검증된 카테고리에서 필터·정렬·상세 조사를 이어갑니다.
+두 입력을 함께 보내면 오류입니다. 응답의 `category_id`, `applied_category_id`와
+`refinement.applied_selections`로 시작 범위와 실제 조사 범위를 구분합니다.
+보고서에도 이 범위와 적용이 확인된 필터를 표시합니다. 적용에 실패한 선택은 따로 표시하며
+필터 선택 자체를 개별 상품의 조건 충족 근거로 사용하지 않습니다.
+
+`--proceed` 없이 호출하면 관찰된 검색 필터에 기반한 선택 질문 후보를 반환합니다.
+AI는 결과에 영향을 주는 질문만 하고, 사용자가 질문을 건너뛰어도 `proceed=true`로
+진행할 수 있습니다. `--review-cap`, `--discovery-target`, `--search-page-limit`으로
+조사량을 제한할 수 있습니다. `--limit`은 표시 수만 제한하며 조사 깊이를 바꾸지 않습니다.
+`--answers-json`은 이전 응답의
+질문 ID와 사용자 답변 배열을 받습니다. 이 명령은 현재 `--ordinary-browser`를 지원하지 않습니다.
+
+추천 응답은 schema version 5이며 `needs_input`, `no_matches`, `incomplete`, `complete`를
+구분합니다. `complete`는 제한된 자료 조사의 완료이지 사용자 적합성의 자동 검증이
+아닙니다. 후보별 `needs_verification`과 `missing_evidence`를 확인해야 합니다.
+일부 조회가 실패하면 확보한 근거를 보존하면서 `incomplete`를 반환합니다. 상세 조회의
+현재 가격이 예산을 넘거나 확인되지 않으면 예산 충족 후보로 넣지 않습니다.
+
+추천 결과를 보고서로 보려면 다음처럼 기존 응답을 감쌉니다. 새 상품 조회나 로그인 없이
+CLI와 MCP `products_report_render`가 같은 HTML을 만듭니다.
+
+```bash
+# recommendation.json은 products recommend가 반환한 기존 JSON입니다.
+jq '{schema_version: 2, title: "상품 비교 근거", recommendation: .}' recommendation.json |
+  coupangctl products report --input - --output comparison.html
+```
+
+`--output`은 새 파일만 만들며 기존 파일을 덮어쓰지 않습니다. 생략하면 HTML을 포함한
+JSON을 반환합니다. 구매 맥락이 포함될 수 있으므로 보고서는 `private_local`로 취급합니다.
+HTML을 직접 열면 입력에 포함된 외부 이미지가 로드될 수 있습니다.
+
+선택 입력 `summary`와 `candidate_notes`로 비교 해설을 추가할 수 있습니다.
+`candidate_notes`의 각 항목은 `reference`(표시 후보와 정확히 같은 판매 옵션),
+`title`(짧은 표시명), `rationale`(선택 이유), `tradeoffs`(문자열 목록)를 받습니다.
+해설은 항상 추론으로 표시하며 원래 상품명·선택 옵션 원문·조건 판정을 덮어쓰거나
+추천 순위를 만들지 않습니다. 대표 상품 사진과 해설은 앞에, 세부 조사 기록은
+펼쳐보기 안에 표시합니다. 사진이 없으면 임의의 대체 상품 이미지를 넣지 않습니다.
+
+**판단 흐름**은 출발 목록·정확한 판매 옵션의 상세 연결·필수 조건 재계산을 연결합니다.
+감사 집계의 성공 숫자를 그대로 믿지 않고 입력된 기록에서 다시 계산하며, 적용 기록이
+없는 필터·탈락 과정·전체 시장 순위를 만들어 내지 않습니다. 실제 실행 순서 로그는
+아니며, 자료가 어떻게 조건부 제안의 근거가 되는지 보여주는 지도입니다.
+선택 입력 `decision_paths`는 최대 3개의 `{label, when, reason, references}` 항목으로
+우선순위 가정별 제안을 설명합니다. `references`는 표시 후보의 정확한 판매 옵션이어야
+합니다. `when`과 `reason`은 추론으로 표시하고 사용자 선호나 관측 사실로 승격하지 않습니다.
+
+보고서의 **필수 조건 검토**에는 표시 후보뿐 아니라 `inspected`에 남은 제외·미확인
+후보도 포함됩니다. 가격·배송·평점·용량 판정은 저장된 성공 표시를 믿지 않고 정확한
+판매 옵션의 상세 근거로 다시 계산합니다. 상품 페이지 평점은 페이지 단위로 구분합니다.
+유효한 연결 근거가 있는 옵션 원문과 관찰 시각을 함께 표시하며 복합 옵션은 임의로
+분리하지 않습니다. 상세 조회 중단 이유, 미확인 옵션 수, 다음 확인 단계도 표시합니다.
+이 안내를 표시한다고 조회를 재시도하거나 로그인 창을 여는 것은 아닙니다.
+같은 상품의 다른 판매 옵션은 따로 유지합니다. 중복된 동일 옵션 기록이나 잘못된 조건은
+오류로 반환합니다. 입력 4 MiB·출력 8 MiB, 조사·표시 목록을 합쳐 최대 200개 옵션은
+렌더링 자원 한도이며 적절한 추천 개수를 뜻하지 않습니다.
+
+구매 맥락을 함께 요청할 때는 `--use-purchase-history`(MCP: `use_purchase_history=true`)를
+추가합니다. 기본값은 꺼짐이며, 켠 경우에만 최종 후보의 상품/판매 옵션 ID를 로컬 주문
+자료와 연결한 `purchase_context`를 반환합니다. 이 부분은 `private_local`이며 외부 공유용
+응답이 아닙니다. 취소·반품을 제외한 수량, 구매 주문/품목 행 수, 최초·최근 구매 월,
+마지막 동기화 시도와 이력 완전성을 함께 표시합니다. 제품 ID만 있으면 옵션을 합친
+`product_only` 근거로 표시합니다. 이름 유사도 매칭이나 자동 선호 점수는 사용하지 않습니다.
+동기화가 없거나 불완전하면 `partial`, 저장소를 읽지 못하면 `unavailable`이고 추천 전체는
+`incomplete`입니다. 기록 부재는 ‘구매한 적 없음’의 증거가 아니며, 구매 경험 자체도
+만족도·소비 완료·재구매 필요성을 뜻하지 않습니다. 실제 계정 기반 추천 검증은 아직 남아 있습니다.
+
+추천 보고서의 **구매 이력과의 연결**에도 같은 집계와 범위를 표시합니다. 구매 이력을
+요청하지 않았거나 읽지 못한 상태, 연결된 구매 기록이 없는 상태를 구분합니다.
+상품 단위와 판매 옵션 단위 집계는 겹칠 수 있어 합산하지 않습니다. 마지막 동기화 시도의
+페이지 수·종료 시각과 이어받기를 포함한 누적 스캔 기록은 별도로 표시합니다.
+동기화 시도 종료나 커서 소진을 전체 계정 이력 확보로 표현하지 않습니다. 최근 스캔에서
+못 본 로컬 주문도 삭제·취소로 간주하지 않습니다. 보고서는 입력된 집계를 보여 줄 뿐
+계정 소유자나 현재 로그인 상태를 다시 확인하지 않으므로 외부에 공유하지 마세요.
+
 ### 가격 이력과 재구매 비교
 
-성공한 `products search`와 `products inspect`는 응답에 실제
-`price.current_amount`가 있을 때만 해당 옵션의 현재가를 로컬 SQLite에
-기록합니다. 이후 다음처럼 읽습니다.
+CLI의 `products search`는 DB를 열거나 가격을 저장하지 않습니다.
+CLI의 `products inspect`와 MCP의 `products_search`·`product_inspect`는
+`price.current_amount`의 금액·통화·선택 옵션 범위가 확인된 경우에만
+현재가를 로컬 SQLite에 기록합니다. 저장 실패는 조회 결과의 경고로 표시합니다.
+기록된 가격은 다음처럼 읽습니다.
 
 ```bash
 coupangctl products price-history --product-id ID --vendor-item-id ID
@@ -293,6 +578,8 @@ coupangctl products watch-clear --confirm clear-product-watchlist
 
 ### 장바구니 추가
 
+> 현재 Camofox 경로는 장바구니를 변경하지 않습니다. 아래는 향후 별도 승인 작업을 위한 보존된 타입 계약입니다.
+
 ```bash
 coupangctl products cart-add \
   --product-id ID \
@@ -305,6 +592,8 @@ coupangctl products cart-add \
 
 ## 영수증과 결제수단 합계
 
+> 현재 Camofox 영수증 조회는 미지원입니다. 아래 타입·계산 계약의 실제 소스 연결은 남아 있습니다.
+
 이미 존재하는 현금·카드 영수증 요청의 상태와 이력, 기간 합계를 읽을 수 있습니다.
 
 ```bash
@@ -312,7 +601,7 @@ coupangctl receipts status
 coupangctl receipts list --kind card --page 0 --size 5
 coupangctl receipts summary --kind card --from 2026-01-01 --to 2026-08-31
 coupangctl receipts overview --from 2021-01-01 --to 2026-08-31
-coupangctl receipts vendor --source-ref HASH --headed
+coupangctl receipts vendor --source-ref HASH
 coupangctl receipts download --kind card --history-index 0 --output ./receipt.pdf
 ```
 
@@ -335,98 +624,77 @@ coupangctl receipts download --kind card --history-index 0 --output ./receipt.pd
 }
 ```
 
-MCP 서버는 장시간 백그라운드에서 실행되는 프로세스이므로 기본 브라우저 읽기가
-거부되어도 보이는 창을 임의로 열지 않습니다. 사용자가 화면을 보고 재시도하려면
-해당 CLI 명령의 `--headed`를 명시하거나, Chrome에서 직접 승인한
-`orders_sync_current_browser`를 사용합니다. 세션 복구가 필요할 때는 먼저
-`auth_status`를 확인합니다. `auth_login_if_needed`는 `confirmed=true`일 때도
+MCP 연결과 도구 목록 조회에는 Camofox 설정이나 주문 DB가 필요하지 않습니다.
+`products_report_render`도 입력받은 근거만으로 동작합니다. 주문 통계·가격 이력·watchlist는
+첫 호출에 전용 로컬 DB를 열며 브라우저 설정을 읽거나 브라우저를 실행하지 않습니다.
+실제 소스 조회 도구는 호출할 때 Camofox 설정을 확인합니다. 설정이 없으면
+`browser_setup_required`를 반환하지만 MCP 연결과 로컬 도구는 계속 사용할 수 있습니다.
+MCP 상품 검색·상세·추천은 DB를 먼저 열지 않습니다. 저장할 근거가 있는 가격을
+확인한 뒤 가격 기록을 시도하며, DB 오류가 나도 조회 결과는 보존하고 저장 실패를
+경고합니다. 구매 맥락은 `use_purchase_history=true`일 때만 읽습니다. 요청한 이력을
+읽지 못하면 추천은 `incomplete`, 구매 맥락은 `unavailable`로 표시합니다.
+설정이나 DB 접근 오류를 고친 뒤에는 MCP를 재연결하지 않고 해당 도구를 다시 호출하면 됩니다.
+
+MCP 서버는 조회가 거부돼도 로그인 창을 임의로 열지 않습니다.
+세션 복구가 필요하면 먼저 `auth_status`를 확인합니다.
+직접 인증하려면 CLI의 `auth login --manual`을 사용하세요.
+Chrome 연결이나 폐기된 `--headed` 옵션으로 대체하지 않습니다. `auth_login_if_needed`는 `confirmed=true`일 때도
 조용한 상태 확인을 먼저 수행하고, 미설정 또는 명확히 만료된 세션에만 QR 로그인
 창을 엽니다. 이미 정상인 세션과 일시적인 `access_blocked` 상태에는 창을 열지
 않습니다.
 
-대표 도구:
+현재 Camofox에서 등록하는 도구:
 
-- `auth_status`, `auth_login_if_needed`, `current_browser_status`, `account_benefits`
-- `orders_sync`, `orders_sync_status`, `orders_sync_current_browser`, `orders_sync_ordinary_browser`, `orders_list`, `orders_spend`, `orders_stats`
+- `auth_status`, `auth_login_if_needed`
+- `orders_preview`, `orders_sync`, `orders_sync_status`, `orders_list`, `orders_spend`, `orders_stats`
 - `orders_insights`, `orders_product_insights`, `orders_category_catalog`, `orders_category_stability`, `orders_reorder_candidates`
 - `orders_export`, `orders_enrich_categories`
-- `products_search`, `product_inspect`, `cart_add`
+- `products_search`, `products_recommend`, `products_report_render`, `product_inspect`, `cart_add`
 - `product_price_history`
 - `product_watchlist`, `product_watch_add`, `product_watch_remove`, `product_watch_refresh`
-- `receipts_status`, `receipts_list`, `receipts_summary`, `receipts_overview`, `receipts_vendor`
+- `account_benefits`
 
-읽기 도구와 변경 도구는 MCP annotation과 입력 타입에서 구분됩니다. 상품 검색·상세는 관찰가를 로컬 이력에 추가할 수 있고, watch 도구는 로컬 watchlist만 바꿉니다. 영수증 MCP 도구는 조회 전용이고 파일 다운로드는 CLI에만 있습니다. 상거래 상태를 바꾸는 도구는 `cart_add`뿐이며, 되돌릴 수 있는 장바구니 추가에도 별도 확인값을 요구합니다.
+읽기와 변경은 MCP annotation과 입력 타입으로 구분합니다.
+상품 상세와 가격 watch는 관찰가를 로컬 DB에 저장할 수 있습니다.
+`cart_add`는 타입 계약만 보존하며 현재 Camofox에서는 장바구니를 변경하지 않습니다.
+`orders_enrich_categories`는 Camofox의 구조화 카테고리 읽기에 연결되어 있습니다.
+영수증 도구는 현재 Camofox MCP에 등록하지 않습니다.
 
 `auth_login_if_needed`도 사용자에게 QR 창이 열릴 수 있음을 먼저 알린 뒤
 `confirmed=true`로 호출해야 합니다. QR 링크, 쿠키, OTP, 프로필 경로는 MCP
 응답에 포함되지 않습니다.
 
+### CLI·MCP 오류 계약
+
+실패 응답은 공통 `error` 객체의 `code`, `message`, `reason`, `operation`,
+`retryable`, `next_action` 여섯 필드를 반환합니다. CLI는 이 JSON을 stderr에
+쓰고 0이 아닌 종료 코드를 반환합니다. MCP 도구 실패는 `isError: true`와
+같은 JSON을 담은 텍스트 콘텐츠를 반환하며, 성공용 `structuredContent`는
+반환하지 않습니다. 성공 응답의 typed schema는 그대로 유지합니다.
+
+`reason`으로 잘못된 요청, 미지원 기능, 설정·권한·인증 필요, 접근 거부, 사용 중,
+취소·시간 초과, 대상 변경, 응답 계약 위반, 소스 사용 불가, 내부 오류를 구분합니다.
+`operation`은 `products_search` 같은 고정 명령 이름이며 사용자 입력을 포함하지 않습니다.
+`message`는 안전한 고정 안내입니다. 상위 서버 오류나 로컬 경로를 그대로 출력하지 않습니다.
+
+호출자는 `next_action`을 복구 안내로 사용하고, `retryable`을 자동 재시도나
+다른 브라우저·프로필 사용 허가로 해석하지 마세요. 인증 필요·접근 거부·권한 필요는
+자동 재시도하지 않습니다. MCP의 이전 오류 문자열 비교는 이 JSON 계약으로 바꿔야 합니다.
+예를 들어 인증 필요·접근 거부는 각각 `camofox_authentication_required`,
+`camofox_access_denied`, 호출 시간 초과는 `operation_timed_out`으로 통일했습니다.
+
 ## 로그인 방식
 
-| 방식 | 명령 | 용도 |
-| --- | --- | --- |
-| 자동 | `coupangctl login` | 기존 세션을 먼저 확인하고 정말 필요할 때만 QR Chrome을 엶 |
-| QR | `coupangctl auth login` | 기본값. 실제 브라우저에서 QR을 열고 휴대폰으로 승인 |
-| 앱 링크 | `coupangctl auth login --link` | QR에서 읽은 일회성 링크와 두 자리 승인번호를 stderr에 한 번 표시 |
-| SMS | `coupangctl auth login --phone` | 번호 요청과 전달받은 OTP만 UI에 입력하며 CAPTCHA는 사용자가 푸는 대안 |
-| 원격 화면 | `coupangctl auth login --qr-output /secure/path/qr.png` | Xvfb 같은 headed renderer에서 QR 부분만 임시 PNG로 전달 |
+- `coupangctl login --manual`: 전용 Camofox 창에서 쿠팡이 제공하는 QR·휴대폰 등 인증 방식을 직접 선택합니다.
+- `coupangctl login --qr --link`: 일회성 앱 링크와 확인 숫자를 받아 휴대폰에서 승인합니다.
+- `coupangctl auth status`: 현재 전용 세션의 보호된 조회 가능 여부를 확인합니다.
 
-로그인은 headed 브라우저에서만 진행합니다. 실측상 보호된 로그인 진입점은 진짜
-headless Chrome을 거부할 수 있습니다. `auth status`와 기본 `auth verify`는 상태
-확인만으로 창이 갑자기 열리지 않도록 headless에서만 검사합니다. 실제 데이터
-읽기도 기본값은 headless 전용이며 자동으로 보이는 창으로 전환하지 않습니다.
-눈에 보이는 검증이 필요할 때는 사용자가 명시적으로 `auth verify --headed` 또는
-해당 읽기 명령의 `--headed`를 실행합니다. 조용한 검사가 거부되면
-`auth status`는 이를 로그아웃으로 추측하지 않고 구조화된 `access_blocked`
-상태로 반환합니다. 명시적 headed 시도까지 거부되면
-`headed_browser_access_denied`가 반환되며, 이미 사용한 headed 모드를 다시
-권하는 순환 안내나 불필요한 재로그인을 하지 않습니다. 기본 접근 거부 안내도
-명령이 실제로 지원하는 복구 모드만 제시합니다. 예를 들어 상품 검색에는
-`--current-browser`를 권하지 않으며, 이미 current-browser로 실패한 주문
-동기화는 `current_browser_access_denied`로 구분합니다. 로그인 상태는 브라우저
-소유 전용 프로필에만 남으며 별도
-쿠키·세션 파일로 복사하지 않습니다.
-모든 보호된 조회는 같은 영속 프로필을 다시 열고 Chrome의 정상 종료 경로를
-사용하므로, 응답에서 Chrome이 갱신한 쿠키와 브라우저 저장소는 다음 실행에도
-보존됩니다. 다만 현재 확인된 쿠팡 응답에는 토스증권처럼 서버측 만료 연장을
-직접 증명하는 만료 시각이 없으므로, 단순 조회가 계정 세션의 서버측 수명을
-연장한다고 보장하지 않습니다.
-
-Chrome 144 이상에서는 실행 중인 현재 Chrome을 확장 없이 사용하는 실험적 고급
-경로도 있습니다. 먼저 `chrome://inspect/#remote-debugging`에서 원격 디버깅을
-직접 켭니다. 연결이나 탭 생성 없이 로컬 endpoint 준비 상태만 먼저 확인할 수
-있습니다.
-
-```bash
-coupangctl current-browser status
-coupangctl sync --max-pages 1 --current-browser
-```
-
-`current-browser status`는 `not_enabled` 또는 `endpoint_available`만 반환하며 로컬
-포트, debugger token, 프로필 경로를 출력하지 않습니다. 또한 Chrome 승인 팝업을
-띄우지 않으므로 `connection_approval_verified`는 항상 `false`입니다. 실제 sync를
-시작한 뒤 Chrome의 연결 요청을 승인해야 합니다.
-
-MCP에서는 `orders_sync_current_browser`를 사용합니다. 이 모드는
-`coupangctl`이 만든 탭만 열고 닫으며 Chrome 자체는 종료하지 않고, 쿠키나 세션
-상태를 복사하지 않습니다. 다만 Chrome의 디버깅 승인은 해당 프로필의 열린 탭,
-쿠키, 저장소까지 접근할 수 있는 넓은 권한입니다. 따라서 자동으로 켜거나 무인
-서버용으로 취급하지 않으며 기본 모드로도 사용하지 않습니다.
-
-전용 브라우저와 승인된 현재 Chrome을 모두 쓰기 어려운 경우에만 선택 탭 확장
-브리지를 호환 경로로 사용할 수 있습니다.
-
-```bash
-coupangctl browser-bridge install
-coupangctl browser-bridge doctor
-coupangctl orders sync --max-pages 1 --ordinary-browser
-```
-
-`install`은 실행 중인 바이너리의 절대경로로 사용자 범위 Native Messaging 호스트를 등록하고 검토된 확장 번들을 응답의 `extension_path`에 풉니다. 이 개발자용 압축해제 설치는 일반 사용자의 빠른 시작이 아닙니다. Web Store 배포 전 검증에서만 그 경로를 `chrome://extensions`에 한 번 로드합니다. `doctor`의 `ready`가 `true`인지 확인한 뒤 동기화 명령을 먼저 실행하고, 이미 로그인된 일반 Chrome의 쿠팡 주문목록 탭에서 확장 팝업을 엽니다. 읽을 필드와 로컬 전송 범위를 확인하고 **이 탭 연결**을 눌러야 읽기가 시작됩니다. 확장은 그 탭에만 임시 접근하며 쿠키를 읽거나 복사하지 않습니다. Chrome은 정확히 허용된 로컬 네이티브 호스트와 통신하고, 호스트는 2분짜리 단일 사용 인증으로 대기 중인 CLI에 연결합니다. MCP에서는 같은 흐름을 `orders_sync_ordinary_browser`로 호출합니다.
-
-`browser-bridge uninstall`은 동일 설치가 기록한 번들·매니페스트·등록이 모두 일치할 때만 해당 파일을 제거하며 Chrome 프로필, 쿠키, 확장 데이터, 주문 DB는 건드리지 않습니다. 서버처럼 일반 Chrome을 직접 사용할 수 없는 환경은 `orders export`/`orders import`로 정규화 데이터를 옮깁니다. 자세한 JSON 계약은 [`BROWSER_BRIDGE.md`](BROWSER_BRIDGE.md)에 있습니다.
-
-`--link` 출력은 짧게 살아 있는 인증 정보이므로 로그로 리디렉션하지 마세요. OTP, 쿠키, QR 링크는 JSON·세션 파일·테스트 fixture·오류 메시지에 넣지 않습니다.
+이미 인증된 세션은 창을 열지 않습니다. 접근 거부는 로그아웃으로 단정하지 않습니다.
+SMS 발송·OTP 자동 입력은 지원하지 않습니다. CLI는 QR 링크와 브라우저 직접 로그인만 제공합니다.
+QR 이미지 파일 출력도 현재 Camofox 경로에서 지원하지 않습니다.
+일회성 인증 링크와 확인 숫자는 요청한 안내 출력에만 전달하며 공유·저장하지 마세요.
+QR 링크는 모바일 앱 환경에 따라 열리지 않을 수 있으며 이 경우 `--manual`을 선택하세요.
+인증 완료 후에는 새 headless 프로세스로 세션 지속성을 다시 검증합니다.
 
 ## 데이터 저장과 개인정보
 
@@ -436,11 +704,11 @@ coupangctl orders sync --max-pages 1 --ordinary-browser
 - Linux: `$XDG_STATE_HOME/coupangctl` 또는 `~/.local/state/coupangctl`
 - Windows: `%LOCALAPPDATA%\\coupangctl`
 
-테스트 격리는 `COUPANGCTL_STATE_DIR`에 절대경로를 지정합니다. 브라우저 자동 탐색이 실패할 때만 `COUPANGCTL_BROWSER_PATH`를 사용합니다.
+테스트 격리는 `COUPANGCTL_STATE_DIR`에 절대경로를 지정합니다. 런타임 경로는 `camofox setup`으로 등록합니다. `COUPANGCTL_BROWSER_PATH`로 다른 브라우저를 선택하지 않습니다.
 
 | 데이터 | 처리 원칙 |
 | --- | --- |
-| 쿠키·세션 | 전용 Chrome 프로필 안에만 유지하고 별도 파일로 복사·출력하지 않음 |
+| 쿠키·세션 | 전용 Camofox 상태 디렉터리에 비공개로 유지. 런타임의 세션 저장은 허용하되 로그·CLI/MCP 출력·다른 앱으로 내보내지 않음 |
 | OTP·비밀번호·QR 링크 | 저장·로그·구조화 출력 금지 |
 | 카드·영수증 | 카드 식별자·번호·다운로드 URL은 버리고, 다운로드 파일은 새 `0600` 경로에만 저장 |
 | 가격 관찰 | 공개 상품명·옵션 ID·관찰가·시각을 로컬 DB에만 저장하고 별도 확인 명령으로 삭제 |
@@ -454,16 +722,16 @@ coupangctl orders sync --max-pages 1 --ordinary-browser
 
 ## 구조
 
-```text
-cmd/coupangctl
-  ├─ CLI adapter ─────┐
-  │                   ├─ typed services ─┬─ installed browser adapters
-  └─ MCP stdio adapter┘                  ├─ approved current-Chrome adapter
-                                        ├─ optional selected-tab extension bridge
-                                        └─ SQLite repository
-```
+[전체 연결 구조](#한눈에-보기)의 각 구성은 다음 경계로 나뉩니다.
 
-typed core, CLI adapter, MCP adapter를 분리합니다. CLI와 MCP가 각자 브라우저 로직을 갖지 않으며, 운영 코드에는 Playwright·Orca·특정 에이전트 런타임 의존성이 없습니다. 비공개·역공학 응답은 좁은 adapter에 격리하므로, 나중에 공식 API가 생겨도 core와 두 인터페이스를 유지할 수 있습니다.
+| 구성 | 구현 위치 | 책임 |
+| --- | --- | --- |
+| CLI / MCP adapter | [`internal/cli`](internal/cli), [`internal/mcpserver`](internal/mcpserver) | 입력·응답과 도구 연결 |
+| typed core / 서비스 | [`internal/core`](internal/core), [`internal/products`](internal/products), [`internal/orders`](internal/orders) | 타입·조건 검증과 업무 규칙 |
+| 소스 adapter | [`internal/browser`](internal/browser), [`internal/coupang`](internal/coupang) | 전용 Camofox 실행과 원천 응답 판독 |
+| 로컬 저장·보고서 | [`internal/store`](internal/store), [`internal/recommendationreport`](internal/recommendationreport), [`internal/recap`](internal/recap) | 근거 보관·계산·시각화 |
+
+typed core, CLI adapter, MCP adapter를 분리합니다. CLI와 MCP는 같은 Camofox adapter를 사용합니다. 조회에는 등록된 Node·Camofox 런타임이 필요하며 Chrome 확장·Swift·Orca는 필요하지 않습니다. 비공개·역공학 응답은 좁은 adapter에 격리합니다.
 
 TypeScript 코드는 프로토콜 조사용 probe에만 남아 있고 배포 바이너리의 런타임 의존성이 아닙니다.
 
@@ -473,6 +741,7 @@ TypeScript 코드는 프로토콜 조사용 probe에만 남아 있고 배포 바
 go test ./...
 go vet ./...
 npm run typecheck
+npm run test:camofox
 go build ./cmd/coupangctl
 ```
 
@@ -491,16 +760,17 @@ coupangctl products inspect --product-id ID --no-affiliate
 
 ## 문서
 
+- [`docs/diagrams/README.md`](docs/diagrams/README.md) — Pretendard 다이어그램 원본·폰트 출처·재생성 방법
 - [`ROADMAP.md`](ROADMAP.md) — 기능 우선순위와 구현 상태
 - [`HANDOFF.md`](HANDOFF.md) — 검증된 동작과 아키텍처 결정
 - [`TYPE_SYSTEM.md`](TYPE_SYSTEM.md) — 네 가지 행동 축과 16개 유형
 - [`RECEIPTS.md`](RECEIPTS.md) — 영수증 조회·다운로드의 JSON 계약과 안전 경계
 - [`PRICES.md`](PRICES.md) — 옵션별 가격 이력과 재구매 비교 계약
 - [`PRODUCT_PRINCIPLES.md`](PRODUCT_PRINCIPLES.md) — 증거·개인정보·완료 기준
-- [`BROWSER_BRIDGE.md`](BROWSER_BRIDGE.md) — 일반 Chrome 설치·진단·제거와 MCP 계약
+- [`BROWSER_BRIDGE.md`](BROWSER_BRIDGE.md) — 폐기된 Chrome 연결의 과거 설치·진단 계약
 - [`PRIVACY.md`](PRIVACY.md) — 로컬 데이터 흐름·보관·삭제와 확장 권한 설명
-- [`extension/README.md`](extension/README.md) — 일반 Chrome 연결의 개발자용 등록·검증 방법
-- [`extension/STORE_LISTING.md`](extension/STORE_LISTING.md) — Chrome Web Store 제출 문구와 검증 게이트
+- [`extension/README.md`](extension/README.md) — 폐기된 확장 연결의 과거 개발 기록
+- [`extension/STORE_LISTING.md`](extension/STORE_LISTING.md) — 이전 확장 배포용 문구·검증 기록
 - [`research/ordinary-browser-bridge.md`](research/ordinary-browser-bridge.md) — 일반 Chrome 보호 데이터 브리지의 공식 자료 기반 설계·위협 모델
 - [`research/browser-distribution-alternatives.md`](research/browser-distribution-alternatives.md) — 최신 Chrome·WebDriver·주요 오픈소스의 배포 방식 비교와 기본 구조 결정
 - [`research/endpoint-catalog.md`](research/endpoint-catalog.md) — 가린 비공개 route 목록
@@ -508,7 +778,7 @@ coupangctl products inspect --product-id ID --no-affiliate
 
 ## 기여
 
-[이슈](https://github.com/JungHoonGhae/coupang-ctl/issues)와 Pull Request를 환영합니다. 버그를 재현할 때는 실제 주문 응답, 쿠키, OTP, 전화번호, 계정 식별자를 첨부하지 말고 합성 데이터나 가린 메타데이터를 사용해 주세요. PR을 보내기 전에는 위의 개발 명령 네 가지를 모두 통과시켜 주세요.
+[이슈](https://github.com/JungHoonGhae/coupang-ctl/issues)와 Pull Request를 환영합니다. 버그를 재현할 때는 실제 주문 응답, 쿠키, OTP, 전화번호, 계정 식별자를 첨부하지 말고 합성 데이터나 가린 메타데이터를 사용해 주세요. PR을 보내기 전에는 위의 개발 명령를 모두 통과시켜 주세요.
 
 ## 라이선스
 

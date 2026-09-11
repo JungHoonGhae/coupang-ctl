@@ -23,10 +23,11 @@ const (
 	priceNotice         = "제휴 링크 자체로 구매자에게 별도 수수료가 부과되지는 않습니다. 상품 가격과 할인 혜택은 변동될 수 있으므로 쿠팡의 최종 화면에서 확인하세요."
 )
 
-var ErrSourceUnavailable = errors.New("product document source unavailable")
-var ErrPriceHistoryUnavailable = errors.New("product price history store unavailable")
-var ErrPriceWatchUnavailable = errors.New("product price watchlist unavailable")
-var ErrPriceWatchRequiresObservation = errors.New("product price watch requires an existing exact-identity observation")
+var ErrSourceUnavailable = core.WithErrorCode("product_source_unavailable", errors.New("product document source unavailable"))
+var ErrProductIdentityMismatch = core.WithErrorCode("product_identity_mismatch", errors.New("product inspection identity does not match the requested reference"))
+var ErrPriceHistoryUnavailable = core.WithErrorCode("product_price_history_unavailable", errors.New("product price history store unavailable"))
+var ErrPriceWatchUnavailable = core.WithErrorCode("product_price_watch_unavailable", errors.New("product price watchlist unavailable"))
+var ErrPriceWatchRequiresObservation = core.WithErrorCode("product_price_watch_requires_observation", errors.New("product price watch requires an existing exact-identity observation"))
 
 var (
 	computerCapacityPattern = regexp.MustCompile(`(?i)([0-9]{1,4})\s*(TB|GB|G)\b`)
@@ -66,7 +67,7 @@ func (s *Service) AddToCart(ctx context.Context, request core.CartAddRequest) (c
 	if request.Quantity == 0 {
 		request.Quantity = 1
 	}
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return core.CartAddResult{}, err
 	}
 	if s.source == nil {
@@ -81,11 +82,24 @@ func (s *Service) AddToCart(ctx context.Context, request core.CartAddRequest) (c
 }
 
 type Service struct {
-	source       Source
-	affiliate    AffiliateLinker
-	priceHistory PriceHistoryRepository
-	watchlist    PriceWatchRepository
-	now          func() time.Time
+	purchaseHistory PurchaseHistoryRepository
+	source          Source
+	affiliate       AffiliateLinker
+	priceHistory    PriceHistoryRepository
+	watchlist       PriceWatchRepository
+	now             func() time.Time
+}
+
+type PurchaseHistoryRepository interface {
+	RecommendationPurchaseContext(context.Context, []core.ProductReference) (core.RecommendationPurchaseContext, error)
+}
+
+// WithPurchaseHistory configures a copy. The repository is read only when the
+// recommendation request explicitly opts into private purchase evidence.
+func (s *Service) WithPurchaseHistory(repository PurchaseHistoryRepository) *Service {
+	configured := *s
+	configured.purchaseHistory = repository
+	return &configured
 }
 
 func New(source Source) *Service {
@@ -109,7 +123,7 @@ func (s *Service) Search(ctx context.Context, request core.ProductSearchRequest)
 	if request.Sort == "" {
 		request.Sort = core.ProductSortRelevance
 	}
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return core.ProductSearchResult{}, err
 	}
 	if s.source == nil {
@@ -119,7 +133,32 @@ func (s *Service) Search(ctx context.Context, request core.ProductSearchRequest)
 	if err != nil {
 		return core.ProductSearchResult{}, errors.Join(ErrSourceUnavailable, err)
 	}
+	if err := coverage.ValidateCategoryScope(request); err != nil {
+		return core.ProductSearchResult{}, errors.Join(ErrSourceUnavailable, err)
+	}
+	for _, selection := range request.FacetSelections {
+		verified := false
+		groups, options := 0, 0
+		for _, facet := range coverage.Facets {
+			if facet.Name == selection.Name {
+				groups++
+				for _, option := range facet.Options {
+					if option.Label == selection.Label {
+						options++
+						verified = option.Selected && !option.Disabled
+					}
+				}
+			}
+		}
+		if !verified || groups != 1 || options != 1 {
+			return core.ProductSearchResult{}, errors.Join(ErrSourceUnavailable, errors.New("sidebar selection was not verified"))
+		}
+	}
+	if coverage.SourceNoResults && len(items) > 0 {
+		return core.ProductSearchResult{}, errors.Join(ErrSourceUnavailable, errors.New("contradictory source no-results evidence"))
+	}
 	items = enrichProductCards(items)
+	unavailableFilters := unavailableFilterFields(items, request)
 	items = filterProducts(items, request)
 	sortProducts(items, request.Sort)
 	collapsed := 0
@@ -132,7 +171,21 @@ func (s *Service) Search(ctx context.Context, request core.ProductSearchRequest)
 		items = items[:request.Limit]
 	}
 	warnings := []string{}
-	if len(items) == 0 {
+	if request.MinMemoryGB > 0 || request.MinStorageGB > 0 {
+		warnings = append(warnings, "memory/storage discovery filters use title heuristics, not verified selected-option specifications; inspect selected_attributes and resolve ambiguous compound labels before recommending")
+	}
+	if len(request.FacetSelections) > 0 {
+		warnings = append(warnings, "sidebar selections were verified, but are not evidence that each returned option satisfies those conditions; inspect the exact vendor item and verify its specifications before recommending it")
+	}
+	if coverage.AppliedCategoryID != "" && coverage.AppliedCategoryID != request.CategoryID {
+		warnings = append(warnings, "the explicit sidebar category choice changed the source category; applied_filters.category_id is the starting category and coverage.applied_category_id is the verified destination")
+	}
+	if coverage.RejectedItems > 0 {
+		warnings = append(warnings, "some source product cards were invalid and omitted; the returned subset does not establish complete coverage")
+	}
+	if len(unavailableFilters) > 0 {
+		warnings = append(warnings, "some source products lacked evidence required by the explicit filters; excluded unknowns do not establish source no-results")
+	} else if len(items) == 0 {
 		warnings = append(warnings, "no products matched every explicit filter")
 	}
 	if collapsed > 0 {
@@ -149,11 +202,12 @@ func (s *Service) Search(ctx context.Context, request core.ProductSearchRequest)
 	fetchedAt := s.now().UTC()
 	affiliate, affiliateWarnings := s.applyAffiliateLinks(ctx, items, request.DisableAffiliate)
 	warnings = append(warnings, affiliateWarnings...)
-	warnings = append(warnings, s.recordPriceObservations(ctx, items, fetchedAt, "coupang_product_search")...)
+	warnings = append(warnings, s.recordPriceObservations(ctx, items, "coupang_product_search")...)
 	return core.ProductSearchResult{
 		SchemaVersion: core.ProductSchemaVersion,
 		Query:         request.Query, Currency: "KRW", FetchedAt: fetchedAt, Items: items,
 		AppliedFilters: request, Coverage: coverage, Ranking: rankingSummary(request), Affiliate: affiliate, Warnings: warnings,
+		UnavailableFilterFields: unavailableFilters,
 	}, nil
 }
 
@@ -164,7 +218,7 @@ func (s *Service) Inspect(ctx context.Context, request core.ProductInspectReques
 	if request.DetailImageLimit == 0 {
 		request.DetailImageLimit = defaultImageLimit
 	}
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return core.ProductInspection{}, err
 	}
 	if s.source == nil {
@@ -174,10 +228,28 @@ func (s *Service) Inspect(ctx context.Context, request core.ProductInspectReques
 	if err != nil {
 		return core.ProductInspection{}, errors.Join(ErrSourceUnavailable, err)
 	}
+	ref := result.Product.Reference
+	if !core.NumericProductIdentifier(ref.ProductID) || ref.ProductID != request.ProductID ||
+		(ref.ItemID != "" && !core.NumericProductIdentifier(ref.ItemID)) ||
+		(ref.VendorItemID != "" && !core.NumericProductIdentifier(ref.VendorItemID)) ||
+		(request.ItemID != "" && ref.ItemID != request.ItemID) ||
+		(request.VendorItemID != "" && ref.VendorItemID != request.VendorItemID) {
+		// Validate before affiliate conversion or price observation writes. A
+		// successful transport is not evidence for a different selected option.
+		return core.ProductInspection{}, errors.Join(ErrSourceUnavailable, ErrProductIdentityMismatch)
+	}
 	result.SchemaVersion = core.ProductSchemaVersion
 	result.FetchedAt = s.now().UTC()
+	if len(result.SelectedAttributes) > 0 {
+		if _, ok := result.SelectedAttributesEvidence(); !ok {
+			return core.ProductInspection{}, errors.Join(ErrSourceUnavailable, errors.New("selected attribute evidence is invalid"))
+		}
+	}
 	computerEvidence := append([]string{result.Product.Name}, result.SelectedOptions...)
 	result.Product.ComputerSpecs = parseComputerSpecifications(strings.Join(computerEvidence, " "))
+	if result.Product.ComputerSpecs != nil && len(result.SelectedOptions) > 0 {
+		result.Product.ComputerSpecs.Source = "product_title_and_selected_option_text_heuristic"
+	}
 	if len(result.Reviews) > request.ReviewLimit {
 		result.Reviews = result.Reviews[:request.ReviewLimit]
 	}
@@ -195,7 +267,7 @@ func (s *Service) Inspect(ctx context.Context, request core.ProductInspectReques
 	result.Product = products[0]
 	result.Affiliate = affiliate
 	result.Warnings = append(result.Warnings, warnings...)
-	result.Warnings = append(result.Warnings, s.recordPriceObservations(ctx, products, result.FetchedAt, "coupang_product_inspection")...)
+	result.Warnings = append(result.Warnings, s.recordPriceObservations(ctx, products, "coupang_product_inspection")...)
 	return result, nil
 }
 
@@ -203,7 +275,7 @@ func (s *Service) PriceHistory(ctx context.Context, request core.ProductPriceHis
 	if request.Limit == 0 {
 		request.Limit = defaultPriceHistoryLimit
 	}
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return core.ProductPriceHistory{}, err
 	}
 	if s.priceHistory == nil {
@@ -219,8 +291,8 @@ func (s *Service) PriceHistory(ctx context.Context, request core.ProductPriceHis
 		ObservationCount: len(observations), Series: []core.ProductPriceSeries{}, Warnings: []string{},
 		Coverage: core.ProductPriceHistoryCoverage{ReturnedObservations: len(observations), Limit: request.Limit, Truncated: truncated},
 		Definitions: core.ProductPriceHistoryDefinitions{
-			PriceSource:    "current prices observed by successful coupangctl product search or inspection reads",
-			SeriesIdentity: "vendor_item_id_else_product_id; prices from different observed options are never merged",
+			PriceSource:    "verified field evidence from product reads; legacy rows retain unknown provenance and cannot establish verified trends",
+			SeriesIdentity: "vendor_item_id_else_product_and_item_id_else_product_id; only matching exact references establish trends",
 			Trend:          "deterministic difference from the first returned observation to the latest returned observation within one identity series",
 			HistoryStart:   "local observation begins when coupangctl first sees the item; no retroactive Coupang price history is claimed",
 		},
@@ -235,6 +307,10 @@ func (s *Service) PriceHistory(ctx context.Context, request core.ProductPriceHis
 	result.LastReturnedAt = &last
 	byIdentity := map[string]int{}
 	for _, observation := range observations {
+		if !observation.HasPriceEvidence() {
+			observation.Provenance = "unknown_legacy"
+			observation.FieldEvidence = nil
+		}
 		identity := priceSeriesIdentity(observation.Reference)
 		index, exists := byIdentity[identity]
 		if !exists {
@@ -250,6 +326,9 @@ func (s *Service) PriceHistory(ctx context.Context, request core.ProductPriceHis
 	}
 	for index := range result.Series {
 		result.Series[index].Trend = priceTrend(result.Series[index].Observations)
+		if result.Series[index].Trend == nil {
+			result.Warnings = append(result.Warnings, "one price series has legacy or incompatible evidence; no verified trend is calculated")
+		}
 	}
 	sort.Slice(result.Series, func(i, j int) bool { return result.Series[i].Identity < result.Series[j].Identity })
 	result.SeriesCount = len(result.Series)
@@ -274,7 +353,7 @@ func (s *Service) PurgePriceHistory(ctx context.Context) (core.ProductPriceHisto
 }
 
 func (s *Service) AddPriceWatch(ctx context.Context, request core.ProductWatchRequest) (core.ProductWatchMutationResult, error) {
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return core.ProductWatchMutationResult{}, err
 	}
 	if s.watchlist == nil {
@@ -291,7 +370,7 @@ func (s *Service) AddPriceWatch(ctx context.Context, request core.ProductWatchRe
 }
 
 func (s *Service) RemovePriceWatch(ctx context.Context, request core.ProductWatchRequest) (core.ProductWatchMutationResult, error) {
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return core.ProductWatchMutationResult{}, err
 	}
 	if s.watchlist == nil {
@@ -336,7 +415,7 @@ func (s *Service) RefreshPriceWatches(ctx context.Context, request core.ProductW
 	if request.StaleHours == 0 {
 		request.StaleHours = 24
 	}
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return core.ProductWatchRefreshResult{}, err
 	}
 	if s.watchlist == nil || s.priceHistory == nil {
@@ -365,22 +444,12 @@ func (s *Service) RefreshPriceWatches(ctx context.Context, request core.ProductW
 		status := "failed"
 		itemResult.Status = status
 		itemResult.Provenance = "unavailable"
-		if inspectErr == nil && watchedIdentityMatches(entry.Reference, inspection.Product.Reference) &&
-			contains(inspection.Product.ObservedFields, "price.current_amount") && inspection.Product.Price.CurrentAmount > 0 {
-			reference := inspection.Product.Reference
-			if entry.Reference.VendorItemID == "" {
-				reference.VendorItemID = ""
-			}
-			observation := core.ProductPriceObservation{
-				Reference: reference, Name: inspection.Product.Name, CanonicalURL: inspection.Product.URL,
-				CurrentAmount: inspection.Product.Price.CurrentAmount, OriginalAmount: inspection.Product.Price.OriginalAmount,
-				DiscountRate: inspection.Product.Price.DiscountRate, Currency: "KRW", ObservedAt: checkedAt,
-				Source: "coupang_product_inspection", Provenance: "observed",
-			}
+		observation, priceKnown := priceObservationFromCard(inspection.Product, "coupang_product_inspection")
+		if inspectErr == nil && watchedIdentityMatches(entry.Reference, inspection.Product.Reference) && priceKnown {
 			if recordErr := s.priceHistory.RecordPriceObservations(ctx, []core.ProductPriceObservation{observation}); recordErr == nil {
 				status = "observed"
 				itemResult.Status = status
-				itemResult.Provenance = "observed"
+				itemResult.Provenance = observation.Provenance
 			}
 		} else if inspectErr == nil {
 			status = "unavailable"
@@ -409,53 +478,60 @@ func (s *Service) RefreshPriceWatches(ctx context.Context, request core.ProductW
 
 func priceWatchDefinitions() core.ProductWatchDefinitions {
 	return core.ProductWatchDefinitions{
-		Eligibility: "an exact product or vendor-item identity must already have a local observed price; names are never matched",
+		Eligibility: "an exact product or vendor-item identity must already have local verified price evidence; legacy evidence cannot establish eligibility; names are never matched",
 		Refresh:     "due entries are inspected without affiliate conversion, cart mutation, checkout, or payment; each attempt updates its local check status",
 	}
 }
 
 func watchedIdentityMatches(watched, observed core.ProductReference) bool {
-	if watched.ProductID != observed.ProductID {
-		return false
-	}
-	return watched.VendorItemID == "" || watched.VendorItemID == observed.VendorItemID
+	return watched == observed
 }
 
-func (s *Service) recordPriceObservations(ctx context.Context, items []core.ProductCard, observedAt time.Time, source string) []string {
+func (s *Service) recordPriceObservations(ctx context.Context, items []core.ProductCard, source string) []string {
 	if s.priceHistory == nil {
 		return nil
 	}
 	observations := make([]core.ProductPriceObservation, 0, len(items))
+	var warnings []string
+	missingEvidence := false
 	for _, item := range items {
-		if !contains(item.ObservedFields, "price.current_amount") || item.Price.CurrentAmount <= 0 || !core.NumericProductIdentifier(item.Reference.ProductID) {
+		observation, ok := priceObservationFromCard(item, source)
+		if !ok {
+			missingEvidence = missingEvidence || contains(item.ObservedFields, "price.current_amount")
 			continue
 		}
-		observations = append(observations, core.ProductPriceObservation{
-			Reference: item.Reference, Name: item.Name, CanonicalURL: item.URL,
-			CurrentAmount: item.Price.CurrentAmount, OriginalAmount: item.Price.OriginalAmount,
-			DiscountRate: item.Price.DiscountRate, Currency: "KRW", ObservedAt: observedAt,
-			Source: source, Provenance: "observed",
-		})
+		observations = append(observations, observation)
+	}
+	if missingEvidence {
+		warnings = append(warnings, "some returned prices lacked verified source, currency or option scope and were not added to price history")
 	}
 	if len(observations) == 0 {
-		return nil
+		return warnings
 	}
 	if err := s.priceHistory.RecordPriceObservations(ctx, observations); err != nil {
-		return []string{"current product prices were returned but could not be added to local price history"}
+		return append(warnings, "current product prices were returned but could not be added to local price history")
 	}
-	return nil
+	return warnings
 }
 
 func priceSeriesIdentity(reference core.ProductReference) string {
 	if reference.VendorItemID != "" {
 		return "vendor:" + reference.VendorItemID
 	}
+	if reference.ItemID != "" {
+		return "item:" + reference.ProductID + "/" + reference.ItemID
+	}
 	return "product:" + reference.ProductID
 }
 
-func priceTrend(observations []core.ProductPriceObservation) core.ProductPriceTrend {
+func priceTrend(observations []core.ProductPriceObservation) *core.ProductPriceTrend {
 	if len(observations) == 0 {
-		return core.ProductPriceTrend{}
+		return nil
+	}
+	for _, o := range observations {
+		if !o.HasPriceEvidence() || o.Reference != observations[0].Reference {
+			return nil
+		}
 	}
 	first := observations[0].CurrentAmount
 	latest := observations[len(observations)-1].CurrentAmount
@@ -471,15 +547,16 @@ func priceTrend(observations []core.ProductPriceObservation) core.ProductPriceTr
 	} else if difference > 0 {
 		direction = "higher"
 	}
-	percent := 0.0
+	var percent *float64
 	if first > 0 {
-		percent = math.Round((float64(difference)/float64(first))*10000) / 100
+		value := math.Round((float64(difference)/float64(first))*10000) / 100
+		percent = &value
 	}
-	return core.ProductPriceTrend{
+	return &core.ProductPriceTrend{
 		ObservationCount: len(observations), FirstReturnedAmountKRW: first, LatestAmountKRW: latest,
 		MinimumAmountKRW: minimum, MaximumAmountKRW: maximum,
 		ChangeFromFirstReturnedKRW: difference, ChangeFromFirstReturnedPercent: percent,
-		Direction: direction, Provenance: "derived_from_observed_prices_within_one_product_identity",
+		Direction: direction, Provenance: "derived_from_verified_price_evidence_within_one_exact_identity",
 	}
 }
 
@@ -546,10 +623,47 @@ func configuredAffiliateDisclosure(status core.ProductAffiliateStatus) core.Prod
 	}
 }
 
+// Missing scalar evidence is recorded before filtering so callers can separate
+// an empty verified subset from a source's explicit no-results response.
+func unavailableFilterFields(items []core.ProductCard, request core.ProductSearchRequest) []string {
+	conditions := []struct {
+		active bool
+		field  string
+	}{
+		{request.MinRating > 0, "rating"},
+		{request.MinReviewCount > 0, "review_count"},
+		{request.RocketOnly, "rocket"},
+		{request.FreeShippingOnly, "free_shipping"},
+		{request.ExcludeSponsored, "sponsored"},
+	}
+	var missing []string
+	if request.MinPrice > 0 || request.MaxPrice > 0 {
+		for _, item := range items {
+			for _, field := range item.PriceFilterUnavailableFields() {
+				if !contains(missing, field) {
+					missing = append(missing, field)
+				}
+			}
+		}
+	}
+	for _, condition := range conditions {
+		if !condition.active {
+			continue
+		}
+		for _, item := range items {
+			if !contains(item.ObservedFields, condition.field) {
+				missing = append(missing, condition.field)
+				break
+			}
+		}
+	}
+	return missing
+}
+
 func filterProducts(items []core.ProductCard, request core.ProductSearchRequest) []core.ProductCard {
 	filtered := make([]core.ProductCard, 0, len(items))
 	for _, item := range items {
-		priceObserved := contains(item.ObservedFields, "price.current_amount")
+		priceObserved := len(item.PriceFilterUnavailableFields()) == 0
 		ratingObserved := contains(item.ObservedFields, "rating")
 		reviewsObserved := contains(item.ObservedFields, "review_count")
 		if request.MinPrice > 0 && (!priceObserved || item.Price.CurrentAmount < request.MinPrice) {
@@ -564,13 +678,13 @@ func filterProducts(items []core.ProductCard, request core.ProductSearchRequest)
 		if request.MinReviewCount > 0 && (!reviewsObserved || item.ReviewCount < request.MinReviewCount) {
 			continue
 		}
-		if request.RocketOnly && !item.Rocket {
+		if request.RocketOnly && (!contains(item.ObservedFields, "rocket") || !item.Rocket) {
 			continue
 		}
-		if request.FreeShippingOnly && !item.FreeShipping {
+		if request.FreeShippingOnly && (!contains(item.ObservedFields, "free_shipping") || !item.FreeShipping) {
 			continue
 		}
-		if request.ExcludeSponsored && item.Sponsored {
+		if request.ExcludeSponsored && (!contains(item.ObservedFields, "sponsored") || item.Sponsored) {
 			continue
 		}
 		if request.MinMemoryGB > 0 && (item.ComputerSpecs == nil || item.ComputerSpecs.MemoryGB < request.MinMemoryGB) {
@@ -630,7 +744,7 @@ func enrichProductCards(items []core.ProductCard) []core.ProductCard {
 }
 
 func parseComputerSpecifications(name string) *core.ComputerSpecifications {
-	specs := core.ComputerSpecifications{Condition: "unspecified", Source: "observed_product_title"}
+	specs := core.ComputerSpecifications{Condition: "unspecified", Source: "product_title_heuristic", Provenance: "inferred", Method: "capacity_and_model_regex"}
 	upper := strings.ToUpper(name)
 	if match := explicitMemoryPattern.FindStringSubmatch(name); len(match) == 2 {
 		specs.MemoryGB, _ = strconv.Atoi(match[1])

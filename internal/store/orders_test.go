@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -188,7 +189,7 @@ func TestLedgerPersistsReceiptCancellationAndAdjustedSpendMetadata(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.OrderCount != 2 || stats.ItemLineCount != 2 || stats.OrderedUnits != 3 || stats.CanceledItemLineCount != 2 || stats.CanceledUnits != 2 || stats.ReturnedUnits != 0 || stats.CanceledUnitRate != 0.666667 {
+	if stats.OrderCount != 2 || stats.ItemLineCount != 2 || stats.OrderedUnits != 3 || stats.CanceledItemLineCount != 2 || stats.CanceledUnits != 2 || stats.ReturnedUnits != 0 || stats.CanceledUnitRate == nil || *stats.CanceledUnitRate != 0.666667 {
 		t.Fatalf("unexpected order stats: %#v", stats)
 	}
 	if len(stats.PurchaseHours) != 1 || stats.PurchaseHours[0].Key != "10" || stats.PurchaseHours[0].Count != 1 {
@@ -212,7 +213,7 @@ func TestLedgerPersistsReceiptCancellationAndAdjustedSpendMetadata(t *testing.T)
 	}
 }
 
-func TestLedgerReconcilesOnlyOrdersMissingFromACompleteHistory(t *testing.T) {
+func TestLedgerRejectsUnscopedReconciliationWithoutDeletingOrders(t *testing.T) {
 	ctx := context.Background()
 	ledger, err := store.Open(ctx, filepath.Join(t.TempDir(), "coupangctl.sqlite3"))
 	if err != nil {
@@ -227,17 +228,14 @@ func TestLedgerReconcilesOnlyOrdersMissingFromACompleteHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	removed, err := ledger.ReconcileOrders(ctx, []string{"synthetic-current"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if removed != 1 {
-		t.Fatalf("removed = %d, want 1", removed)
+	if !errors.Is(err, store.ErrVerifiedReconciliationRequired) || removed != 0 {
+		t.Fatal("unscoped reconciliation was accepted")
 	}
 	orders, err := ledger.ListOrders(ctx, core.OrderFilter{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(orders) != 1 || orders[0].SourceRef != "synthetic-current" {
+	if len(orders) != 2 || orders[0].SourceRef != "synthetic-current" || orders[1].SourceRef != "synthetic-stale" {
 		t.Fatalf("unexpected reconciled orders: %#v", orders)
 	}
 }
@@ -274,13 +272,13 @@ func TestDeliveryTrendComparesEarliestAndLatestPurchaseYears(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if insights.OrderCount != 2 || insights.DistinctOrderDays != 2 || insights.ActiveMonthCount != 2 || insights.LongestActiveMonthStreak != 1 || insights.DeliveredWithin24HoursRate != 0.5 || insights.DeliveredWithin48HoursRate != 1 || len(insights.DeliveryByYear) != 2 || insights.DeliveryTrend.Direction != "slower" {
+	if insights.OrderCount != 2 || insights.DistinctOrderDays != 2 || insights.ActiveMonthCount != 2 || insights.LongestActiveMonthStreak != 1 || insights.DeliveredWithin24HoursRate == nil || *insights.DeliveredWithin24HoursRate != 0.5 || insights.DeliveredWithin48HoursRate == nil || *insights.DeliveredWithin48HoursRate != 1 || len(insights.DeliveryByYear) != 2 || insights.DeliveryTrend.Direction != "slower" {
 		t.Fatalf("unexpected shopping insights: %#v", insights)
 	}
 	if insights.Definitions.DeliveryTrend != "latest_purchase_year_minus_earliest_purchase_year_for_observed_nonnegative_product_delivery_hours; direction_uses_average_hours" {
 		t.Fatalf("delivery trend definition is missing or ambiguous: %#v", insights.Definitions)
 	}
-	if insights.SchemaVersion != 1 || insights.RepeatPurchases.IdentifiedProductCount != 1 || insights.RepeatPurchases.RepeatProductCount != 1 || insights.RepeatPurchases.RepeatProductPurchaseOccasionRate != 1 || insights.RepeatPurchases.RepeatChoiceCount != 1 || insights.RepeatPurchases.RepeatChoiceRate != 0.5 || insights.RepeatPurchases.ProductIDCoverage != 1 {
+	if insights.SchemaVersion != core.ShoppingInsightsSchemaVersion || insights.RepeatPurchases.IdentifiedProductCount != 1 || insights.RepeatPurchases.RepeatProductCount != 1 || insights.RepeatPurchases.RepeatProductPurchaseOccasionRate != 1 || insights.RepeatPurchases.RepeatChoiceCount != 1 || insights.RepeatPurchases.RepeatChoiceRate != 0.5 || insights.RepeatPurchases.ProductIDCoverage != 1 {
 		t.Fatalf("unexpected repeat-purchase insights: %#v", insights.RepeatPurchases)
 	}
 	if insights.Basket.RetainedOrderCount != 2 || insights.Basket.SingleItemOrderCount != 2 || insights.Basket.SingleItemOrderRate != 1 || insights.Basket.AverageItemLines != 1 || insights.Basket.RetainedItemAmount != 2000 || insights.Basket.SingleItemSpendRate != 1 || insights.Basket.MedianSingleItemOrderValue != 1000 || insights.Basket.MedianMultiItemOrderValue != 0 || insights.Basket.CompositionOrderCount != 2 || insights.Basket.SingleProductOrderCount != 2 || insights.Basket.SingleProductOrderRate != 1 || insights.Basket.AverageDistinctProducts != 1 {
@@ -445,7 +443,7 @@ func TestProductInsightsExposeIdentifiedProductLeadersAndSpendDayReceipts(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.SchemaVersion != 1 || got.Visibility != "private_local" || got.Currency != "KRW" {
+	if got.SchemaVersion != core.OrderAggregateSchemaVersion || got.Visibility != "private_local" || got.Currency != "KRW" {
 		t.Fatalf("unexpected product insight envelope: %#v", got)
 	}
 	if got.FirstPurchaseDate != "2026-08-01" || got.LastPurchaseDate != "2026-08-20" || got.CalendarMonthCount != 1 || got.ActiveMonthCount != 1 || got.TotalSpendAmount != 8400 || got.AverageMonthlySpendAmount != 8400 {

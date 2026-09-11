@@ -1,0 +1,93 @@
+package mcpserver
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	"github.com/JungHoonGhae/coupang-ctl/internal/products"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+type questionSource struct {
+	conclusionSource
+	facets bool
+}
+
+func (s questionSource) Search(ctx context.Context, r core.ProductSearchRequest) ([]core.ProductCard, core.ProductCoverage, error) {
+	items, coverage, err := s.conclusionSource.Search(ctx, r)
+	if s.facets {
+		coverage.Facets = []core.ProductFacet{{Name: "material", Options: []core.ProductFacetOption{{Label: "steel"}}}}
+		for _, selection := range r.FacetSelections {
+			if selection.Name == "material" && selection.Label == "steel" {
+				coverage.Facets[0].Options[0].Selected = true
+			}
+		}
+	}
+	return items, coverage, err
+}
+
+func TestMCPRecommendationDoesNotRequireEmptyOrRepeatedProceed(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		facets     bool
+		answers    []core.ProductRecommendationAnswer
+		needsInput bool
+	}{
+		{"no questions", false, nil, false},
+		{"unanswered", true, nil, true},
+		{"answered", true, []core.ProductRecommendationAnswer{{QuestionID: "facet:material", Choice: "steel"}}, false},
+		{"skipped", true, []core.ProductRecommendationAnswer{{QuestionID: "facet:material", Unbounded: true}}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			service := products.New(questionSource{conclusionSource: conclusionSource{known: true}, facets: test.facets})
+			server := NewWithFeatures(fixedStatusProvider{}, nil, service, "test")
+			ct, st := mcp.NewInMemoryTransports()
+			ss, err := server.Connect(ctx, st, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ss.Close()
+			client := mcp.NewClient(&mcp.Implementation{Name: "question-test", Version: "test"}, nil)
+			cs, err := client.Connect(ctx, ct, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cs.Close()
+			args := map[string]any{"query": "synthetic", "disable_affiliate": true}
+			if test.answers != nil {
+				args["answers"] = test.answers
+			}
+			response, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "products_recommend", Arguments: args})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if response.IsError {
+				t.Fatal("MCP rejected request")
+			}
+			encoded, err := json.Marshal(response.StructuredContent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var result core.ProductRecommendationResult
+			if err := json.Unmarshal(encoded, &result); err != nil {
+				t.Fatal(err)
+			}
+			if (result.Status == core.ProductRecommendationNeedsInput) != test.needsInput {
+				t.Fatalf("unexpected state: %s", result.Status)
+			}
+			if test.needsInput {
+				if len(result.Questions) != 1 || !result.Questions[0].AllowUnbounded || len(result.Inspected) != 0 {
+					t.Fatal("optional question contract lost")
+				}
+			} else if len(result.Questions) != 0 || len(result.Inspected) != 1 || result.Inspected[0].Conclusion.Outcome != "conditions_not_declared" {
+				t.Fatal("automatic research missing or facet answer became a verified condition")
+			}
+			if test.name == "answered" && (len(result.Refinement.AppliedSelections) != 1 || result.Refinement.AppliedSelections[0].Label != "steel" || result.Query != "synthetic") {
+				t.Fatal("typed facet application was lost in adapter")
+			}
+		})
+	}
+}

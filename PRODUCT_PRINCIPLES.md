@@ -55,15 +55,21 @@ into one headline unless their periods are aligned and overlap is excluded.
 
 Routine commands should be invisible in normal use. Local analytics and status
 commands must not start a browser. Source reads use the dedicated browser
-profile headlessly and may make only bounded, idempotent retries in that same
-non-visible session.
+profile headlessly unless the user has selected the dedicated ordinary-browser
+mode during setup. That persistent selection does not require approval on each
+read. Ordinary mode keeps its window minimized without restoration or focus
+changes; minimized is not headless. Reads may make only bounded, idempotent
+retries in the selected session.
 
 A visible browser is reserved for initial authentication, renewal, a source
 challenge that needs human action, or an explicit `--headed` request. A failed
 background read returns a typed next action instead of opening a surprise
-window. Current-browser attachment and the ordinary-browser bridge remain
-explicit opt-in modes; no stealth, fingerprint spoofing, or challenge bypass is
-part of the product.
+window. A registered dedicated session may be rediscovered automatically.
+Starting a missing browser silently requires independent window/focus evidence;
+successful navigation in an existing minimized window is not that evidence.
+Daily-use profiles are never automatic fallbacks. Current-browser attachment
+and the ordinary-browser bridge remain explicit opt-in modes; no stealth,
+fingerprint spoofing, or challenge bypass is part of the product.
 
 ## Natural language outside, typed evidence inside
 

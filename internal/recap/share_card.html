@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=1080, initial-scale=1">
   <title>coupangctl 쇼핑 리캡 공유 카드</title>
   <style>
@@ -81,7 +82,7 @@
     <section class="stats">
       <div class="stat" data-share-field="order_count" data-share-value="{{.Summary.OrderCount}}"><span>분석 주문</span><strong>{{comma .Summary.OrderCount}}건</strong></div>
       <div class="stat" data-share-field="longest_active_month_streak" data-share-value="{{.Summary.LongestActiveMonthStreak}}"><span>최장 연속 구매</span><strong>{{comma .Summary.LongestActiveMonthStreak}}개월</strong></div>
-      <div class="stat" data-share-field="delivered_within_24_hours_rate" data-share-value="{{pct .Summary.DeliveredWithin24HoursRate}}%"><span>24시간 안 배송 · n={{comma .Summary.Samples.DeliveryEvents}}</span><strong>{{pct .Summary.DeliveredWithin24HoursRate}}%</strong></div>
+      <div class="stat" data-share-field="delivered_within_24_hours_rate" data-share-value="{{observedPct .Summary.DeliveredWithin24HoursRate .Summary.Samples.DeliveryEvents}}"><span>24시간 안 배송 · n={{comma .Summary.Samples.DeliveryEvents}}</span><strong>{{observedPct .Summary.DeliveredWithin24HoursRate .Summary.Samples.DeliveryEvents}}</strong></div>
     </section>
     {{else}}
     <section class="empty" data-share-field="profile_ready" data-share-value="false"><div><p class="kicker">표본 수집 중</p><h1>조금 더 쇼핑 기록이 필요해요</h1><p>부족한 축은 물음표로 남기고 타입을 지어내지 않습니다.</p></div></section>

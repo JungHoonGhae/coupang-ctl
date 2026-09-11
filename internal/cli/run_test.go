@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,53 +10,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/auth"
 	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
-	"github.com/JungHoonGhae/coupang-ctl/internal/browserbridge"
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 	orderworkflow "github.com/JungHoonGhae/coupang-ctl/internal/orders"
-	"github.com/JungHoonGhae/coupang-ctl/internal/platform"
 	productworkflow "github.com/JungHoonGhae/coupang-ctl/internal/products"
 	receiptworkflow "github.com/JungHoonGhae/coupang-ctl/internal/receipts"
 	"github.com/JungHoonGhae/coupang-ctl/internal/store"
 )
-
-type loginModeBrowser struct {
-	request        core.LoginRequest
-	consumeOTP     bool
-	profilePresent bool
-	verifyErr      error
-	loginCalls     int
-	verifyCalls    int
-}
-
-func (b *loginModeBrowser) Inspect(context.Context) (auth.BrowserStatus, error) {
-	return auth.BrowserStatus{Name: "synthetic", ProfilePresent: b.profilePresent}, nil
-}
-
-func (b *loginModeBrowser) Login(ctx context.Context, request core.LoginRequest) error {
-	b.loginCalls++
-	b.request = request
-	if request.PresentQRLink != nil {
-		if err := request.PresentQRLink(ctx, core.QRLoginLink{
-			URL:          "https://applink.coupang.com/open?url=https%3A%2F%2Flogin.coupang.com%2Flogin%2Fm%2Fqrcode%2Fbind.pang%3FqrCode%3Dsynthetic",
-			ApprovalCode: "42",
-		}); err != nil {
-			return err
-		}
-	}
-	if b.consumeOTP && request.ReadOTP != nil {
-		_, _ = request.ReadOTP(context.Background())
-	}
-	return nil
-}
-
-func (b *loginModeBrowser) Verify(context.Context) error {
-	b.verifyCalls++
-	return b.verifyErr
-}
 
 type blockedStatusBrowser struct{}
 
@@ -68,34 +29,6 @@ func (blockedStatusBrowser) Inspect(context.Context) (auth.BrowserStatus, error)
 func (blockedStatusBrowser) Login(context.Context, core.LoginRequest) error { return nil }
 
 func (blockedStatusBrowser) Verify(context.Context) error { return core.ErrBrowserAccessDenied }
-
-type fixedDoctorAuthStatus struct {
-	status core.AuthStatus
-	err    error
-}
-
-type fixedCurrentBrowserStatusProvider struct {
-	status core.CurrentBrowserStatus
-}
-
-func (f fixedCurrentBrowserStatusProvider) Status(context.Context) (core.CurrentBrowserStatus, error) {
-	return f.status, nil
-}
-
-func (f fixedDoctorAuthStatus) Status(context.Context) (core.AuthStatus, error) {
-	return f.status, f.err
-}
-
-type noopResendAssistant struct{}
-
-func (noopResendAssistant) Resend(context.Context) (core.OTPResendResult, error) {
-	return core.OTPResendResult{}, nil
-}
-
-type fixedLoginSecrets struct {
-	phoneCalls int
-	otpCalls   int
-}
 
 type fixedProductWorkflow struct{}
 
@@ -139,10 +72,11 @@ func (fixedReceiptWorkflow) Vendor(_ context.Context, request core.VendorReceipt
 }
 
 func (fixedAccountWorkflow) Snapshot(_ context.Context, request core.AccountBenefitsRequest) (core.AccountBenefitsSnapshot, error) {
+	isMember := true
 	return core.AccountBenefitsSnapshot{
 		SchemaVersion: 1,
-		Membership:    core.WowMembership{Status: "MEMBER", IsMember: true, CurrentMonthlyFeeKRW: 7890},
-		Coverage:      core.AccountBenefitsCoverage{CashTransactionPagesRead: request.MaxCashTransactionPages},
+		Membership:    core.WowMembership{Status: "MEMBER", IsMember: &isMember, CurrentMonthlyFeeKRW: 7890},
+		Coverage:      core.AccountBenefitsCoverage{CashTransactionPagesRead: request.MaxCashTransactionPages, CurrentMembershipFeeObserved: true},
 	}, nil
 }
 
@@ -155,7 +89,7 @@ func (fixedProductWorkflow) Inspect(_ context.Context, request core.ProductInspe
 }
 
 func (fixedProductWorkflow) PriceHistory(_ context.Context, request core.ProductPriceHistoryRequest) (core.ProductPriceHistory, error) {
-	return core.ProductPriceHistory{SchemaVersion: 1, Visibility: "private_local", ProductID: request.ProductID, VendorItemID: request.VendorItemID, ObservationCount: 2}, nil
+	return core.ProductPriceHistory{SchemaVersion: core.PriceHistorySchemaVersion, Visibility: "private_local", ProductID: request.ProductID, VendorItemID: request.VendorItemID, ObservationCount: 2}, nil
 }
 
 func (fixedProductWorkflow) PurgePriceHistory(context.Context) (core.ProductPriceHistoryPurgeResult, error) {
@@ -197,7 +131,7 @@ func (w *capturingProductWorkflow) Inspect(_ context.Context, request core.Produ
 }
 
 func (*capturingProductWorkflow) PriceHistory(_ context.Context, request core.ProductPriceHistoryRequest) (core.ProductPriceHistory, error) {
-	return core.ProductPriceHistory{SchemaVersion: 1, ProductID: request.ProductID}, nil
+	return core.ProductPriceHistory{SchemaVersion: core.PriceHistorySchemaVersion, ProductID: request.ProductID}, nil
 }
 
 func (*capturingProductWorkflow) PurgePriceHistory(context.Context) (core.ProductPriceHistoryPurgeResult, error) {
@@ -237,7 +171,7 @@ func TestAccountBenefitsCommandUsesTypedReadWorkflow(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if !got.Membership.IsMember || got.Membership.CurrentMonthlyFeeKRW != 7890 || got.Coverage.CashTransactionPagesRead != 7 {
+	if got.Membership.IsMember == nil || !*got.Membership.IsMember || got.Membership.CurrentMonthlyFeeKRW != 7890 || got.Coverage.CashTransactionPagesRead != 7 {
 		t.Fatalf("unexpected account benefits response: %#v", got)
 	}
 }
@@ -288,16 +222,6 @@ func TestReceiptCommandsUseTypedReadsAndPrivateNonOverwritingDownload(t *testing
 	}
 }
 
-func (s *fixedLoginSecrets) Phone(context.Context) (string, error) {
-	s.phoneCalls++
-	return "01000000000", nil
-}
-
-func (s *fixedLoginSecrets) OTP(context.Context) (string, error) {
-	s.otpCalls++
-	return "000000", nil
-}
-
 func TestVersionIsStructuredAndHasNoEnvironmentDependency(t *testing.T) {
 	t.Setenv("COUPANGCTL_STATE_DIR", "relative-would-fail")
 	var stdout, stderr bytes.Buffer
@@ -336,7 +260,7 @@ func TestTopLevelHelpIsStructuredAndHasNoEnvironmentDependency(t *testing.T) {
 			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 				t.Fatal(err)
 			}
-			if got.SchemaVersion != 1 || got.Name != "coupangctl" || got.Usage == "" || len(got.Commands) < 10 {
+			if got.SchemaVersion != 1 || got.Name != "coupangctl" || got.Usage == "" || len(got.Commands) != 8 {
 				t.Fatalf("unexpected help response: %#v", got)
 			}
 			if got.Commands[0].Name != "auth" || got.Commands[0].Summary == "" {
@@ -359,11 +283,23 @@ func TestCapabilitiesAreStructuredAndOrderedByPriority(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.SchemaVersion != 3 || report.Summary.Total != len(report.Capabilities) || report.Summary.ImplementationNextSteps != 0 || report.Summary.ValidationOrCoordinationNextSteps == 0 || len(report.Capabilities) < 5 || report.Capabilities[0].Priority != "P0" {
+	if report.SchemaVersion != 3 || report.Summary.Total != len(report.Capabilities) || report.Summary.ImplementationNextSteps != 6 || report.Summary.ValidationOrCoordinationNextSteps == 0 || len(report.Capabilities) < 5 || report.Capabilities[0].Priority != "P0" {
 		t.Fatalf("unexpected capability report: %#v", report)
 	}
 	if report.Capabilities[0].Status != core.CapabilityAvailable || len(report.Capabilities[0].Implemented) == 0 || report.Capabilities[0].NextStepKind == "" {
 		t.Fatalf("unexpected leading capability status: %#v", report.Capabilities[0])
+	}
+	foundHistory := false
+	for _, capability := range report.Capabilities {
+		if capability.ID == "full_order_history" {
+			foundHistory = true
+			if capability.Status != core.CapabilityExperimental || capability.NextStepKind != core.CapabilityNextImplementation {
+				t.Fatal("CLI presents unverified account/scan work as completed history")
+			}
+		}
+	}
+	if !foundHistory {
+		t.Fatal("CLI omitted order-history implementation status")
 	}
 }
 
@@ -400,6 +336,23 @@ func TestProductsAffiliateOptOutReachesTypedWorkflow(t *testing.T) {
 	}
 }
 
+func TestProductsCategoryAndSidebarReachTypedWorkflow(t *testing.T) {
+	workflow := &capturingProductWorkflow{}
+	if err := runProducts(context.Background(), []string{"search", "--category-id", "123456", "--facet", "Memory=32 GB", "--max-price", "2000000", "--no-affiliate"}, io.Discard, workflow); err != nil {
+		t.Fatal(err)
+	}
+	r := workflow.searchRequest
+	if r.CategoryID != "123456" || r.Query != "" || r.MaxPrice != 2000000 || !r.DisableAffiliate || len(r.FacetSelections) != 1 || r.FacetSelections[0] != (core.ProductFacetSelection{Name: "Memory", Label: "32 GB"}) {
+		t.Fatal("category request changed before reaching shared workflow")
+	}
+	if err := runProducts(context.Background(), []string{"search", "--query", "synthetic", "--category-trail", "Parent", "--facet", "카테고리=Child"}, io.Discard, workflow); err != nil {
+		t.Fatal(err)
+	}
+	if workflow.searchRequest.Query != "synthetic" || len(workflow.searchRequest.CategoryTrail) != 1 || workflow.searchRequest.CategoryTrail[0] != "Parent" {
+		t.Fatal("CLI lost prior query category navigation")
+	}
+}
+
 func TestProductsPriceHistoryWritesTypedPrivateLocalResponse(t *testing.T) {
 	var output bytes.Buffer
 	if err := runProducts(context.Background(), []string{"price-history", "--product-id", "101", "--vendor-item-id", "201"}, &output, fixedProductWorkflow{}); err != nil {
@@ -409,7 +362,7 @@ func TestProductsPriceHistoryWritesTypedPrivateLocalResponse(t *testing.T) {
 	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Visibility != "private_local" || got.ProductID != "101" || got.VendorItemID != "201" || got.ObservationCount != 2 {
+	if got.SchemaVersion != 2 || got.Visibility != "private_local" || got.ProductID != "101" || got.VendorItemID != "201" || got.ObservationCount != 2 {
 		t.Fatalf("unexpected price history output: %#v", got)
 	}
 }
@@ -476,7 +429,7 @@ func TestOrdersListReturnsDocumentedObjectShape(t *testing.T) {
 	ctx := context.Background()
 	stateDir := t.TempDir()
 	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
-	ledger, err := store.Open(ctx, filepath.Join(stateDir, "coupangctl.sqlite3"))
+	ledger, err := store.Open(ctx, filepath.Join(stateDir, "camofox-coupangctl.sqlite3"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,121 +480,6 @@ func TestOrdersSyncStatusReturnsNeverRunAsTypedJSON(t *testing.T) {
 	}
 }
 
-func TestOrdersSyncCanUseTheExplicitlySelectedOrdinaryBrowser(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	stateDir := t.TempDir()
-	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
-	var stdout, stderr bytes.Buffer
-	cliResult := make(chan error, 1)
-	go func() {
-		cliResult <- Run(ctx, []string{"orders", "sync", "--max-pages", "1", "--ordinary-browser"}, &stdout, &stderr, "test")
-	}()
-
-	rendezvousPath := filepath.Join(stateDir, "ordinary-browser-rendezvous.json")
-	for {
-		if _, err := os.Stat(rendezvousPath); err == nil {
-			break
-		}
-		select {
-		case err := <-cliResult:
-			t.Fatalf("CLI exited before browser rendezvous: %v", err)
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
-		case <-time.After(10 * time.Millisecond):
-		}
-	}
-
-	extensionToHostReader, extensionToHostWriter := io.Pipe()
-	hostToExtensionReader, hostToExtensionWriter := io.Pipe()
-	hostResult := make(chan error, 1)
-	go func() {
-		hostResult <- browser.RunOrdinaryBrowserNativeHost(
-			ctx,
-			stateDir,
-			"chrome-extension://"+browser.OrdinaryBrowserExtensionID+"/",
-			browser.OrdinaryBrowserExtensionID,
-			extensionToHostReader,
-			hostToExtensionWriter,
-		)
-	}()
-	requestPayload, err := readSyntheticNativeFrame(hostToExtensionReader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var request browser.OrdinaryBridgeRequest
-	if err := json.Unmarshal(requestPayload, &request); err != nil {
-		t.Fatal(err)
-	}
-	if request.Operation != browser.OrdinaryBridgeReadOrders || request.Cursor != nil {
-		t.Fatalf("ordinary-browser request = %#v", request)
-	}
-	responsePayload, err := json.Marshal(browser.OrdinaryBridgeResponse{
-		SchemaVersion: browser.OrdinaryBridgeSchemaVersion,
-		RequestID:     request.RequestID,
-		Status:        browser.OrdinaryBridgeOK,
-		Page:          &core.OrderPage{Orders: []core.Order{}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := writeSyntheticNativeFrame(extensionToHostWriter, responsePayload); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-cliResult; err != nil {
-		t.Fatal(err)
-	}
-	if err := <-hostResult; err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(stderr.String(), "Chrome") {
-		t.Fatalf("ordinary-browser instruction missing: %q", stderr.String())
-	}
-	var result core.SyncResult
-	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	if !result.Complete || result.PagesProcessed != 1 || result.OrdersSeen != 0 || result.Source != core.SyncSourceOrdinaryBrowser || result.Provenance != core.SyncProvenanceObservedStructuredOrderDocument {
-		t.Fatalf("ordinary-browser sync result = %#v", result)
-	}
-}
-
-func TestCurrentBrowserReadRequestedOnlyForExplicitOrderSync(t *testing.T) {
-	if !currentBrowserReadRequested([]string{"orders", "sync", "--current-browser"}) {
-		t.Fatal("explicit current-browser order sync was not selected")
-	}
-	if !currentBrowserReadRequested([]string{"orders", "sync", "--current-browser=true"}) {
-		t.Fatal("explicit true current-browser order sync was not selected")
-	}
-	for _, args := range [][]string{
-		{"orders", "sync"},
-		{"orders", "list", "--current-browser"},
-		{"products", "search", "--current-browser"},
-		{"orders", "sync", "--current-browser=false"},
-	} {
-		if currentBrowserReadRequested(args) {
-			t.Fatalf("unexpected current-browser selection for %q", args)
-		}
-	}
-}
-
-func TestBackgroundBrowserPolicyIsLimitedToUnattendedEntryPoints(t *testing.T) {
-	for _, test := range []struct {
-		args []string
-		want bool
-	}{
-		{args: []string{"mcp"}, want: true},
-		{args: []string{"products", "watch-refresh"}, want: true},
-		{args: []string{"products", "watch-refresh", "--headed"}, want: false},
-		{args: []string{"products", "search", "synthetic"}, want: false},
-		{args: []string{"orders", "sync"}, want: false},
-	} {
-		if got := backgroundReadRequested(test.args); got != test.want {
-			t.Fatalf("backgroundReadRequested(%#v) = %t, want %t", test.args, got, test.want)
-		}
-	}
-}
-
 func TestConvenienceCommandsExpandWithoutMutatingInput(t *testing.T) {
 	for _, test := range []struct {
 		input []string
@@ -663,98 +501,24 @@ func TestConvenienceCommandsExpandWithoutMutatingInput(t *testing.T) {
 	}
 }
 
-func TestOrdersSyncRejectsConflictingBrowserModes(t *testing.T) {
+func TestOrdersSyncRejectsRetiredBrowserModes(t *testing.T) {
 	for _, args := range [][]string{
 		{"sync", "--headed", "--current-browser"},
 		{"sync", "--headed", "--ordinary-browser"},
 		{"sync", "--current-browser", "--ordinary-browser"},
 	} {
-		err := runOrders(context.Background(), args, io.Discard, nil)
-		if err == nil || !strings.Contains(err.Error(), "--current-browser") {
-			t.Fatalf("runOrders(%q) error = %v", args, err)
+		err := Run(context.Background(), append([]string{"orders"}, args...), io.Discard, io.Discard, "test")
+		if !errors.Is(err, errLegacyBrowserRetired) {
+			t.Fatalf("retired browser mode should fail before acquisition: %v", err)
 		}
 	}
-}
-
-func TestRunRejectsConflictingBrowserModesBeforeStartingBridge(t *testing.T) {
-	stateDir := t.TempDir()
-	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
-	err := Run(
-		context.Background(),
-		[]string{"orders", "sync", "--current-browser", "--ordinary-browser"},
-		io.Discard,
-		io.Discard,
-		"test",
-	)
-	if err == nil || err.Error() != orderSyncUsage {
-		t.Fatalf("conflicting browser modes error = %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(stateDir, "ordinary-browser-rendezvous.json")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("conflicting modes created a browser rendezvous: %v", err)
-	}
-}
-
-func TestSyncAliasRejectsConflictingBrowserModesBeforeStartingBridge(t *testing.T) {
-	stateDir := t.TempDir()
-	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
-	err := Run(
-		context.Background(),
-		[]string{"sync", "--current-browser", "--ordinary-browser"},
-		io.Discard,
-		io.Discard,
-		"test",
-	)
-	if err == nil || err.Error() != orderSyncUsage {
-		t.Fatalf("sync alias conflicting browser modes error = %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(stateDir, "ordinary-browser-rendezvous.json")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("sync alias created a browser rendezvous: %v", err)
-	}
-}
-
-func TestChromeNativeHostInvocationRejectsEveryOtherExtensionOrigin(t *testing.T) {
-	t.Setenv("COUPANGCTL_STATE_DIR", t.TempDir())
-	var stdout, stderr bytes.Buffer
-	err := Run(
-		context.Background(),
-		[]string{"chrome-extension://" + strings.Repeat("a", 32) + "/"},
-		&stdout,
-		&stderr,
-		"test",
-	)
-	if !errors.Is(err, browser.ErrOrdinaryNativeOrigin) {
-		t.Fatalf("native host error = %v, want ErrOrdinaryNativeOrigin", err)
-	}
-	if stdout.Len() != 0 || stderr.Len() != 0 {
-		t.Fatalf("native host wrote non-frame output: stdout=%q stderr=%q", stdout.String(), stderr.String())
-	}
-}
-
-func readSyntheticNativeFrame(reader io.Reader) ([]byte, error) {
-	header := make([]byte, 4)
-	if _, err := io.ReadFull(reader, header); err != nil {
-		return nil, err
-	}
-	payload := make([]byte, binary.NativeEndian.Uint32(header))
-	_, err := io.ReadFull(reader, payload)
-	return payload, err
-}
-
-func writeSyntheticNativeFrame(writer io.Writer, payload []byte) error {
-	header := make([]byte, 4)
-	binary.NativeEndian.PutUint32(header, uint32(len(payload)))
-	if _, err := writer.Write(header); err != nil {
-		return err
-	}
-	_, err := writer.Write(payload)
-	return err
 }
 
 func TestOrdersStatsReturnsCancellationAndReturnRates(t *testing.T) {
 	ctx := context.Background()
 	stateDir := t.TempDir()
 	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
-	ledger, err := store.Open(ctx, filepath.Join(stateDir, "coupangctl.sqlite3"))
+	ledger, err := store.Open(ctx, filepath.Join(stateDir, "camofox-coupangctl.sqlite3"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -780,7 +544,7 @@ func TestOrdersStatsReturnsCancellationAndReturnRates(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.ReturnedItemLineCount != 1 || got.ReturnedUnits != 1 || got.ReturnedUnitRate != 0.5 {
+	if got.ReturnedItemLineCount != 1 || got.ReturnedUnits != 1 || got.ReturnedUnitRate == nil || *got.ReturnedUnitRate != 0.5 {
 		t.Fatalf("unexpected stats response: %#v", got)
 	}
 }
@@ -789,7 +553,7 @@ func TestOrdersInsightsReturnsShareableAggregateShape(t *testing.T) {
 	ctx := context.Background()
 	stateDir := t.TempDir()
 	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
-	ledger, err := store.Open(ctx, filepath.Join(stateDir, "coupangctl.sqlite3"))
+	ledger, err := store.Open(ctx, filepath.Join(stateDir, "camofox-coupangctl.sqlite3"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -830,7 +594,7 @@ func TestOrdersCategoryCatalogReturnsSourceNativeSearchID(t *testing.T) {
 	ctx := context.Background()
 	stateDir := t.TempDir()
 	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
-	ledger, err := store.Open(ctx, filepath.Join(stateDir, "coupangctl.sqlite3"))
+	ledger, err := store.Open(ctx, filepath.Join(stateDir, "camofox-coupangctl.sqlite3"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -869,7 +633,7 @@ func TestOrdersCategoryStabilityReturnsLongitudinalEvidence(t *testing.T) {
 	ctx := context.Background()
 	stateDir := t.TempDir()
 	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
-	ledger, err := store.Open(ctx, filepath.Join(stateDir, "coupangctl.sqlite3"))
+	ledger, err := store.Open(ctx, filepath.Join(stateDir, "camofox-coupangctl.sqlite3"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -907,7 +671,7 @@ func TestOrdersProductsReturnsPrivateLocalProductInsightShape(t *testing.T) {
 	ctx := context.Background()
 	stateDir := t.TempDir()
 	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
-	ledger, err := store.Open(ctx, filepath.Join(stateDir, "coupangctl.sqlite3"))
+	ledger, err := store.Open(ctx, filepath.Join(stateDir, "camofox-coupangctl.sqlite3"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -942,7 +706,7 @@ func TestOrdersRecapWritesPrivateStandaloneHTMLWithoutEchoingPath(t *testing.T) 
 	ctx := context.Background()
 	stateDir := t.TempDir()
 	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
-	ledger, err := store.Open(ctx, filepath.Join(stateDir, "coupangctl.sqlite3"))
+	ledger, err := store.Open(ctx, filepath.Join(stateDir, "camofox-coupangctl.sqlite3"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -992,7 +756,7 @@ func TestOrdersRecapImagePreviewsExactPublicFieldsBeforeWriting(t *testing.T) {
 	ctx := context.Background()
 	stateDir := t.TempDir()
 	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
-	ledger, err := store.Open(ctx, filepath.Join(stateDir, "coupangctl.sqlite3"))
+	ledger, err := store.Open(ctx, filepath.Join(stateDir, "camofox-coupangctl.sqlite3"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1034,7 +798,7 @@ func TestOrdersRecapCanExplicitlyIncludePrivateProductDetails(t *testing.T) {
 	ctx := context.Background()
 	stateDir := t.TempDir()
 	t.Setenv("COUPANGCTL_STATE_DIR", stateDir)
-	ledger, err := store.Open(ctx, filepath.Join(stateDir, "coupangctl.sqlite3"))
+	ledger, err := store.Open(ctx, filepath.Join(stateDir, "camofox-coupangctl.sqlite3"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1075,30 +839,15 @@ func TestOrdersRecapCanExplicitlyIncludePrivateProductDetails(t *testing.T) {
 
 func TestWriteErrorUsesStableSanitizedShape(t *testing.T) {
 	var output bytes.Buffer
-	WriteError(&output, errors.Join(browser.ErrBrowserNotFound, errors.New("sensitive local path")))
+	WriteError(&output, errors.Join(browser.ErrCamofoxUnavailable, errors.New("sensitive local path")))
 	var got core.ErrorResponse
 	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Error.Code != "browser_not_found" {
+	if got.Error.Code != "camofox_unavailable" {
 		t.Fatalf("error code = %q", got.Error.Code)
 	}
 	if bytes.Contains(output.Bytes(), []byte("sensitive local path")) {
-		t.Fatalf("error output exposed an internal cause: %s", output.Bytes())
-	}
-}
-
-func TestWriteErrorClassifiesUnavailableCurrentBrowserWithoutLocalDetails(t *testing.T) {
-	var output bytes.Buffer
-	WriteError(&output, errors.Join(browser.ErrCurrentBrowserUnavailable, errors.New("sensitive profile path")))
-	var got core.ErrorResponse
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Error.Code != "current_browser_unavailable" || !strings.Contains(got.Error.Message, "chrome://inspect/#remote-debugging") {
-		t.Fatalf("unexpected current-browser error: %#v", got)
-	}
-	if bytes.Contains(output.Bytes(), []byte("sensitive profile path")) {
 		t.Fatalf("error output exposed an internal cause: %s", output.Bytes())
 	}
 }
@@ -1112,35 +861,6 @@ func TestWriteErrorClassifiesProfileInUseWithoutLocalDetails(t *testing.T) {
 	}
 	if got.Error.Code != "profile_in_use" || strings.Contains(got.Error.Message, "sensitive") {
 		t.Fatalf("unexpected profile lock error: %#v", got)
-	}
-}
-
-func TestWriteErrorClassifiesIncompatibleProfileWithoutLocalDetails(t *testing.T) {
-	var output bytes.Buffer
-	WriteError(&output, errors.Join(browser.ErrProfileIncompatible, errors.New("sensitive executable path")))
-	var got core.ErrorResponse
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Error.Code != "browser_profile_incompatible" || strings.Contains(got.Error.Message, "sensitive") {
-		t.Fatalf("unexpected profile compatibility error: %#v", got)
-	}
-}
-
-func TestWriteErrorClassifiesBrowserBridgeOwnershipConflictWithoutPath(t *testing.T) {
-	var output bytes.Buffer
-	WriteError(&output, errors.Join(browserbridge.ErrInstallationConflict, errors.New("sensitive local path")))
-	var got struct {
-		Error struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Error.Code != "browser_bridge_installation_conflict" || strings.Contains(got.Error.Message, "sensitive") {
-		t.Fatalf("unexpected browser bridge error: %#v", got.Error)
 	}
 }
 
@@ -1183,56 +903,8 @@ func TestWriteErrorDoesNotClaimAnAccessDeniedReadWasHeadless(t *testing.T) {
 	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Error.Code != "browser_access_denied" || strings.HasPrefix(got.Error.Message, "headless access") {
+	if got.Error.Code != "camofox_access_denied" || got.Error.Reason != "access_denied" || strings.HasPrefix(got.Error.Message, "headless access") {
 		t.Fatalf("misleading browser access error: %#v", got)
-	}
-}
-
-func TestWriteCommandErrorDoesNotRecommendHeadedModeAfterHeadedDenial(t *testing.T) {
-	var output bytes.Buffer
-	WriteCommandError(&output, []string{"auth", "verify", "--headed"}, browser.ErrBrowserAccessDenied)
-	var got core.ErrorResponse
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Error.Code != "headed_browser_access_denied" || strings.Contains(got.Error.Message, "choose a supported headed") || !strings.Contains(got.Error.Message, "retry later") {
-		t.Fatalf("circular headed access error: %#v", got)
-	}
-
-	output.Reset()
-	WriteCommandError(&output, []string{"auth", "verify"}, browser.ErrBrowserAccessDenied)
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Error.Code != "browser_access_denied" {
-		t.Fatalf("quiet denial lost its generic remediation: %#v", got)
-	}
-
-	output.Reset()
-	WriteCommandError(&output, []string{"products", "search", "--query", "synthetic"}, browser.ErrBrowserAccessDenied)
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Error.Code != "browser_access_denied" || !strings.Contains(got.Error.Message, "--headed") || strings.Contains(got.Error.Message, "current-browser") {
-		t.Fatalf("product denial recommended an unsupported recovery mode: %#v", got)
-	}
-
-	output.Reset()
-	WriteCommandError(&output, []string{"sync", "--max-pages", "1"}, browser.ErrBrowserAccessDenied)
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Error.Code != "browser_access_denied" || !strings.Contains(got.Error.Message, "--headed") || !strings.Contains(got.Error.Message, "--current-browser") {
-		t.Fatalf("order sync denial omitted a supported recovery mode: %#v", got)
-	}
-
-	output.Reset()
-	WriteCommandError(&output, []string{"sync", "--current-browser"}, browser.ErrBrowserAccessDenied)
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Error.Code != "current_browser_access_denied" || strings.Contains(got.Error.Message, "use --current-browser") || !strings.Contains(got.Error.Message, "retry later") {
-		t.Fatalf("current-browser denial recommended the already-failed mode: %#v", got)
 	}
 }
 
@@ -1248,89 +920,10 @@ func TestWriteErrorClassifiesLocalRecapImageRenderFailure(t *testing.T) {
 	}
 }
 
-func TestAuthLoginDefaultsToQRAndAcceptsPhoneFallback(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		args []string
-		want core.LoginMode
-	}{
-		{name: "default", args: []string{"login"}, want: core.LoginModeQR},
-		{name: "explicit qr", args: []string{"login", "--qr"}, want: core.LoginModeQR},
-		{name: "phone fallback", args: []string{"login", "--phone"}, want: core.LoginModePhone},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			browser := &loginModeBrowser{}
-			service := auth.NewService(browser)
-			var output bytes.Buffer
-			if err := runAuth(context.Background(), test.args, &output, io.Discard, service, noopResendAssistant{}, &fixedLoginSecrets{}); err != nil {
-				t.Fatal(err)
-			}
-			if browser.request.Mode != test.want {
-				t.Fatalf("mode = %q, want %q", browser.request.Mode, test.want)
-			}
-			var result core.LoginResult
-			if err := json.Unmarshal(output.Bytes(), &result); err != nil {
-				t.Fatal(err)
-			}
-			if result.Mode != test.want {
-				t.Fatalf("result mode = %q, want %q", result.Mode, test.want)
-			}
-		})
-	}
-}
-
-func TestAuthEnsureReusesReadySessionWithoutOpeningLogin(t *testing.T) {
-	browser := &loginModeBrowser{profilePresent: true}
-	service := auth.NewService(browser)
-	var output bytes.Buffer
-	if err := runAuth(context.Background(), []string{"ensure"}, &output, io.Discard, service, noopResendAssistant{}, &fixedLoginSecrets{}); err != nil {
-		t.Fatal(err)
-	}
-	var got core.AuthRecoveryResult
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.State != core.AuthVerified || got.VisibleBrowserOpened || browser.loginCalls != 0 || browser.verifyCalls != 1 {
-		t.Fatalf("ready session was not reused: result=%#v browser=%#v", got, browser)
-	}
-}
-
-func TestAuthEnsureOpensQRLoginOnlyForExpiredSession(t *testing.T) {
-	browser := &loginModeBrowser{profilePresent: true, verifyErr: core.ErrAuthenticationRequired}
-	service := auth.NewService(browser)
-	var output bytes.Buffer
-	if err := runAuth(context.Background(), []string{"ensure"}, &output, io.Discard, service, noopResendAssistant{}, &fixedLoginSecrets{}); err != nil {
-		t.Fatal(err)
-	}
-	var got core.AuthRecoveryResult
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.BeforeState != core.AuthUnverified || got.State != core.AuthVerified || !got.VisibleBrowserOpened || got.Mode != core.LoginModeQR || browser.loginCalls != 1 {
-		t.Fatalf("expired session was not recovered once: result=%#v browser=%#v", got, browser)
-	}
-}
-
-func TestAuthEnsureDoesNotOpenLoginForTemporaryAccessBlock(t *testing.T) {
-	browser := &loginModeBrowser{profilePresent: true, verifyErr: core.ErrBrowserAccessDenied}
-	service := auth.NewService(browser)
-	var output bytes.Buffer
-	if err := runAuth(context.Background(), []string{"ensure"}, &output, io.Discard, service, noopResendAssistant{}, &fixedLoginSecrets{}); err != nil {
-		t.Fatal(err)
-	}
-	var got core.AuthRecoveryResult
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.State != core.AuthAccessBlocked || got.VisibleBrowserOpened || browser.loginCalls != 0 {
-		t.Fatalf("temporary access block opened unnecessary login: result=%#v browser=%#v", got, browser)
-	}
-}
-
 func TestAuthStatusWritesBackgroundAccessBlockAsTypedJSON(t *testing.T) {
 	service := auth.NewService(blockedStatusBrowser{})
 	var output bytes.Buffer
-	if err := runAuth(context.Background(), []string{"status"}, &output, io.Discard, service, noopResendAssistant{}, &fixedLoginSecrets{}); err != nil {
+	if err := runAuth(context.Background(), []string{"status"}, &output, service); err != nil {
 		t.Fatal(err)
 	}
 	var got core.AuthStatus
@@ -1339,153 +932,6 @@ func TestAuthStatusWritesBackgroundAccessBlockAsTypedJSON(t *testing.T) {
 	}
 	if got.State != core.AuthAccessBlocked || !got.ProfilePresent || got.Browser != "Synthetic Chrome" {
 		t.Fatalf("unexpected auth status: %#v", got)
-	}
-}
-
-func TestDoctorSeparatesBrowserInstallationFromBackgroundSessionReadiness(t *testing.T) {
-	service := auth.NewService(blockedStatusBrowser{})
-	paths := platform.Paths{Database: filepath.Join(t.TempDir(), "coupangctl.sqlite3")}
-	var output bytes.Buffer
-	if err := runDoctor(context.Background(), &output, paths, service); err != nil {
-		t.Fatal(err)
-	}
-	var got core.DoctorReport
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.OK {
-		t.Fatal("doctor reported background access as ready")
-	}
-	want := map[string]core.CheckStatus{
-		"browser":            core.CheckOK,
-		"background_session": core.CheckError,
-		"sqlite":             core.CheckOK,
-	}
-	for _, check := range got.Checks {
-		if status, ok := want[check.Name]; ok {
-			if check.Status != status {
-				t.Fatalf("check %q status = %q, want %q", check.Name, check.Status, status)
-			}
-			delete(want, check.Name)
-		}
-	}
-	if len(want) != 0 {
-		t.Fatalf("doctor omitted checks: %#v", want)
-	}
-}
-
-func TestDoctorReportsVerifiedBackgroundSessionAsReady(t *testing.T) {
-	provider := fixedDoctorAuthStatus{status: core.AuthStatus{State: core.AuthVerified, Browser: "Synthetic Chrome", ProfilePresent: true}}
-	paths := platform.Paths{Database: filepath.Join(t.TempDir(), "coupangctl.sqlite3")}
-	var output bytes.Buffer
-	if err := runDoctor(context.Background(), &output, paths, provider); err != nil {
-		t.Fatal(err)
-	}
-	var got core.DoctorReport
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if !got.OK {
-		t.Fatalf("doctor did not report verified background session ready: %#v", got)
-	}
-	for _, check := range got.Checks {
-		if check.Status != core.CheckOK {
-			t.Fatalf("unexpected failed check: %#v", check)
-		}
-	}
-}
-
-func TestCurrentBrowserStatusWritesPassiveTypedReadiness(t *testing.T) {
-	want := core.CurrentBrowserStatus{
-		SchemaVersion:              core.CurrentBrowserStatusSchemaVersion,
-		State:                      core.CurrentBrowserEndpointAvailable,
-		Browser:                    "Synthetic Chrome",
-		EndpointAvailable:          true,
-		ConnectionApprovalVerified: false,
-		CheckedAt:                  time.Date(2026, time.September, 3, 9, 0, 0, 0, time.UTC),
-		NextAction:                 "run `coupangctl sync --current-browser` and approve Chrome's connection prompt",
-	}
-	var output bytes.Buffer
-	if err := runCurrentBrowser(context.Background(), []string{"status"}, &output, fixedCurrentBrowserStatusProvider{status: want}); err != nil {
-		t.Fatal(err)
-	}
-	var got core.CurrentBrowserStatus
-	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got != want {
-		t.Fatalf("status = %#v, want %#v", got, want)
-	}
-}
-
-func TestAuthLoginRejectsConflictingModes(t *testing.T) {
-	service := auth.NewService(&loginModeBrowser{})
-	if err := runAuth(context.Background(), []string{"login", "--qr", "--phone"}, io.Discard, io.Discard, service, noopResendAssistant{}, &fixedLoginSecrets{}); err == nil {
-		t.Fatal("conflicting login modes were accepted")
-	}
-}
-
-func TestAuthLoginPassesQROutputWithoutEchoingLocalPath(t *testing.T) {
-	browser := &loginModeBrowser{}
-	service := auth.NewService(browser)
-	var output bytes.Buffer
-	path := filepath.Join(t.TempDir(), "login-qr.png")
-	if err := runAuth(context.Background(), []string{"login", "--qr-output", path}, &output, io.Discard, service, noopResendAssistant{}, &fixedLoginSecrets{}); err != nil {
-		t.Fatal(err)
-	}
-	if browser.request.Mode != core.LoginModeQR || browser.request.QROutputPath != path {
-		t.Fatalf("unexpected request: %#v", browser.request)
-	}
-	if bytes.Contains(output.Bytes(), []byte(path)) {
-		t.Fatalf("structured output exposed local QR path: %s", output.Bytes())
-	}
-}
-
-func TestAuthLoginLinkWritesEphemeralMaterialOnlyToExplicitStderr(t *testing.T) {
-	browser := &loginModeBrowser{}
-	service := auth.NewService(browser)
-	var stdout, stderr bytes.Buffer
-	if err := runAuth(context.Background(), []string{"login", "--link"}, &stdout, &stderr, service, noopResendAssistant{}, &fixedLoginSecrets{}); err != nil {
-		t.Fatal(err)
-	}
-	if browser.request.PresentQRLink == nil {
-		t.Fatal("QR link presenter was not configured")
-	}
-	if !bytes.Contains(stderr.Bytes(), []byte("applink.coupang.com")) || !bytes.Contains(stderr.Bytes(), []byte("Approval number: 42")) {
-		t.Fatalf("explicit QR link presentation is incomplete")
-	}
-	if bytes.Contains(stdout.Bytes(), []byte("applink.coupang.com")) || bytes.Contains(stdout.Bytes(), []byte("42")) {
-		t.Fatalf("structured output exposed ephemeral QR material: %s", stdout.Bytes())
-	}
-	var result core.LoginResult
-	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil || result.State != core.AuthVerified {
-		t.Fatalf("unexpected structured login result: %v %#v", err, result)
-	}
-}
-
-func TestAuthLoginRejectsMultipleQRPresentationChannels(t *testing.T) {
-	service := auth.NewService(&loginModeBrowser{})
-	if err := runAuth(context.Background(), []string{"login", "--link", "--qr-output", "synthetic.png"}, io.Discard, io.Discard, service, noopResendAssistant{}, &fixedLoginSecrets{}); err == nil {
-		t.Fatal("multiple QR presentation channels were accepted")
-	}
-}
-
-func TestPhoneLoginReadsPhoneBeforeBrowserAndOTPOnlyOnBrowserRequest(t *testing.T) {
-	secrets := &fixedLoginSecrets{}
-	browser := &loginModeBrowser{consumeOTP: true}
-	service := auth.NewService(browser)
-	var output bytes.Buffer
-	if err := runAuth(context.Background(), []string{"login", "--phone"}, &output, io.Discard, service, noopResendAssistant{}, secrets); err != nil {
-		t.Fatal(err)
-	}
-	if secrets.phoneCalls != 1 || secrets.otpCalls != 1 {
-		t.Fatalf("secret reads = phone:%d otp:%d", secrets.phoneCalls, secrets.otpCalls)
-	}
-	if browser.request.Phone == "" || browser.request.ReadOTP == nil {
-		t.Fatal("browser did not receive private phone login inputs")
-	}
-	if bytes.Contains(output.Bytes(), []byte("01000000000")) || bytes.Contains(output.Bytes(), []byte("000000")) {
-		t.Fatalf("structured output exposed phone login secrets: %s", output.Bytes())
 	}
 }
 

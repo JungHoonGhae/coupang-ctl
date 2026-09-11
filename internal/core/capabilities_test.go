@@ -11,15 +11,15 @@ func TestCapabilitiesExposeImplementedStateAndNextEvidence(t *testing.T) {
 	if report.SchemaVersion != 3 {
 		t.Fatalf("capability schema version = %d, want 3", report.SchemaVersion)
 	}
-	if report.Summary.Total != 17 || report.Summary.StatusCounts.Available != 8 || report.Summary.StatusCounts.Experimental != 9 {
+	if report.Summary.Total != 16 || report.Summary.StatusCounts.Available != 6 || report.Summary.StatusCounts.Experimental != 7 || report.Summary.StatusCounts.Planned != 3 {
 		t.Fatalf("unexpected capability status summary: %#v", report.Summary)
 	}
-	if report.Summary.NextStepCounts.Maintenance != 7 || report.Summary.NextStepCounts.LiveValidation != 2 ||
-		report.Summary.NextStepCounts.EvidenceRequired != 4 || report.Summary.NextStepCounts.ExternalDependency != 1 ||
-		report.Summary.NextStepCounts.UserAuthorization != 1 || report.Summary.NextStepCounts.LongitudinalValidation != 2 {
+	if report.Summary.NextStepCounts.Maintenance != 4 || report.Summary.NextStepCounts.LiveValidation != 2 ||
+		report.Summary.NextStepCounts.EvidenceRequired != 1 || report.Summary.NextStepCounts.ExternalDependency != 1 ||
+		report.Summary.NextStepCounts.UserAuthorization != 0 || report.Summary.NextStepCounts.LongitudinalValidation != 2 {
 		t.Fatalf("unexpected capability next-step summary: %#v", report.Summary)
 	}
-	if report.Summary.ImplementationNextSteps != 0 || report.Summary.ValidationOrCoordinationNextSteps != 10 {
+	if report.Summary.ImplementationNextSteps != 6 || report.Summary.ValidationOrCoordinationNextSteps != 6 {
 		t.Fatalf("summary does not separate code work from external evidence: %#v", report.Summary)
 	}
 	byID := make(map[string]core.Capability, len(report.Capabilities))
@@ -36,42 +36,38 @@ func TestCapabilitiesExposeImplementedStateAndNextEvidence(t *testing.T) {
 		byID[capability.ID] = capability
 	}
 
-	for _, id := range []string{"batch_receipts", "payment_method_installment_insights"} {
+	for _, id := range []string{"batch_receipts", "payment_method_installment_insights", "explicit_cart_add"} {
 		capability, ok := byID[id]
 		if !ok {
 			t.Fatalf("missing capability %q", id)
 		}
-		if capability.Status != core.CapabilityExperimental || capability.LastVerified == "" || capability.NextWork == "" {
+		if capability.Status != core.CapabilityPlanned || len(capability.Interface) != 0 || capability.NextStepKind != core.CapabilityNextImplementation || capability.NextWork == "" {
 			t.Fatalf("capability %q does not expose experimental evidence state: %#v", id, capability)
 		}
 	}
+	account := byID["account_membership_benefits"]
+	if account.Status != core.CapabilityExperimental || len(account.Interface) != 2 || account.NextStepKind != core.CapabilityNextImplementation || account.LastVerified != "2026-09-11" || len(account.BlockedBy) != 0 {
+		t.Fatal("account read capability lost its bounded implementation or remaining evidence work")
+	}
 	price := byID["price_and_repurchase"]
+	if history := byID["full_order_history"]; history.Status != core.CapabilityExperimental || history.NextStepKind != core.CapabilityNextImplementation {
+		t.Fatal("unverified account/scan implementation presented as complete history")
+	}
+	reporting := byID["recommendation_report"]
+	if reporting.Status != core.CapabilityExperimental || reporting.NextStepKind != core.CapabilityNextLiveValidation || len(reporting.Interface) != 2 {
+		t.Fatal("report capability must retain experimental/live-validation status")
+	}
 	if price.Status != core.CapabilityExperimental || price.LastVerified == "" || price.NextWork == "" {
 		t.Fatalf("price capability does not expose its experimental evidence state: %#v", price)
 	}
-	bridge, ok := byID["ordinary_browser_bridge"]
-	if !ok {
-		t.Fatal("missing ordinary_browser_bridge capability")
-	}
-	if bridge.Status != core.CapabilityExperimental || bridge.NextStepKind != core.CapabilityNextLiveValidation || bridge.NextWork == "" || bridge.LastVerified == "" {
-		t.Fatalf("ordinary-browser bridge does not expose experimental validation state: %#v", bridge)
-	}
-	if len(bridge.Interface) != 2 || bridge.Interface[0] != "cli" || bridge.Interface[1] != "mcp" {
-		t.Fatalf("ordinary-browser bridge interfaces are stale: %#v", bridge.Interface)
-	}
-	current, ok := byID["current_browser_connection"]
-	if !ok {
-		t.Fatal("missing current_browser_connection capability")
-	}
-	if current.Status != core.CapabilityExperimental || current.NextStepKind != core.CapabilityNextLiveValidation || current.NextWork == "" || current.LastVerified == "" {
-		t.Fatalf("current-browser connection does not expose experimental validation state: %#v", current)
-	}
-	if len(current.Interface) != 2 || current.Interface[0] != "cli" || current.Interface[1] != "mcp" {
-		t.Fatalf("current-browser interfaces are stale: %#v", current.Interface)
+	for _, id := range []string{"ordinary_browser_bridge", "current_browser_connection"} {
+		if _, exists := byID[id]; exists {
+			t.Fatal("retired transport is still advertised")
+		}
 	}
 	for id, kind := range map[string]core.CapabilityNextStepKind{
 		"transparent_affiliate_deeplinks": core.CapabilityNextExternalDependency,
-		"explicit_cart_add":               core.CapabilityNextUserAuthorization,
+		"explicit_cart_add":               core.CapabilityNextImplementation,
 		"product_categories":              core.CapabilityNextLongitudinalValidation,
 		"price_and_repurchase":            core.CapabilityNextLongitudinalValidation,
 	} {
@@ -80,7 +76,7 @@ func TestCapabilitiesExposeImplementedStateAndNextEvidence(t *testing.T) {
 			t.Fatalf("capability %q does not expose its blocker class: %#v", id, capability)
 		}
 	}
-	for _, id := range []string{"natural_language_product_discovery", "source_native_product_rankings"} {
+	for _, id := range []string{"natural_language_product_discovery"} {
 		capability := byID[id]
 		if capability.Status != core.CapabilityAvailable || capability.NextStepKind != core.CapabilityNextMaintenance || len(capability.BlockedBy) != 0 || capability.LastVerified == "" {
 			t.Fatalf("validated product capability %q is not available: %#v", id, capability)

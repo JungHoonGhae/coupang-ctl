@@ -36,7 +36,7 @@ func TestPriceObservationsPersistExactOptionSeriesAndBoundHistory(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if truncated || len(exact) != 3 || exact[0].CurrentAmount != 42000 || exact[2].CurrentAmount != 38000 || exact[0].Provenance != "observed" {
+	if truncated || len(exact) != 2 || exact[0].CurrentAmount != 42000 || exact[1].CurrentAmount != 39000 || exact[0].Provenance != "observed" {
 		t.Fatalf("unexpected exact option history: %#v truncated=%v", exact, truncated)
 	}
 
@@ -99,5 +99,6 @@ func priceObservation(productID, vendorItemID string, amount int64, observedAt t
 		Name:      "Synthetic product", CanonicalURL: "https://www.coupang.com/vp/products/" + productID,
 		CurrentAmount: amount, Currency: "KRW", ObservedAt: observedAt,
 		Source: "coupang_product_search", Provenance: "observed",
+		FieldEvidence: []core.ProductFieldEvidence{{Field: "price.current_amount", Source: "json_ld", Locator: "jsonld.Product.offers.price", Method: "native_field", Provenance: "observed", Scope: "selected_option", Reference: core.ProductReference{ProductID: productID, VendorItemID: vendorItemID}, CapturedAt: observedAt}},
 	}
 }

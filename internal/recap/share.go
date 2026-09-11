@@ -27,6 +27,7 @@ var shareCardTemplate = template.Must(template.New("share-card").Funcs(template.
 	"comma":           formatInteger,
 	"monthRange":      monthRange,
 	"pct":             formatPercent,
+	"observedPct":     formatObservedPercent,
 	"typeTitle":       profileTitle,
 }).Parse(shareCardSource))
 
@@ -59,6 +60,7 @@ func PublicSharePreview(summary core.ShoppingInsights) core.RecapSharePreview {
 			"brand_names", "category_labels_and_counts", "purchase_time_series",
 			"delivery_year_series", "cancellation_and_return_rates", "badge_details",
 			"payment_methods", "account_identifiers", "credentials_and_session_material",
+			"local_snapshot_timestamp", "sync_attempt_details",
 		},
 		ConfirmationFlag: "--confirm-public-safe-image",
 		Limitations: []string{
@@ -90,7 +92,7 @@ func PublicSharePreview(summary core.ShoppingInsights) core.RecapSharePreview {
 	preview.Fields = append(preview.Fields,
 		core.RecapShareField{ID: "order_count", Value: strconv.Itoa(summary.OrderCount), Provenance: "derived", SampleSize: summary.OrderCount, Rule: "normalized orders in the selected analysis period"},
 		core.RecapShareField{ID: "longest_active_month_streak", Value: strconv.Itoa(summary.LongestActiveMonthStreak), Provenance: "derived", Rule: "longest consecutive run of active product-purchase months"},
-		core.RecapShareField{ID: "delivered_within_24_hours_rate", Value: formatPercent(summary.DeliveredWithin24HoursRate) + "%", Provenance: "derived", SampleSize: summary.Samples.DeliveryEvents, Rule: "delivered within 24 hours divided by shipments with usable order and delivery timestamps"},
+		core.RecapShareField{ID: "delivered_within_24_hours_rate", Value: formatObservedPercent(summary.DeliveredWithin24HoursRate, summary.Samples.DeliveryEvents), Provenance: "derived", SampleSize: summary.Samples.DeliveryEvents, Rule: "delivered within 24 hours divided by shipments with usable order and delivery timestamps; missing rate or zero sample displays insufficient records"},
 	)
 	return preview
 }

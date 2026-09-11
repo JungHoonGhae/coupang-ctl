@@ -11,3 +11,9 @@ func TestProductSearchAcceptsNativeCategoryRankingWithoutFreeText(t *testing.T) 
 		t.Fatal("request without a query or category was accepted")
 	}
 }
+
+func TestProductSearchRejectsQueryCombinedWithCategory(t *testing.T) {
+	if err := (ProductSearchRequest{Query: "synthetic", CategoryID: "12345"}).Validate(); err == nil {
+		t.Fatal("query would be silently ignored by category navigation")
+	}
+}

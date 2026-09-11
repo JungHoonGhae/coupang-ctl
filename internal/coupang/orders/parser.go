@@ -39,6 +39,17 @@ func ParseOrderDocument(document []byte) (core.OrderPage, error) {
 		}
 		domain = root
 	}
+	// Source page completeness is independent of pagination: hasNext=false
+	// must not turn an explicitly partial OMS response into an exhausted scan.
+	if rawPartial, present := domain["partial"]; present {
+		partial, ok := rawPartial.(bool)
+		if !ok {
+			return core.OrderPage{}, fmt.Errorf("%w: partial requires a boolean", core.ErrInvalidOrderData)
+		}
+		if partial {
+			return core.OrderPage{}, core.ErrPartialOrderData
+		}
+	}
 	rawOrders, ok := valueSlice(domain["orderList"])
 	if !ok {
 		return core.OrderPage{}, fmt.Errorf("%w: order list has an unsupported shape", core.ErrInvalidOrderData)
@@ -57,10 +68,20 @@ func ParseOrderDocument(document []byte) (core.OrderPage, error) {
 		page.Orders = append(page.Orders, order)
 	}
 	pagination := domain
-	if embedded, ok := domain["orderPagination"].(map[string]any); ok {
+	if rawPagination, exists := domain["orderPagination"]; exists {
+		embedded, ok := rawPagination.(map[string]any)
+		if !ok {
+			return core.OrderPage{}, fmt.Errorf("%w: pagination has an unsupported shape", core.ErrInvalidOrderData)
+		}
 		pagination = embedded
 	}
-	if boolValue(pagination, "hasNext") {
+	// A missing/ill-typed flag is not evidence of source exhaustion. In
+	// particular, do not reuse boolValue's default false for this boundary.
+	hasNext, ok := pagination["hasNext"].(bool)
+	if !ok {
+		return core.OrderPage{}, fmt.Errorf("%w: pagination requires an explicit boolean hasNext", core.ErrInvalidOrderData)
+	}
+	if hasNext {
 		year, yearOK := integerValue(pagination, "nextYear")
 		nextPage, pageOK := integerValue(pagination, "nextPageIndex", "nextPage")
 		if !yearOK || !pageOK || year < 2000 || nextPage < 0 {

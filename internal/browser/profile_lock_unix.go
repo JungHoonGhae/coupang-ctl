@@ -8,12 +8,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 	"golang.org/x/sys/unix"
 )
 
 const profileLockFilename = ".coupangctl.lock"
 
-var ErrProfileInUse = errors.New("dedicated browser profile is already in use")
+var ErrProfileInUse = core.WithErrorCode("profile_in_use", errors.New("dedicated browser profile is already in use"))
 
 type profileLock struct {
 	file *os.File

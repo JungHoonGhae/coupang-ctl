@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>coupangctl — README 다이어그램</title>
+  <style>
+    /* diagram-design minimal template; project paper/ink, user-selected Pretendard.
+       The original, unmodified Pretendard v1.3.9 font is embedded below (OFL.txt). */
+    /* PRETENDARD_FONT */
+    :root { --paper:#faf9f6; --ink:#252724; --muted:#4f5d75; --rule:#bfc0c0; --accent:#eb6c36; --tint:#fcf0e8; --store:#eeede9; --link:#2e5aa8; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:"Pretendard",sans-serif; }
+    main { width:min(100%,720px); margin:auto; }
+    figure { margin:0 0 48px; }
+    svg { display:block; width:100%; height:auto; font-family:"Pretendard",sans-serif; }
+    text { fill:var(--ink); font-size:32px; font-weight:500; }
+    .heading { font-size:40px; font-weight:700; letter-spacing:-1px; }
+    .sub { fill:var(--muted); font-size:32px; font-weight:400; }
+    .code { fill:var(--muted); font-size:24px; font-weight:400; }
+    .name { font-size:32px; font-weight:650; }
+    .box { fill:white; stroke:var(--rule); stroke-width:1.2; }
+    .input { fill:var(--store); stroke:var(--muted); stroke-width:1.2; }
+    .focus { fill:var(--tint); stroke:var(--accent); stroke-width:1.2; }
+    .store { fill:var(--store); stroke:var(--muted); stroke-width:1.2; }
+    .optional { stroke-dasharray:4,4; }
+    .edge { fill:none; stroke:var(--muted); stroke-width:1.2; }
+    .mask { fill:var(--paper); }
+    figcaption { font-size:16px; padding:16px 40px; line-height:1.7; }
+  </style>
+</head>
+<body><main>
+  <figure>
+    <svg id="architecture" viewBox="0 0 720 976" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="architecture-title architecture-desc">
+      <title id="architecture-title">CLI와 MCP가 공유하는 로컬 구조</title>
+      <desc id="architecture-desc">CLI와 MCP는 같은 서비스와 typed core를 사용하며, 소스 읽기는 Camofox adapter로, 주문과 가격 저장은 SQLite repository로 분리합니다. 화살표는 응답이 아닌 호출 방향입니다.</desc>
+      <defs>
+        <marker id="architecture-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+        <marker id="architecture-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+        <marker id="architecture-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#2e5aa8"/></marker>
+      </defs>
+      <rect width="720" height="976" fill="#faf9f6"/>
+      <text x="40" y="64" class="heading">터미널과 AI, 같은 규칙</text>
+      <text x="40" y="112" class="sub">일상용 브라우저와 분리된 로컬 도구</text>
+      <g class="edge" marker-end="url(#architecture-arrow)">
+        <path d="M 180 288 V 320 Q 180 328 188 328 H 272 Q 280 328 280 336 V 368"/>
+        <path d="M 540 288 V 320 Q 540 328 532 328 H 448 Q 440 328 440 336 V 368"/>
+        <path d="M 280 472 V 504 Q 280 512 272 512 H 188 Q 180 512 180 520 V 552"/>
+        <path d="M 440 472 V 504 Q 440 512 448 512 H 532 Q 540 512 540 520 V 552"/>
+        <path d="M 180 664 V 704 Q 180 712 188 712 H 352 Q 360 712 360 720 V 792" stroke-dasharray="4,4"/>
+      </g>
+      <g class="node" transform="translate(40,184)"><rect class="box" width="280" height="104" rx="4"/><text x="140" y="44" text-anchor="middle" class="name">터미널 · CLI</text><text x="140" y="80" text-anchor="middle" class="code">internal/cli</text></g>
+      <g class="node" transform="translate(400,184)"><rect class="box" width="280" height="104" rx="4"/><text x="140" y="44" text-anchor="middle" class="name">AI · MCP</text><text x="140" y="80" text-anchor="middle" class="code">internal/mcpserver</text></g>
+      <g class="node" transform="translate(160,368)"><rect class="focus" width="400" height="104" rx="4"/><text x="200" y="44" text-anchor="middle" class="name">공통 서비스 · typed core</text><text x="200" y="84" text-anchor="middle" class="sub">조건 검증 · 계산 · 오류 계약</text></g>
+      <g class="node" transform="translate(40,552)"><rect class="box" width="280" height="112" rx="4"/><text x="140" y="44" text-anchor="middle" class="name">Camofox adapter</text><text x="140" y="88" text-anchor="middle" class="sub">전용 런타임</text></g>
+      <g class="node" transform="translate(400,552)"><rect class="store" width="280" height="112" rx="4"/><text x="140" y="44" text-anchor="middle" class="name">SQLite repository</text><text x="140" y="88" text-anchor="middle" class="sub">주문 · 가격 관찰</text></g>
+      <rect x="368" y="732" width="148" height="40" class="mask"/><text x="376" y="764" class="sub">소스 읽기</text>
+      <g class="node" transform="translate(160,792)"><rect class="input" width="400" height="88" rx="4"/><text x="200" y="56" text-anchor="middle" class="name">쿠팡 · 외부 소스</text></g>
+      <line x1="40" y1="912" x2="680" y2="912" stroke="#bfc0c0"/>
+      <text x="40" y="952" class="sub">실선: 로컬 호출 · 점선: 소스 읽기</text>
+    </svg>
+    <figcaption>호출 방향을 요약한 구조입니다. 브라우저가 필요 없는 통계·상태·보고서 렌더링은 소스 조회와 분리합니다. 인증이 필요해도 조회 중 창을 임의로 열지 않습니다.</figcaption>
+  </figure>
+  <figure>
+    <svg id="recommendation" viewBox="0 0 720 1256" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="recommendation-title recommendation-desc">
+      <title id="recommendation-title">추천은 검색 필터와 상세 근거를 연결합니다</title>
+      <desc id="recommendation-desc">요청 조건, 기본 검색과 필터 발견, 필터 적용 검증, 정확한 판매 옵션의 상세 조사를 거쳐 필수 조건을 재계산합니다. 충족 후보와 제외·미확인 이유를 보고서에 함께 남깁니다.</desc>
+      <defs>
+        <marker id="recommendation-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+        <marker id="recommendation-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+        <marker id="recommendation-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#2e5aa8"/></marker>
+      </defs>
+      <rect width="720" height="1256" fill="#faf9f6"/>
+      <text x="40" y="64" class="heading">검색보다 중요한, 검증의 과정</text>
+      <text x="40" y="112" class="sub">검색 필터만으로 추천을 확정하지 않습니다.</text>
+      <g class="edge" marker-end="url(#recommendation-arrow)">
+        <path d="M 360 232 V 272"/><path d="M 360 360 V 400"/><path d="M 360 496 V 536"/><path d="M 360 632 V 688"/>
+        <path d="M 200 752 H 188 Q 180 752 180 760 V 896" stroke-dasharray="4,4"/>
+        <path d="M 520 752 H 532 Q 540 752 540 760 V 896"/>
+        <path d="M 180 1008 V 1040 Q 180 1048 188 1048 H 288 Q 296 1048 296 1056 V 1088" stroke-dasharray="4,4"/>
+        <path d="M 540 1008 V 1040 Q 540 1048 532 1048 H 432 Q 424 1048 424 1056 V 1088"/>
+      </g>
+      <g class="node" transform="translate(160,144)"><rect class="input" width="400" height="88" rx="20"/><text x="200" y="36" text-anchor="middle" class="name">요청을 조건으로</text><text x="200" y="72" text-anchor="middle" class="sub">예산 · 용도 · 명시한 선호</text></g>
+      <g class="node" transform="translate(160,272)"><rect class="box" width="400" height="88" rx="4"/><text x="200" y="36" text-anchor="middle" class="name">기본 검색 · 필터 발견</text><text x="200" y="72" text-anchor="middle" class="sub">현재 카테고리의 선택지</text></g>
+      <g class="node" transform="translate(160,400)"><rect class="box" width="400" height="96" rx="4"/><text x="200" y="40" text-anchor="middle" class="name">필터 선택 · 적용 확인</text><text x="200" y="80" text-anchor="middle" class="sub">바뀐 선택지는 다시 확인</text></g>
+      <g class="node" transform="translate(160,536)"><rect class="box" width="400" height="96" rx="4"/><text x="200" y="40" text-anchor="middle" class="name">정확한 판매 옵션 조사</text><text x="200" y="80" text-anchor="middle" class="sub">가격 · 옵션 · 누락 근거</text></g>
+      <polygon points="360,688 520,752 360,816 200,752" class="focus"/>
+      <text x="360" y="764" text-anchor="middle" class="name">필수 조건 충족?</text>
+      <rect x="188" y="836" width="204" height="40" class="mask"/><text x="196" y="868" class="sub">불충족·미확인</text>
+      <rect x="548" y="836" width="88" height="40" class="mask"/><text x="556" y="868" class="sub">충족</text>
+      <g class="node" transform="translate(40,896)"><rect class="box optional" width="280" height="112" rx="4"/><text x="140" y="44" text-anchor="middle" class="name">제외 · 보류</text><text x="140" y="88" text-anchor="middle" class="sub">이유와 누락 보존</text></g>
+      <g class="node" transform="translate(400,896)"><rect class="box" width="280" height="112" rx="4"/><text x="140" y="44" text-anchor="middle" class="name">조건부 후보</text><text x="140" y="88" text-anchor="middle" class="sub">선택 이유 · 한계</text></g>
+      <g class="node" transform="translate(160,1088)"><rect class="input" width="400" height="88" rx="20"/><text x="200" y="36" text-anchor="middle" class="name">근거가 남는 리포트</text><text x="200" y="72" text-anchor="middle" class="sub">관찰 / 계산 / 추론 구분</text></g>
+      <line x1="40" y1="1200" x2="680" y2="1200" stroke="#bfc0c0"/>
+      <text x="40" y="1236" class="sub">실선: 조사 · 점선: 제외·보류</text>
+    </svg>
+    <figcaption>추천 개수는 좋은 선택의 근거가 아닙니다. 표시 수와 조사 예산은 다르며, complete는 제한된 조사의 완료이지 전체 시장 최고 제품이나 사용자 적합성의 보증이 아닙니다. 이 그림은 기능 흐름이며 특정 상품의 실행 기록이 아닙니다.</figcaption>
+  </figure>
+  <figure>
+    <svg id="orders" viewBox="0 0 720 1120" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="orders-title orders-desc">
+      <title id="orders-title">주문 미리보기와 로컬 분석의 분리</title>
+      <desc id="orders-desc">orders preview는 첫 페이지만 비공개로 반환하고 주문 DB를 열지 않습니다. orders sync는 정규화한 주문과 커서를 SQLite에 저장하며 이후 로컬 분석에서 개인 결과와 공개용 리캡을 구분합니다.</desc>
+      <defs>
+        <marker id="orders-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+        <marker id="orders-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+        <marker id="orders-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#2e5aa8"/></marker>
+      </defs>
+      <rect width="720" height="1120" fill="#faf9f6"/>
+      <text x="40" y="64" class="heading">지금 확인하거나, 모아 분석하거나</text>
+      <text x="40" y="112" class="sub">새 조회와 저장된 이력을 구분합니다.</text>
+      <g class="edge" marker-end="url(#orders-arrow)">
+        <path d="M 280 248 V 280 Q 280 288 272 288 H 188 Q 180 288 180 296 V 328"/>
+        <path d="M 440 248 V 280 Q 440 288 448 288 H 532 Q 540 288 540 296 V 328"/>
+        <path d="M 180 440 V 504"/><path d="M 540 440 V 504"/>
+        <path d="M 540 616 V 688" stroke-dasharray="4,4"/>
+        <path d="M 468 800 V 832 Q 468 840 460 840 H 188 Q 180 840 180 848 V 896" stroke-dasharray="4,4"/>
+        <path d="M 612 800 V 860 Q 612 868 604 868 H 548 Q 540 868 540 876 V 896" stroke-dasharray="4,4"/>
+      </g>
+      <g class="node" transform="translate(160,160)"><rect class="input" width="400" height="88" rx="20"/><text x="200" y="56" text-anchor="middle" class="name">내가 선택한 주문 조회</text></g>
+      <g class="node" transform="translate(40,328)"><rect class="box" width="280" height="112" rx="4"/><text x="140" y="44" text-anchor="middle" class="name">지금 한 페이지만</text><text x="140" y="84" text-anchor="middle" class="code">orders preview</text></g>
+      <g class="node" transform="translate(400,328)"><rect class="box" width="280" height="112" rx="4"/><text x="140" y="44" text-anchor="middle" class="name">모아서 분석</text><text x="140" y="84" text-anchor="middle" class="code">orders sync</text></g>
+      <g class="node" transform="translate(40,504)"><rect class="input" width="280" height="112" rx="20"/><text x="140" y="44" text-anchor="middle" class="name">비공개 응답</text><text x="140" y="88" text-anchor="middle" class="sub">주문 DB 미사용</text></g>
+      <g class="node" transform="translate(400,504)"><rect class="focus" width="280" height="112" rx="4"/><text x="140" y="44" text-anchor="middle" class="name">로컬 SQLite</text><text x="140" y="88" text-anchor="middle" class="sub">정규화 주문·커서</text></g>
+      <g class="node" transform="translate(400,688)"><rect class="box" width="280" height="112" rx="4"/><text x="140" y="44" text-anchor="middle" class="name">로컬 분석</text><text x="140" y="88" text-anchor="middle" class="sub">수집 범위로 계산</text></g>
+      <g class="node" transform="translate(40,896)"><rect class="store" width="280" height="112" rx="4"/><text x="140" y="44" text-anchor="middle" class="name">개인 분석 결과</text><text x="140" y="84" text-anchor="middle" class="code">private_local</text></g>
+      <g class="node" transform="translate(400,896)"><rect class="store" width="280" height="112" rx="4"/><text x="140" y="44" text-anchor="middle" class="name">공유용 리캡</text><text x="140" y="84" text-anchor="middle" class="code">public_safe</text></g>
+      <line x1="40" y1="1048" x2="680" y2="1048" stroke="#bfc0c0"/>
+      <text x="40" y="1088" class="sub">실선: 조회·저장 · 점선: 로컬 분석</text>
+    </svg>
+    <figcaption>로그인 확인, DB와 계정의 연결, 전체 구매 이력 확보는 별개입니다. 수집 기간·누락·마지막 동기화를 확인해야 합니다. 공개형 리캡은 상품명과 정확한 날짜를 제외하며, 구매 맥락이 포함된 추천 보고서는 비공개입니다.</figcaption>
+  </figure>
+  <!-- FONT_LICENSE -->
+</main></body>
+</html>
