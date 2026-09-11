@@ -13,8 +13,9 @@ import (
 )
 
 type SQLite struct {
-	db  *sql.DB
-	now func() time.Time
+	db   *sql.DB
+	now  func() time.Time
+	path string
 }
 
 func Open(ctx context.Context, path string) (*SQLite, error) {
@@ -40,7 +41,7 @@ func Open(ctx context.Context, path string) (*SQLite, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 	db.SetMaxOpenConns(1)
-	store := &SQLite{db: db, now: time.Now}
+	store := &SQLite{db: db, now: time.Now, path: path}
 	if err := store.migrate(ctx); err != nil {
 		db.Close()
 		return nil, err
@@ -122,6 +123,7 @@ func (s *SQLite) migrate(ctx context.Context) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS orders_purchased_at_idx ON orders(purchased_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS order_items_product_idx ON order_items(vendor_item_id, product_id)`,
+		`CREATE INDEX IF NOT EXISTS order_items_product_context_idx ON order_items(product_id, vendor_item_id, order_ref)`,
 		`INSERT OR IGNORE INTO schema_migrations(version, applied_at)
 		 VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`,
 		`CREATE TABLE IF NOT EXISTS sync_checkpoint (
@@ -297,7 +299,19 @@ func (s *SQLite) migrate(ctx context.Context) error {
 		VALUES (13, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`); err != nil {
 		return fmt.Errorf("record sync acquisition evidence migration: %w", err)
 	}
-	return nil
+	if err := s.migratePriceEvidence(ctx); err != nil {
+		return err
+	}
+	if err := s.migrateSyncObservations(ctx); err != nil {
+		return err
+	}
+	if err := s.migrateSyncCoverage(ctx); err != nil {
+		return err
+	}
+	if err := s.migrateSyncScans(ctx); err != nil {
+		return err
+	}
+	return s.migrateSyncScanSupersession(ctx)
 }
 
 func (s *SQLite) ensureColumn(ctx context.Context, table, column, definition string) error {

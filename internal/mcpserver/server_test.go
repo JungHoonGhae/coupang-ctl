@@ -24,19 +24,7 @@ func (p *capturingAuthRecoveryProvider) Recover(_ context.Context, request core.
 	return p.result, nil
 }
 
-type fixedCurrentBrowserStatusProvider struct {
-	status core.CurrentBrowserStatus
-}
-
-func (f fixedCurrentBrowserStatusProvider) Status(context.Context) (core.CurrentBrowserStatus, error) {
-	return f.status, nil
-}
-
 type fixedOrderProvider struct{}
-
-type capturingOrdinaryOrderProvider struct {
-	request core.SyncRequest
-}
 
 type fixedProductProvider struct{}
 
@@ -68,9 +56,10 @@ func (fixedReceiptProvider) Vendor(_ context.Context, request core.VendorReceipt
 }
 
 func (fixedAccountProvider) Snapshot(_ context.Context, request core.AccountBenefitsRequest) (core.AccountBenefitsSnapshot, error) {
+	isMember := true
 	return core.AccountBenefitsSnapshot{
 		SchemaVersion: 1,
-		Membership:    core.WowMembership{Status: "MEMBER", IsMember: true},
+		Membership:    core.WowMembership{Status: "MEMBER", IsMember: &isMember},
 		Coverage:      core.AccountBenefitsCoverage{CashTransactionPagesRead: request.MaxCashTransactionPages},
 	}, nil
 }
@@ -84,7 +73,7 @@ func (fixedProductProvider) Inspect(_ context.Context, request core.ProductInspe
 }
 
 func (fixedProductProvider) PriceHistory(_ context.Context, request core.ProductPriceHistoryRequest) (core.ProductPriceHistory, error) {
-	return core.ProductPriceHistory{SchemaVersion: 1, Visibility: "private_local", ProductID: request.ProductID, ObservationCount: 2}, nil
+	return core.ProductPriceHistory{SchemaVersion: core.PriceHistorySchemaVersion, Visibility: "private_local", ProductID: request.ProductID, ObservationCount: 2}, nil
 }
 
 func (fixedProductProvider) AddPriceWatch(_ context.Context, request core.ProductWatchRequest) (core.ProductWatchMutationResult, error) {
@@ -123,11 +112,6 @@ func (fixedOrderProvider) SyncStatus(context.Context) (core.SyncStatus, error) {
 	}, nil
 }
 
-func (provider *capturingOrdinaryOrderProvider) Sync(_ context.Context, request core.SyncRequest) (core.SyncResult, error) {
-	provider.request = request
-	return core.SyncResult{Complete: true, PagesProcessed: 2}, nil
-}
-
 func (fixedOrderProvider) EnrichCategories(context.Context, core.CategoryEnrichmentRequest) (core.CategoryEnrichmentResult, error) {
 	return core.CategoryEnrichmentResult{Complete: true}, nil
 }
@@ -163,7 +147,8 @@ func (fixedOrderProvider) Spend(context.Context, core.OrderFilter) (core.SpendSu
 }
 
 func (fixedOrderProvider) Stats(context.Context, core.OrderFilter) (core.OrderStats, error) {
-	return core.OrderStats{OrderCount: 2, ReturnedUnits: 1, ReturnedUnitRate: 0.5}, nil
+	rate := 0.5
+	return core.OrderStats{OrderCount: 2, ReturnedUnits: 1, ReturnedUnitRate: &rate}, nil
 }
 
 func (fixedOrderProvider) Insights(context.Context, core.OrderFilter) (core.ShoppingInsights, error) {
@@ -251,125 +236,6 @@ func TestOrdersSyncStatusToolReturnsLatestLocalAcquisitionEvidence(t *testing.T)
 	}
 	if got.State != core.SyncRunCompleted || got.Source != core.SyncSourceDedicatedBrowser || !got.HistoryComplete || got.Provenance != core.SyncProvenanceObservedStructuredOrderDocument {
 		t.Fatalf("unexpected sync status: %#v", got)
-	}
-}
-
-func TestOrdinaryBrowserOrderSyncToolUsesItsDedicatedTypedProvider(t *testing.T) {
-	ctx := context.Background()
-	ordinary := &capturingOrdinaryOrderProvider{}
-	server := NewWithProviders(Providers{
-		Auth:           fixedStatusProvider{},
-		Orders:         fixedOrderProvider{},
-		OrdinaryOrders: ordinary,
-	}, "v0.1.0-test")
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(ctx, serverTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer serverSession.Close()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	clientSession, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer clientSession.Close()
-
-	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
-		Name: "orders_sync_ordinary_browser", Arguments: map[string]any{"max_pages": 2},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	encoded, _ := json.Marshal(result.StructuredContent)
-	var got core.SyncResult
-	if err := json.Unmarshal(encoded, &got); err != nil {
-		t.Fatal(err)
-	}
-	if !got.Complete || got.PagesProcessed != 2 || ordinary.request.MaxPages != 2 {
-		t.Fatalf("unexpected ordinary-browser sync result: %#v, request=%#v", got, ordinary.request)
-	}
-}
-
-func TestCurrentBrowserOrderSyncToolUsesItsDedicatedTypedProvider(t *testing.T) {
-	ctx := context.Background()
-	current := &capturingOrdinaryOrderProvider{}
-	server := NewWithProviders(Providers{
-		Auth:                 fixedStatusProvider{},
-		Orders:               fixedOrderProvider{},
-		CurrentBrowserOrders: current,
-	}, "v0.1.0-test")
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(ctx, serverTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer serverSession.Close()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	clientSession, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer clientSession.Close()
-
-	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
-		Name: "orders_sync_current_browser", Arguments: map[string]any{"max_pages": 2},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	encoded, _ := json.Marshal(result.StructuredContent)
-	var got core.SyncResult
-	if err := json.Unmarshal(encoded, &got); err != nil {
-		t.Fatal(err)
-	}
-	if !got.Complete || got.PagesProcessed != 2 || current.request.MaxPages != 2 {
-		t.Fatalf("unexpected current-browser sync result: %#v, request=%#v", got, current.request)
-	}
-}
-
-func TestCurrentBrowserStatusToolReturnsPassiveTypedReadiness(t *testing.T) {
-	ctx := context.Background()
-	want := core.CurrentBrowserStatus{
-		SchemaVersion:              core.CurrentBrowserStatusSchemaVersion,
-		State:                      core.CurrentBrowserNotEnabled,
-		Browser:                    "Synthetic Chrome",
-		EndpointAvailable:          false,
-		ConnectionApprovalVerified: false,
-		CheckedAt:                  time.Date(2026, time.September, 3, 9, 0, 0, 0, time.UTC),
-		NextAction:                 "enable remote debugging at chrome://inspect/#remote-debugging, keep Chrome running, then retry",
-	}
-	server := NewWithProviders(Providers{
-		Auth:                 fixedStatusProvider{},
-		CurrentBrowserStatus: fixedCurrentBrowserStatusProvider{status: want},
-	}, "v0.1.0-test")
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(ctx, serverTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer serverSession.Close()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	clientSession, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer clientSession.Close()
-
-	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: "current_browser_status"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.IsError {
-		t.Fatalf("tool returned an error: %#v", result.Content)
-	}
-	encoded, _ := json.Marshal(result.StructuredContent)
-	var got core.CurrentBrowserStatus
-	if err := json.Unmarshal(encoded, &got); err != nil {
-		t.Fatal(err)
-	}
-	if got != want {
-		t.Fatalf("status = %#v, want %#v", got, want)
 	}
 }
 
@@ -461,7 +327,7 @@ func TestAccountBenefitsToolUsesTypedPrivateLocalResponse(t *testing.T) {
 	if err := json.Unmarshal(encoded, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !got.Membership.IsMember || got.Coverage.CashTransactionPagesRead != 7 {
+	if got.Membership.IsMember == nil || !*got.Membership.IsMember || got.Coverage.CashTransactionPagesRead != 7 {
 		t.Fatalf("unexpected account tool response: %#v", got)
 	}
 }

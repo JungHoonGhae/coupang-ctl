@@ -15,10 +15,10 @@ func TestBuildShoppingProfileProducesDeterministicFourAxisTypeAndBadges(t *testi
 		ActiveMonthCount:           20,
 		LongestActiveMonthStreak:   18,
 		MaxOrdersInOneDay:          5,
-		NightOrderRate:             0.15,
-		LateEveningOrderRate:       0.25,
+		NightOrderRate:             observedRate(0.15),
+		LateEveningOrderRate:       observedRate(0.25),
 		PeakPurchaseHourKST:        core.CountBucket{Key: "21", Count: 20},
-		DeliveredWithin24HoursRate: 0.65,
+		DeliveredWithin24HoursRate: observedRate(0.65),
 		RepeatPurchases: core.RepeatPurchaseInsights{
 			IdentifiedProductCount:             90,
 			RepeatProductCount:                 10,
@@ -65,7 +65,7 @@ func TestBuildShoppingProfileMarksMissingAxesInsteadOfInventingAType(t *testing.
 func TestFourProfileAxesUsePublishedThresholds(t *testing.T) {
 	base := core.ShoppingInsights{
 		FirstOrderDate: "2026-01-01", LastOrderDate: "2026-12-31", OrderCount: 12,
-		NightOrderRate: 0.2, LateEveningOrderRate: 0.3,
+		NightOrderRate: observedRate(0.2), LateEveningOrderRate: observedRate(0.3),
 		PurchaseTiming:  core.PurchaseTimingInsights{Clumpiness: 0.2, UniformNullMedian: 0.2, PurchaseDays: 20, ObservationDays: 365},
 		RepeatPurchases: core.RepeatPurchaseInsights{PurchaseOccasionCount: 20, RepeatChoiceCount: 10, RepeatChoiceRate: 0.5, ProductIDCoverage: 0.7},
 		Basket:          core.BasketInsights{RetainedOrderCount: 10, CompositionOrderCount: 10, SingleProductOrderCount: 5, SingleProductOrderRate: 0.5},
@@ -77,7 +77,7 @@ func TestFourProfileAxesUsePublishedThresholds(t *testing.T) {
 
 	below := base
 	below.PurchaseTiming.Clumpiness = 0.199
-	below.LateEveningOrderRate = 0.299
+	below.LateEveningOrderRate = observedRate(0.299)
 	below.RepeatPurchases.RepeatChoiceRate = 0.499
 	below.Basket.SingleProductOrderRate = 0.499
 	if got := insights.BuildShoppingProfile(below).Code; got != "SDFT" {
@@ -92,4 +92,28 @@ func hasBadge(badges []core.ShoppingBadge, id string) bool {
 		}
 	}
 	return false
+}
+
+func observedRate(value float64) *float64 { return &value }
+
+func TestMissingRateDoesNotInventClockTypeOrDeliveryBadge(t *testing.T) {
+	input := core.ShoppingInsights{Samples: core.InsightSampleSizes{TimedOrders: 100, DeliveryEvents: 100}, PurchaseTiming: core.PurchaseTimingInsights{ObservationDays: 365}}
+	for _, night := range []*float64{nil, observedRate(0)} {
+		input.NightOrderRate = night
+		profile := insights.BuildShoppingProfile(input)
+		for _, axis := range profile.Axes {
+			if axis.ID == "clock" && (axis.Ready || axis.SelectedCode != "?") {
+				t.Fatal("missing clock rate treated as daytime preference")
+			}
+		}
+		if hasBadge(profile.Badges, "delivery_speedrun") {
+			t.Fatal("missing delivery rate produced badge")
+		}
+	}
+	input.LateEveningOrderRate = observedRate(0)
+	for _, axis := range insights.BuildShoppingProfile(input).Axes {
+		if axis.ID == "clock" && (!axis.Ready || axis.SelectedCode != "D") {
+			t.Fatal("observed zero lost its daytime interpretation")
+		}
+	}
 }

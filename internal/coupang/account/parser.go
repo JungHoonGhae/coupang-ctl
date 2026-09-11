@@ -3,6 +3,7 @@ package account
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -10,7 +11,7 @@ import (
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
 
-var ErrAccountBenefitsDataMissing = errors.New("structured account benefits data missing")
+var ErrAccountBenefitsDataMissing = core.WithErrorCode("structured_account_benefits_data_missing", errors.New("structured account benefits data missing"))
 
 type snapshotDocument struct {
 	Membership           json.RawMessage   `json:"membership"`
@@ -48,15 +49,15 @@ type loyaltyMemberInfo struct {
 		MembershipEndDt   int64 `json:"membershipEndDt"`
 	} `json:"membershipInfoVO"`
 	PaymentProperty struct {
-		UnitAmount    int64 `json:"unitAmount"`
-		NextPaymentDt int64 `json:"nextPaymentDt"`
+		UnitAmount    *int64 `json:"unitAmount"`
+		NextPaymentDt int64  `json:"nextPaymentDt"`
 	} `json:"paymentProperty"`
-	MembershipOnHold bool  `json:"membershipOnHold"`
-	PaidMember       bool  `json:"paidMember"`
-	TrialMember      bool  `json:"trialMember"`
-	NotMember        bool  `json:"notMember"`
-	CurrentFee       int64 `json:"currentFee"`
-	NextPaymentDate  int64 `json:"nextPaymentDate"`
+	MembershipOnHold *bool  `json:"membershipOnHold"`
+	PaidMember       *bool  `json:"paidMember"`
+	TrialMember      *bool  `json:"trialMember"`
+	NotMember        *bool  `json:"notMember"`
+	CurrentFee       *int64 `json:"currentFee"`
+	NextPaymentDate  int64  `json:"nextPaymentDate"`
 }
 
 type paymentMethod struct {
@@ -66,37 +67,37 @@ type paymentMethod struct {
 		PayMethodAccount string `json:"payMethodAccount"`
 		PayMethodIssuer  string `json:"payMethodIssuer"`
 	} `json:"paymentMethodDTO"`
-	RecurringPayRegistered bool `json:"recurringPayRegistered"`
+	RecurringPayRegistered *bool `json:"recurringPayRegistered"`
 }
 
 type benefitUsage struct {
-	MembershipDays                int   `json:"membershipDays"`
-	TotalAmount                   int64 `json:"totalAmount"`
-	RocketFreeDeliveryAmount      int64 `json:"rocketFreeDeliveryAmount"`
-	DawnAndSamedayDeliveryAmount  int64 `json:"dawnAndSamedayDeliveryAmount"`
-	FreshDeliveryAmount           int64 `json:"freshDeliveryAmount"`
-	FreeDeliveryTotalAmount       int64 `json:"freeDeliveryTotalAmount"`
-	WowOnlyDiscountAmount         int64 `json:"wowOnlyDiscountAmount"`
-	FreeReturnAmount              int64 `json:"freeReturnAmount"`
-	RocketJikguFreeDeliveryAmount int64 `json:"rocketJikguFreeDeliveryAmount"`
-	EatsDiscountAmount            int64 `json:"eatsDiscountAmount"`
-	CoupangDiscountAmount         int64 `json:"coupangDiscountAmount"`
-	AdditionalCashbackAmount      int64 `json:"additionalCashbackAmount"`
-	RetentionCashback             int64 `json:"retentionCashback"`
-	RetailFreeShippingCount       int   `json:"retailFreeShippingCount"`
-	OrdersDawnAndSamedayCount     int   `json:"ordersDawnAndSamedayCount"`
-	OrdersRocketFreshCount        int   `json:"ordersRocketFreshCount"`
-	FreeReturnCount               int   `json:"freeReturnCount"`
-	JikguFreeShippingCount        int   `json:"jikguFreeShippingCount"`
+	MembershipDays                *int   `json:"membershipDays"`
+	TotalAmount                   *int64 `json:"totalAmount"`
+	RocketFreeDeliveryAmount      *int64 `json:"rocketFreeDeliveryAmount"`
+	DawnAndSamedayDeliveryAmount  *int64 `json:"dawnAndSamedayDeliveryAmount"`
+	FreshDeliveryAmount           *int64 `json:"freshDeliveryAmount"`
+	FreeDeliveryTotalAmount       *int64 `json:"freeDeliveryTotalAmount"`
+	WowOnlyDiscountAmount         *int64 `json:"wowOnlyDiscountAmount"`
+	FreeReturnAmount              *int64 `json:"freeReturnAmount"`
+	RocketJikguFreeDeliveryAmount *int64 `json:"rocketJikguFreeDeliveryAmount"`
+	EatsDiscountAmount            *int64 `json:"eatsDiscountAmount"`
+	CoupangDiscountAmount         *int64 `json:"coupangDiscountAmount"`
+	AdditionalCashbackAmount      *int64 `json:"additionalCashbackAmount"`
+	RetentionCashback             *int64 `json:"retentionCashback"`
+	RetailFreeShippingCount       *int   `json:"retailFreeShippingCount"`
+	OrdersDawnAndSamedayCount     *int   `json:"ordersDawnAndSamedayCount"`
+	OrdersRocketFreshCount        *int   `json:"ordersRocketFreshCount"`
+	FreeReturnCount               *int   `json:"freeReturnCount"`
+	JikguFreeShippingCount        *int   `json:"jikguFreeShippingCount"`
 	Improved                      struct {
-		NumbersOrderEats int `json:"numbersOrderEats"`
+		NumbersOrderEats *int `json:"numbersOrderEats"`
 	} `json:"wowBenefitUsageImprovedDtoV2"`
 }
 
 type money struct {
 	CurrencyCode string `json:"currencyCode"`
 	Currency     string `json:"currency"`
-	Amount       int64  `json:"amount"`
+	Amount       *int64 `json:"amount"`
 }
 
 type expectedReward struct {
@@ -114,24 +115,25 @@ type cashSummaryDocument struct {
 
 type cashTransactionPage struct {
 	Content struct {
-		CurrentPageNumber int               `json:"currentPageNumber"`
-		NextPageExist     bool              `json:"nextPageExist"`
+		CurrentPageNumber *int              `json:"currentPageNumber"`
+		NextPageExist     *bool             `json:"nextPageExist"`
 		List              []cashTransaction `json:"list"`
 	} `json:"content"`
 }
 
 type cashTransaction struct {
-	ActionType        string `json:"actionType"`
-	CashableAmount    money  `json:"cashableAmount"`
-	NonCashableAmount money  `json:"nonCashableAmount"`
-	DisplayMessage    string `json:"displayMessage"`
-	Description       string `json:"description"`
-	CreatedAt         string `json:"createdAt"`
+	SourceWowCardLabel *bool  `json:"source_wow_card_label"`
+	ActionType         string `json:"actionType"`
+	CashableAmount     money  `json:"cashableAmount"`
+	NonCashableAmount  money  `json:"nonCashableAmount"`
+	DisplayMessage     string `json:"displayMessage"`
+	Description        string `json:"description"`
+	CreatedAt          string `json:"createdAt"`
 }
 
 func ParseSnapshotDocument(document []byte) (core.AccountBenefitsSnapshot, error) {
 	var raw snapshotDocument
-	if len(document) == 0 || !json.Valid(document) || json.Unmarshal(document, &raw) != nil || len(raw.Membership) == 0 {
+	if len(document) == 0 || len(document) > 4<<20 || !json.Valid(document) || json.Unmarshal(document, &raw) != nil || len(raw.Membership) == 0 {
 		return core.AccountBenefitsSnapshot{}, ErrAccountBenefitsDataMissing
 	}
 	var membership membershipDocument
@@ -162,21 +164,32 @@ func ParseSnapshotDocument(document []byte) (core.AccountBenefitsSnapshot, error
 	}
 	info := data.LoyaltyMemberInfo
 	fee := info.CurrentFee
-	if fee == 0 {
+	if fee == nil {
 		fee = info.PaymentProperty.UnitAmount
+	}
+	if !nonNegative(fee) || !data.WowBenefitUsage.valid() {
+		return core.AccountBenefitsSnapshot{}, ErrAccountBenefitsDataMissing
 	}
 	nextPayment := info.NextPaymentDate
 	if nextPayment == 0 {
 		nextPayment = info.PaymentProperty.NextPaymentDt
 	}
 	result.Membership = core.WowMembership{
-		Status: info.MembershipStatus, IsMember: !info.NotMember,
+		Status:       info.MembershipStatus,
 		IsPaidMember: info.PaidMember, IsTrialMember: info.TrialMember, IsOnHold: info.MembershipOnHold,
-		SubscriptionPlan: info.SubscriptionPlan, CurrentMonthlyFeeKRW: fee,
+		SubscriptionPlan:    info.SubscriptionPlan,
 		SourceFeeChangeDate: dateFromMillis(data.LoyaltyFeeChangeDate),
 		FirstJoinDate:       dateFromMillis(info.FirstJoinDt), CurrentPeriodStart: dateFromMillis(info.MembershipInfoVO.MembershipStartDt),
 		CurrentPeriodEnd: dateFromMillis(info.MembershipInfoVO.MembershipEndDt), NextPaymentDate: dateFromMillis(nextPayment),
 		MembershipDays: data.WowBenefitUsage.MembershipDays, BillingMethod: normalizePaymentMethod(data.PaymentMethod),
+	}
+	if info.NotMember != nil {
+		isMember := !*info.NotMember
+		result.Membership.IsMember = &isMember
+	}
+	if fee != nil {
+		result.Membership.CurrentMonthlyFeeKRW = *fee
+		result.Coverage.CurrentMembershipFeeObserved = true
 	}
 	result.PaymentMethods = normalizePaymentMethods(data.PaymentMethods)
 	result.OrderPayments = core.OrderPaymentStatistics{
@@ -189,7 +202,7 @@ func ParseSnapshotDocument(document []byte) (core.AccountBenefitsSnapshot, error
 	}
 	benefit := data.WowBenefitUsage
 	result.BenefitUsage = core.WowBenefitUsage{
-		Source: "coupang_wow_management", WindowStatus: "unavailable", TotalObservedSavingsKRW: benefit.TotalAmount,
+		Source: "coupang_wow_management", WindowStatus: "unavailable",
 		RocketFreeDeliveryKRW: benefit.RocketFreeDeliveryAmount, DawnAndSameDayDeliveryKRW: benefit.DawnAndSamedayDeliveryAmount,
 		FreshDeliveryKRW: benefit.FreshDeliveryAmount, FreeDeliveryTotalKRW: benefit.FreeDeliveryTotalAmount,
 		WowOnlyDiscountKRW: benefit.WowOnlyDiscountAmount, FreeReturnKRW: benefit.FreeReturnAmount,
@@ -206,10 +219,15 @@ func ParseSnapshotDocument(document []byte) (core.AccountBenefitsSnapshot, error
 		result.BenefitUsage.WindowMonths = 3
 	}
 	result.Coverage.MembershipStateObserved = true
-	result.Coverage.BenefitUsageObserved = benefit.TotalAmount > 0 || benefit.MembershipDays > 0
+	if benefit.TotalAmount != nil {
+		result.BenefitUsage.TotalObservedSavingsKRW = *benefit.TotalAmount
+		result.Coverage.BenefitUsageObserved = true
+	}
 	result.Coverage.PaymentMethodsObserved = len(result.PaymentMethods) > 0 || result.Membership.BillingMethod.Type != ""
 	parseCashSummary(raw.CashSummary, &result)
-	parseCashTransactions(raw.CashTransactionPages, &result)
+	if err := parseCashTransactions(raw.CashTransactionPages, &result); err != nil {
+		return core.AccountBenefitsSnapshot{}, err
+	}
 	result.NetValue = core.MembershipNetValue{
 		ObservedBenefitKRW: result.BenefitUsage.TotalObservedSavingsKRW,
 		Status:             "not_computed_unaligned_windows",
@@ -225,6 +243,24 @@ func ParseSnapshotDocument(document []byte) (core.AccountBenefitsSnapshot, error
 	return result, nil
 }
 
+func nonNegative[T ~int | ~int64](values ...*T) bool {
+	for _, value := range values {
+		if value != nil && *value < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func (v benefitUsage) valid() bool {
+	return nonNegative(v.TotalAmount, v.RocketFreeDeliveryAmount, v.DawnAndSamedayDeliveryAmount,
+		v.FreshDeliveryAmount, v.FreeDeliveryTotalAmount, v.WowOnlyDiscountAmount, v.FreeReturnAmount,
+		v.RocketJikguFreeDeliveryAmount, v.EatsDiscountAmount, v.CoupangDiscountAmount,
+		v.AdditionalCashbackAmount, v.RetentionCashback) &&
+		nonNegative(v.MembershipDays, v.RetailFreeShippingCount, v.OrdersDawnAndSamedayCount,
+			v.OrdersRocketFreshCount, v.FreeReturnCount, v.JikguFreeShippingCount, v.Improved.NumbersOrderEats)
+}
+
 func parseCashSummary(document json.RawMessage, result *core.AccountBenefitsSnapshot) {
 	if len(document) == 0 {
 		return
@@ -233,37 +269,60 @@ func parseCashSummary(document json.RawMessage, result *core.AccountBenefitsSnap
 	if json.Unmarshal(document, &raw) != nil {
 		return
 	}
-	result.CardRewards.ExpectedAccumulationKRW = krw(raw.Content.ExpectedWowCardAccumulationAmount)
+	if amount, ok := krw(raw.Content.ExpectedWowCardAccumulationAmount); ok && amount >= 0 {
+		result.CardRewards.ExpectedAccumulationKRW = amount
+		result.Coverage.CardRewardSummaryObserved = true
+	}
 	if raw.Content.ExpectedWowCardAccumulationAmountThisMonth != nil {
-		result.CardRewards.ExpectedThisMonthKRW = krw(raw.Content.ExpectedWowCardAccumulationAmountThisMonth.Amount)
-		result.CardRewards.ExpectedThisMonthEarningDate = raw.Content.ExpectedWowCardAccumulationAmountThisMonth.EarningDate
+		if amount, ok := krw(raw.Content.ExpectedWowCardAccumulationAmountThisMonth.Amount); ok && amount >= 0 {
+			result.CardRewards.ExpectedThisMonthKRW = amount
+			result.Coverage.CardRewardThisMonthObserved = true
+			if _, err := time.Parse(time.DateOnly, raw.Content.ExpectedWowCardAccumulationAmountThisMonth.EarningDate); err == nil {
+				result.CardRewards.ExpectedThisMonthEarningDate = raw.Content.ExpectedWowCardAccumulationAmountThisMonth.EarningDate
+			}
+		}
 	}
 	if raw.Content.ExpectedWowCardAccumulationAmountNextMonth != nil {
-		result.CardRewards.ExpectedNextMonthKRW = krw(raw.Content.ExpectedWowCardAccumulationAmountNextMonth.Amount)
+		if amount, ok := krw(raw.Content.ExpectedWowCardAccumulationAmountNextMonth.Amount); ok && amount >= 0 {
+			result.CardRewards.ExpectedNextMonthKRW = amount
+			result.Coverage.CardRewardNextMonthObserved = true
+		}
 	}
-	result.Coverage.CardRewardSummaryObserved = true
 }
 
-func parseCashTransactions(documents []json.RawMessage, result *core.AccountBenefitsSnapshot) {
+func parseCashTransactions(documents []json.RawMessage, result *core.AccountBenefitsSnapshot) error {
+	result.Coverage.CashTransactionStatus = "not_read"
+	if len(documents) > 100 {
+		return ErrAccountBenefitsDataMissing
+	}
 	monthly := map[string]*core.MonthlyCardReward{}
-	for _, document := range documents {
+	for i, document := range documents {
 		var page cashTransactionPage
-		if json.Unmarshal(document, &page) != nil {
-			continue
+		if json.Unmarshal(document, &page) != nil || page.Content.CurrentPageNumber == nil || *page.Content.CurrentPageNumber != i+1 || page.Content.NextPageExist == nil || page.Content.List == nil || len(page.Content.List) > 500 || i > 0 && !result.Coverage.CashTransactionHasMore {
+			return ErrAccountBenefitsDataMissing
 		}
 		result.Coverage.CashTransactionPagesRead++
-		result.Coverage.CashTransactionHasMore = page.Content.NextPageExist
+		result.Coverage.CashTransactionHasMore = *page.Content.NextPageExist
+		result.Coverage.CashTransactionStatus = "complete_returned_pages"
+		if *page.Content.NextPageExist {
+			result.Coverage.CashTransactionStatus = "partial"
+		}
 		for _, transaction := range page.Content.List {
 			if !wowCardTransaction(transaction) {
 				continue
 			}
-			amount := krw(transaction.CashableAmount) + krw(transaction.NonCashableAmount)
+			cashable, cashableOK := krw(transaction.CashableAmount)
+			nonCashable, nonCashableOK := krw(transaction.NonCashableAmount)
+			if !cashableOK || !nonCashableOK || cashable > 0 && nonCashable > math.MaxInt64-cashable || cashable < 0 && nonCashable < math.MinInt64-cashable {
+				return ErrAccountBenefitsDataMissing
+			}
+			amount := cashable + nonCashable
 			if amount <= 0 {
 				continue
 			}
 			date, month := transactionDate(transaction.CreatedAt)
-			if month == "" {
-				continue
+			if month == "" || result.CardRewards.ObservedAccumulationKRW > math.MaxInt64-amount {
+				return ErrAccountBenefitsDataMissing
 			}
 			entry := monthly[month]
 			if entry == nil {
@@ -294,24 +353,35 @@ func parseCashTransactions(documents []json.RawMessage, result *core.AccountBene
 		result.CardRewards.Monthly = []core.MonthlyCardReward{}
 	}
 	if len(months) > 0 {
-		result.CardRewards.AverageMonthlyAccumulationKRW = (result.CardRewards.ObservedAccumulationKRW + int64(len(months))/2) / int64(len(months))
+		total, count := result.CardRewards.ObservedAccumulationKRW, int64(len(months))
+		result.CardRewards.AverageMonthlyAccumulationKRW = total / count
+		if total%count >= (count+1)/2 {
+			result.CardRewards.AverageMonthlyAccumulationKRW++
+		}
 	}
 	result.CardRewards.UsageObserved = result.CardRewards.ObservedTransactionCount > 0 || result.CardRewards.ExpectedAccumulationKRW > 0
+	return nil
 }
 
 func normalizePaymentMethods(values []paymentMethod) []core.PaymentMethodSummary {
 	result := make([]core.PaymentMethodSummary, 0, len(values))
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	for _, value := range values {
 		normalized := normalizePaymentMethod(value)
 		if normalized.Type == "" && normalized.Name == "" {
 			continue
 		}
 		key := normalized.Type + "\x00" + normalized.Name + "\x00" + normalized.Issuer
-		if seen[key] {
+		if index, exists := seen[key]; exists {
+			// Brand/type/issuer are a summary, not a distinct card identity.
+			// Preserve a flag only if every collapsed observation agrees.
+			previous := result[index].RecurringRegistered
+			if previous == nil || normalized.RecurringRegistered == nil || *previous != *normalized.RecurringRegistered {
+				result[index].RecurringRegistered = nil
+			}
 			continue
 		}
-		seen[key] = true
+		seen[key] = len(result)
 		result = append(result, normalized)
 	}
 	return result
@@ -326,6 +396,9 @@ func normalizePaymentMethod(value paymentMethod) core.PaymentMethodSummary {
 }
 
 func wowCardTransaction(value cashTransaction) bool {
+	if value.SourceWowCardLabel != nil {
+		return *value.SourceWowCardLabel
+	}
 	text := strings.ToLower(value.DisplayMessage + " " + value.Description)
 	return strings.Contains(text, "와우카드") || strings.Contains(text, "wow card")
 }
@@ -348,13 +421,16 @@ func dateFromMillis(value int64) string {
 	return time.UnixMilli(value).In(time.FixedZone("KST", 9*60*60)).Format(time.DateOnly)
 }
 
-func krw(value money) int64 {
+func krw(value money) (int64, bool) {
+	if value.Amount == nil || value.CurrencyCode != "" && value.Currency != "" && value.CurrencyCode != value.Currency {
+		return 0, false
+	}
 	currency := value.CurrencyCode
 	if currency == "" {
 		currency = value.Currency
 	}
-	if currency != "" && currency != "KRW" {
-		return 0
+	if currency != "KRW" {
+		return 0, false
 	}
-	return value.Amount
+	return *value.Amount, true
 }

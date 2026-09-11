@@ -14,6 +14,8 @@ type Browser interface {
 	Verify(context.Context) error
 }
 
+const verifiedSessionNextAction = "authentication is verified; account identity, order access and history coverage require separate checks"
+
 func (s *Service) Verify(ctx context.Context) (core.AuthStatus, error) {
 	status, err := s.browser.Inspect(ctx)
 	if err != nil {
@@ -23,17 +25,21 @@ func (s *Service) Verify(ctx context.Context) (core.AuthStatus, error) {
 		return core.AuthStatus{}, err
 	}
 	return core.AuthStatus{
-		State:          core.AuthVerified,
-		Browser:        status.Name,
-		ProfilePresent: true,
-		CheckedAt:      s.now().UTC(),
-		NextAction:     "the read-only browser session is available",
+		VerificationScope: core.AuthVerificationSession,
+		State:             core.AuthVerified,
+		Browser:           status.Name,
+		ProfilePresent:    true,
+		CheckedAt:         s.now().UTC(),
+		NextAction:        verifiedSessionNextAction,
 	}, nil
 }
 
 type BrowserStatus struct {
 	Name           string
 	ProfilePresent bool
+	// An explicit adapter may need recovery within its own profile rather
+	// than the legacy Chrome --headed path. This is a public, static hint.
+	AccessBlockedAction string
 }
 
 type Service struct {
@@ -68,12 +74,16 @@ func (s *Service) Status(ctx context.Context) (core.AuthStatus, error) {
 			case errors.Is(err, core.ErrBrowserAccessDenied):
 				result.State = core.AuthAccessBlocked
 				result.NextAction = "retry later, or explicitly run `coupangctl auth verify --headed` when an interactive check is acceptable"
+				if status.AccessBlockedAction != "" {
+					result.NextAction = status.AccessBlockedAction
+				}
 				return result, nil
 			}
 			return core.AuthStatus{}, err
 		}
 		result.State = core.AuthVerified
-		result.NextAction = "the read-only browser session is available"
+		result.VerificationScope = core.AuthVerificationSession
+		result.NextAction = verifiedSessionNextAction
 	}
 	return result, nil
 }
@@ -91,7 +101,8 @@ func (s *Service) Login(ctx context.Context, request core.LoginRequest) (core.Lo
 		NextAction: "run `coupangctl auth verify` to check the protected read-only session",
 	}
 	result.State = core.AuthVerified
-	result.NextAction = "the protected read-only browser session is available"
+	result.VerificationScope = core.AuthVerificationSession
+	result.NextAction = verifiedSessionNextAction
 	return result, nil
 }
 
@@ -99,15 +110,23 @@ func (s *Service) Login(ctx context.Context, request core.LoginRequest) (core.Lo
 // login is actually necessary. A temporary background access block is not
 // treated as an expired session and therefore never opens a surprise window.
 func (s *Service) Recover(ctx context.Context, request core.AuthRecoveryRequest) (core.AuthRecoveryResult, error) {
+	// An explicitly selected ordinary session owns its interactive lifecycle.
+	// Do not start a different native profile to recover that connection.
+	if selected, ok := s.browser.(interface {
+		RecoverSelectedSession(context.Context, core.AuthRecoveryRequest) (core.AuthRecoveryResult, error)
+	}); ok {
+		return selected.RecoverSelectedSession(ctx, request)
+	}
 	status, err := s.Status(ctx)
 	if err != nil {
 		return core.AuthRecoveryResult{}, err
 	}
 	result := core.AuthRecoveryResult{
-		SchemaVersion: core.AuthRecoverySchemaVersion,
-		BeforeState:   status.State,
-		State:         status.State,
-		NextAction:    status.NextAction,
+		VerificationScope: status.VerificationScope,
+		SchemaVersion:     core.AuthRecoverySchemaVersion,
+		BeforeState:       status.State,
+		State:             status.State,
+		NextAction:        status.NextAction,
 	}
 	if status.State == core.AuthVerified || status.State == core.AuthAccessBlocked {
 		return result, nil
@@ -120,6 +139,7 @@ func (s *Service) Recover(ctx context.Context, request core.AuthRecoveryRequest)
 		return core.AuthRecoveryResult{}, err
 	}
 	result.State = login.State
+	result.VerificationScope = login.VerificationScope
 	result.VisibleBrowserOpened = true
 	result.Mode = login.Mode
 	result.NextAction = login.NextAction

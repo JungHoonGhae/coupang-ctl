@@ -88,6 +88,8 @@ func TestRenderWithPrivateProductsAddsExplicitProductReceipts(t *testing.T) {
 	}
 }
 
+func observedRate(value float64) *float64 { return &value }
+
 func syntheticInsights() core.ShoppingInsights {
 	return core.ShoppingInsights{
 		SchemaVersion:              1,
@@ -103,13 +105,13 @@ func syntheticInsights() core.ShoppingInsights {
 		LongestActiveMonthStreak:   18,
 		PeakPurchaseHourKST:        core.CountBucket{Key: "21", Count: 20},
 		PeakPurchaseWeekday:        core.CountBucket{Key: "tue", Count: 25},
-		NightOrderRate:             0.15,
-		LateEveningOrderRate:       0.25,
-		WeekendOrderRate:           0.3,
-		DeliveredWithin24HoursRate: 0.65,
-		DeliveredWithin48HoursRate: 0.9,
+		NightOrderRate:             observedRate(0.15),
+		LateEveningOrderRate:       observedRate(0.25),
+		WeekendOrderRate:           observedRate(0.3),
+		DeliveredWithin24HoursRate: observedRate(0.65),
+		DeliveredWithin48HoursRate: observedRate(0.9),
 		TopBrand:                   core.CountBucket{Key: "Synthetic private brand", Count: 12},
-		TopBrandShare:              0.12,
+		TopBrandShare:              observedRate(0.12),
 		DeliveryTrend:              core.DeliveryTrendComparison{BaselinePeriod: "2024", LatestPeriod: "2025", AverageHoursDelta: -5, AverageHoursPercentChange: -0.166667, Direction: "faster"},
 		RepeatPurchases: core.RepeatPurchaseInsights{
 			IdentifiedProductCount: 90, RepeatProductCount: 10, RepeatProductRate: 0.111111,

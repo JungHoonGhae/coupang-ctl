@@ -13,7 +13,11 @@ const (
 )
 
 func BuildShoppingProfile(summary core.ShoppingInsights) core.ShoppingProfile {
-	nightScore := clamp(summary.NightOrderRate + summary.LateEveningOrderRate)
+	clockObserved := summary.NightOrderRate != nil && summary.LateEveningOrderRate != nil
+	var nightScore float64
+	if clockObserved {
+		nightScore = clamp(*summary.NightOrderRate + *summary.LateEveningOrderRate)
+	}
 
 	axes := []core.ShoppingProfileAxis{
 		buildAxis(axisInput{
@@ -24,7 +28,7 @@ func BuildShoppingProfile(summary core.ShoppingInsights) core.ShoppingProfile {
 			observationDays: summary.PurchaseTiming.ObservationDays,
 		}),
 		buildAxis(axisInput{
-			id: "clock", ready: summary.Samples.TimedOrders >= 20 && summary.PurchaseTiming.ObservationDays >= 90,
+			id: "clock", ready: clockObserved && summary.Samples.TimedOrders >= 20 && summary.PurchaseTiming.ObservationDays >= 90,
 			highCode: "N", lowCode: "D", metric: "orders_20_to_05_rate",
 			score: nightScore, threshold: 0.5, thresholdBasis: "literal_majority",
 			numerator: summary.Samples.NightWindowOrders, denominator: summary.Samples.TimedOrders,
@@ -112,9 +116,9 @@ func buildBadges(summary core.ShoppingInsights) []core.ShoppingBadge {
 			})
 		}
 	}
-	if summary.Samples.DeliveryEvents >= 10 && summary.DeliveredWithin24HoursRate >= 0.5 {
+	if summary.Samples.DeliveryEvents >= 10 && summary.DeliveredWithin24HoursRate != nil && *summary.DeliveredWithin24HoursRate >= 0.5 {
 		badges = append(badges, core.ShoppingBadge{
-			ID: "delivery_speedrun", Value: summary.DeliveredWithin24HoursRate, Unit: "rate",
+			ID: "delivery_speedrun", Value: *summary.DeliveredWithin24HoursRate, Unit: "rate",
 		})
 	}
 	if summary.RepeatPurchases.MostRepeatedProductPurchaseCount >= 5 {

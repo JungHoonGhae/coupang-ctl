@@ -12,6 +12,11 @@ import (
 // order qualifies only when it has at least one item and every item carries
 // the explicit membership_fee classification.
 func (s *SQLite) MembershipCosts(ctx context.Context) (core.MembershipCostEvidence, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return core.MembershipCostEvidence{}, err
+	}
+	defer tx.Rollback()
 	result := core.MembershipCostEvidence{
 		Status:     "partial_history",
 		Source:     "normalized_order_ledger_explicit_membership_metadata",
@@ -19,13 +24,14 @@ func (s *SQLite) MembershipCosts(ctx context.Context) (core.MembershipCostEviden
 		Limitations: []string{
 			"membership charges absent from the source order history cannot be recovered",
 			"refund settlements outside the normalized order cancellation state are not deducted",
+			"counts describe retained local history, not verified complete coverage of the currently signed-in account",
 		},
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MIN(purchased_at), ''), COALESCE(MAX(purchased_at), '')
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MIN(purchased_at), ''), COALESCE(MAX(purchased_at), '')
 		FROM orders`).Scan(&result.FirstObservedOrderDate, &result.LastObservedOrderDate); err != nil {
 		return core.MembershipCostEvidence{}, fmt.Errorf("read membership-cost order coverage: %w", err)
 	}
-	if err := s.db.QueryRowContext(ctx, `WITH membership_orders AS (
+	if err := tx.QueryRowContext(ctx, `WITH membership_orders AS (
 		SELECT o.source_ref, o.purchased_at, o.total_amount, o.fully_canceled
 		FROM orders o
 		WHERE EXISTS (
@@ -48,23 +54,19 @@ func (s *SQLite) MembershipCosts(ctx context.Context) (core.MembershipCostEviden
 		return core.MembershipCostEvidence{}, fmt.Errorf("summarize normalized membership costs: %w", err)
 	}
 
-	var completedAt, status string
-	var historyComplete int
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(completed_at, ''), status, history_complete
-		FROM sync_runs ORDER BY id DESC LIMIT 1`).Scan(&completedAt, &status, &historyComplete)
-	if err != nil && err != sql.ErrNoRows {
-		return core.MembershipCostEvidence{}, fmt.Errorf("read membership-cost sync coverage: %w", err)
+	status, err := latestSyncStatus(ctx, tx)
+	if err != nil {
+		return core.MembershipCostEvidence{}, err
 	}
-	var checkpointCount int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sync_checkpoint`).Scan(&checkpointCount); err != nil {
-		return core.MembershipCostEvidence{}, fmt.Errorf("read membership-cost checkpoint coverage: %w", err)
-	}
-	result.CompleteHistorySync = err == nil && status == "completed" && historyComplete != 0 && checkpointCount == 0
+	result.CompleteHistorySync = status.HistoryComplete
 	if result.CompleteHistorySync {
 		result.Status = "complete_available_history"
-		result.LastCompleteHistorySyncAt = completedAt
+		result.LastCompleteHistorySyncAt = status.CompletedAt
 	} else if result.FirstObservedOrderDate == "" {
 		result.Status = "no_order_history"
+	}
+	if err := tx.Commit(); err != nil {
+		return core.MembershipCostEvidence{}, err
 	}
 	return result, nil
 }

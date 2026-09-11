@@ -235,7 +235,7 @@ func TestSyncResumesAfterFailureWithoutDuplicates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Complete || result.PagesProcessed != 1 || result.OrdersSeen != 1 {
+	if !result.CursorExhausted || result.Complete || result.PagesProcessed != 1 || result.OrdersSeen != 1 {
 		t.Fatalf("unexpected resumed sync result: %#v", result)
 	}
 	if len(source.seen) != 3 || source.seen[2] != "2026/2" {
@@ -271,7 +271,7 @@ func TestSyncAcceptsAnAlreadyNormalizedPageSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Complete || result.OrdersSeen != 1 || result.ItemsSeen != 1 || result.Source != core.SyncSourceOrdinaryBrowser || len(source.seen) != 1 || source.seen[0] != nil {
+	if !result.CursorExhausted || result.Complete || result.OrdersSeen != 1 || result.ItemsSeen != 1 || result.Source != core.SyncSourceOrdinaryBrowser || len(source.seen) != 1 || source.seen[0] != nil {
 		t.Fatalf("normalized sync result=%#v cursors=%#v", result, source.seen)
 	}
 	stored, err := workflow.List(ctx, core.OrderFilter{Limit: 1})
@@ -324,7 +324,7 @@ func TestSyncStatusReportsLatestCompletedAcquisitionEvidence(t *testing.T) {
 	if got.SchemaVersion != core.SyncStatusSchemaVersion || got.State != core.SyncRunCompleted || got.Source != core.SyncSourceCurrentBrowser || got.Provenance != "observed_source_native_structured_order_document" {
 		t.Fatalf("unexpected latest sync status: %#v", got)
 	}
-	if !got.HistoryComplete || got.PagesProcessed != 1 || got.OrdersSeen != 1 || got.StartedAt == "" || got.CompletedAt == "" {
+	if got.HistoryComplete || got.CursorExhausted == nil || !*got.CursorExhausted || got.CoverageStatus != core.SyncCoverageUnverified || got.PagesProcessed != 1 || got.OrdersSeen != 1 || got.StartedAt == "" || got.CompletedAt == "" {
 		t.Fatalf("incomplete latest sync evidence: %#v", got)
 	}
 }
@@ -353,12 +353,12 @@ func TestSyncStopsAtPageBudgetAndContinuesLater(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !second.Complete || second.PagesProcessed != 1 {
+	if !second.CursorExhausted || second.Complete || second.PagesProcessed != 1 {
 		t.Fatalf("unexpected continuation result: %#v", second)
 	}
 }
 
-func TestCompleteFullHistorySyncRemovesStaleNormalizedOrders(t *testing.T) {
+func TestSourceEndSyncPreservesUnobservedNormalizedOrders(t *testing.T) {
 	ctx := context.Background()
 	ledger, err := store.Open(ctx, filepath.Join(t.TempDir(), "coupangctl.sqlite3"))
 	if err != nil {
@@ -378,15 +378,15 @@ func TestCompleteFullHistorySyncRemovesStaleNormalizedOrders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Complete || result.OrdersRemoved != 1 {
+	if !result.CursorExhausted || result.Complete || result.OrdersRemoved != 0 {
 		t.Fatalf("unexpected reconciliation result: %#v", result)
 	}
 	stored, err := workflow.List(ctx, core.OrderFilter{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(stored) != 1 || stored[0].PurchasedAt != "2026-08-29" {
-		t.Fatalf("unexpected reconciled history: %#v", stored)
+	if len(stored) != 2 || stored[0].PurchasedAt != "2026-08-29" || stored[1].SourceRef != "synthetic-stale" || stored[1].FullyCanceled {
+		t.Fatal("unobserved history was deleted or interpreted as cancellation")
 	}
 }
 
@@ -446,11 +446,13 @@ func TestReorderComparisonLabelsStaleLocalPriceWithoutRefreshingNetwork(t *testi
 	}}}); err != nil {
 		t.Fatal(err)
 	}
+	stamp := time.Now().UTC().Add(-25 * time.Hour)
 	if err := ledger.RecordPriceObservations(ctx, []core.ProductPriceObservation{{
 		Reference: core.ProductReference{ProductID: "101", VendorItemID: "201"},
 		Name:      "Synthetic product", CanonicalURL: "https://www.coupang.com/vp/products/101",
-		CurrentAmount: 39000, Currency: "KRW", ObservedAt: time.Now().UTC().Add(-25 * time.Hour),
+		CurrentAmount: 39000, Currency: "KRW", ObservedAt: stamp,
 		Source: "coupang_product_inspection", Provenance: "observed",
+		FieldEvidence: []core.ProductFieldEvidence{{Field: "price.current_amount", Source: "json_ld", Locator: "jsonld.Product.offers.price", Method: "native_field", Provenance: "observed", Scope: "selected_option", Reference: core.ProductReference{ProductID: "101", VendorItemID: "201"}, CapturedAt: stamp}},
 	}}); err != nil {
 		t.Fatal(err)
 	}

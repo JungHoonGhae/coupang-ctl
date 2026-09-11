@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const PriceHistorySchemaVersion = 1
+const PriceHistorySchemaVersion = 2
 
 type ProductPriceHistoryRequest struct {
 	ProductID    string `json:"product_id" jsonschema:"Public numeric product identifier returned by products_search"`
@@ -26,16 +26,17 @@ func (r ProductPriceHistoryRequest) Validate() error {
 // ProductPriceObservation is local evidence captured from a successful public
 // search or inspection. It never contains an affiliate URL or private account data.
 type ProductPriceObservation struct {
-	Reference      ProductReference `json:"reference"`
-	Name           string           `json:"name"`
-	CanonicalURL   string           `json:"canonical_url,omitempty"`
-	CurrentAmount  int64            `json:"current_amount"`
-	OriginalAmount int64            `json:"original_amount,omitempty"`
-	DiscountRate   int              `json:"discount_rate,omitempty"`
-	Currency       string           `json:"currency"`
-	ObservedAt     time.Time        `json:"observed_at"`
-	Source         string           `json:"source"`
-	Provenance     string           `json:"provenance"`
+	Reference      ProductReference       `json:"reference"`
+	Name           string                 `json:"name"`
+	CanonicalURL   string                 `json:"canonical_url,omitempty"`
+	CurrentAmount  int64                  `json:"current_amount"`
+	OriginalAmount int64                  `json:"original_amount,omitempty"`
+	DiscountRate   int                    `json:"discount_rate,omitempty"`
+	Currency       string                 `json:"currency"`
+	ObservedAt     time.Time              `json:"observed_at"`
+	Source         string                 `json:"source"`
+	Provenance     string                 `json:"provenance"`
+	FieldEvidence  []ProductFieldEvidence `json:"field_evidence,omitempty"`
 }
 
 type ProductPriceHistory struct {
@@ -59,19 +60,19 @@ type ProductPriceSeries struct {
 	LatestName   string                    `json:"latest_name"`
 	CanonicalURL string                    `json:"canonical_url,omitempty"`
 	Observations []ProductPriceObservation `json:"observations"`
-	Trend        ProductPriceTrend         `json:"trend"`
+	Trend        *ProductPriceTrend        `json:"trend,omitempty"`
 }
 
 type ProductPriceTrend struct {
-	ObservationCount               int     `json:"observation_count"`
-	FirstReturnedAmountKRW         int64   `json:"first_returned_amount_krw"`
-	LatestAmountKRW                int64   `json:"latest_amount_krw"`
-	MinimumAmountKRW               int64   `json:"minimum_amount_krw"`
-	MaximumAmountKRW               int64   `json:"maximum_amount_krw"`
-	ChangeFromFirstReturnedKRW     int64   `json:"change_from_first_returned_krw"`
-	ChangeFromFirstReturnedPercent float64 `json:"change_from_first_returned_percent"`
-	Direction                      string  `json:"direction"`
-	Provenance                     string  `json:"provenance"`
+	ObservationCount               int      `json:"observation_count"`
+	FirstReturnedAmountKRW         int64    `json:"first_returned_amount_krw"`
+	LatestAmountKRW                int64    `json:"latest_amount_krw"`
+	MinimumAmountKRW               int64    `json:"minimum_amount_krw"`
+	MaximumAmountKRW               int64    `json:"maximum_amount_krw"`
+	ChangeFromFirstReturnedKRW     int64    `json:"change_from_first_returned_krw"`
+	ChangeFromFirstReturnedPercent *float64 `json:"change_from_first_returned_percent,omitempty"`
+	Direction                      string   `json:"direction"`
+	Provenance                     string   `json:"provenance"`
 }
 
 type ProductPriceHistoryCoverage struct {

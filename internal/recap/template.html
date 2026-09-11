@@ -270,7 +270,7 @@
         {{range .Summary.DeliveryByYear}}<div class="delivery-bar"><div class="delivery-column" style="--height: {{deliveryHeight $.Summary.DeliveryByYear .AverageHours}};"><span>{{printf "%.1f" .AverageHours}}h</span></div><div class="delivery-label"><b>{{.Period}}</b><br>중앙 {{printf "%.1f" .MedianHours}}h<br>({{.ShipmentCount}}건)</div></div>{{end}}
       </div></div>
       <p class="chart-summary">{{deliverySummary .Summary.DeliveryTrend}}</p>
-      <div class="speed-strip"><div class="speed-stat"><strong>{{pct .Summary.DeliveredWithin24HoursRate}}%</strong><span>24시간 안에 도착</span></div><div class="speed-stat"><strong>{{pct .Summary.DeliveredWithin48HoursRate}}%</strong><span>48시간 안에 도착</span></div></div>
+      <div class="speed-strip"><div class="speed-stat"><strong>{{observedPct .Summary.DeliveredWithin24HoursRate .Summary.Samples.DeliveryEvents}}</strong><span>24시간 안에 도착</span></div><div class="speed-stat"><strong>{{observedPct .Summary.DeliveredWithin48HoursRate .Summary.Samples.DeliveryEvents}}</strong><span>48시간 안에 도착</span></div></div>
     </section>
     {{end}}
 

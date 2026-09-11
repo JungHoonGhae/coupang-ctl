@@ -1,0 +1,54 @@
+{{define "decision-flow"}}
+<section id="decision-flow"><div class="wrap">
+  <h2>왜 이 후보들이 남았나요?</h2>
+  <p class="lead">저장된 검색·상세 근거와 비교 규칙을 연결한 판단 지도입니다. 실행 순서를 복원한 로그나 전체 시장 순위는 아닙니다.</p>
+  <p class="flow-scope"><b>이번 조사 범위</b> {{if .Flow.Scope}}{{.Flow.Scope}}{{else}}범위·중단 이유 미기록{{end}}</p>
+  <div class="flow-layout">
+    <figure class="flow-figure">
+      <svg class="flow-desktop" viewBox="0 0 960 992" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="recommendation-flow-title recommendation-flow-desc">
+        <title id="recommendation-flow-title">요청 조건에서 조건부 제안까지의 판단 흐름</title>
+        <desc id="recommendation-flow-desc">출발 목록과 정확한 판매 옵션의 상세 자료를 연결하고 필수 조건을 재계산한 후, 가정한 우선순위별로 후보를 제안하되 전체 시장의 최적성은 미판정으로 남깁니다.</desc>
+        <defs>
+          <marker id="decision-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--muted)"/></marker>
+          <marker id="decision-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--accent)"/></marker>
+          <marker id="decision-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--link)"/></marker>
+        </defs>
+        <rect width="960" height="992" fill="var(--paper)"/>
+        <g fill="none" stroke="var(--muted)" stroke-width="1.2" marker-end="url(#decision-arrow)">
+          <path d="M 480 120 V 152"/><path d="M 480 232 V 264"/><path d="M 480 344 V 376"/><path d="M 480 456 V 488"/>
+          {{range .Flow.Paths}}<path d="{{.Outbound}}" stroke-dasharray="4,4"/><path d="{{.Inbound}}" stroke-dasharray="4,4"/>{{end}}
+        </g>
+        {{range $i,$s := .Flow.Steps}}<g transform="translate(320,{{stepY $i}})" class="flow-svg-node">
+          <rect width="320" height="80" rx="4" fill="var(--paper)"/>
+          <rect width="320" height="80" rx="4" fill="white" stroke="var(--rule-solid)"/>
+          <text x="20" y="32" class="flow-svg-index">{{$s.Number}}</text><text x="64" y="32" class="flow-svg-title">{{$s.Title}}</text>
+          <text x="64" y="60" class="flow-svg-value">{{$s.Value}}</text>
+        </g>{{end}}
+        <polygon points="480,488 600,536 480,584 360,536" fill="var(--accent-tint)" stroke="var(--accent)" stroke-width="1.2"/>
+        <text x="480" y="532" text-anchor="middle" class="flow-svg-title">우선순위는?</text><text x="480" y="556" text-anchor="middle" class="flow-svg-value">가정 · 미선택</text>
+        {{range $i,$p := .Flow.Paths}}
+        <rect x="{{add .Center 8}}" y="600" width="64" height="24" fill="var(--paper)"/><text x="{{add .Center 16}}" y="616" class="flow-svg-value">가정 {{add $i 1}}</text>
+        <g transform="translate({{.X}},640)" class="flow-svg-node"><rect width="256" height="112" rx="4" fill="var(--paper)"/><rect width="256" height="112" rx="4" fill="white" stroke="var(--muted)" stroke-dasharray="4,4"/>{{range $line,$label := .LabelLines}}<text x="128" y="{{if $line}}56{{else}}32{{end}}" text-anchor="middle" class="flow-svg-value">{{$label}}</text>{{end}}<text x="128" y="84" text-anchor="middle" class="flow-svg-value">후보 {{len .Products}}개 · 추론</text></g>
+        {{end}}
+        <rect x="280" y="832" width="400" height="80" rx="20" fill="var(--paper-2)" stroke="var(--muted)"/><text x="480" y="864" text-anchor="middle" class="flow-svg-title">{{.Flow.Selection}}</text><text x="480" y="892" text-anchor="middle" class="flow-svg-value">전체 시장의 최고 제품은 미판정</text>
+        <line x1="40" y1="944" x2="920" y2="944" stroke="var(--rule-solid)"/>
+        <text x="40" y="972" class="flow-svg-value">실선: 근거 연결 · 조건 재계산</text><text x="480" y="972" class="flow-svg-value">점선: 우선순위를 가정한 제안</text>
+      </svg>
+      <div class="flow-mobile" aria-label="모바일 판단 흐름">
+        <ol class="flow-steps">{{range .Flow.Steps}}<li><span class="flow-step-index">{{.Number}}</span><div><b>{{.Title}}</b><p>{{.Value}}</p></div></li>{{end}}</ol>
+        <div class="flow-choice"><b>무엇을 우선할까요?</b><p>아래는 가정한 선택 기준이며, 사용자가 선택한 선호가 아닙니다.</p></div>
+        <ul class="flow-mobile-branches">{{range .Flow.Paths}}<li><b>{{.Label}}</b><span>후보 {{len .Products}}개 · 추론</span></li>{{end}}</ul>
+        <p class="flow-end">{{.Flow.Conclusion}}</p>
+      </div>
+      <figcaption>실선은 자료·규칙 연결, 점선은 조건부 추론입니다. 원문과 계산 내용은 단계별 근거에서 확인하세요.</figcaption>
+    </figure>
+    <div class="flow-receipts">
+      <details open><summary>01 · 어떤 기준으로 판단했나</summary><div class="evidence-body"><p>조회 맥락: {{.Report.Recommendation.Query}}</p>{{if .Flow.Requirements}}<ul>{{range .Flow.Requirements}}<li>{{.}}</li>{{end}}</ul>{{else}}<p>필수 조건 미기록. 검색어를 조건 판정으로 바꾸지 않았습니다.</p>{{end}}<small>보고서에 입력된 조건입니다. 사용자 발화 전체를 재현하거나 숨은 선호를 추정한 것은 아닙니다.</small></div></details>
+      <details><summary>02 · 어디서 출발했고 무엇을 걸렀나</summary><div class="evidence-body"><p>{{.Flow.Discovery}} · 전체 시장의 상품 수가 아닙니다.</p><p>{{.Flow.Scope}}</p><p>{{.Flow.Filters}}</p><small>검색 노출 순서·재등장·리뷰 수를 추천 순위로 치환하지 않습니다. 제외 이유가 기록되지 않은 후보를 가상의 탈락 목록으로 만들지 않습니다.</small></div></details>
+      <details><summary>03 · 실제 상품과 연결된 근거</summary><div class="evidence-body"><p>{{.Flow.Detail}} · 현재 페이지가 아닌 보존된 관찰입니다.</p>{{range .Flow.Products}}<article class="flow-product"><a href="#{{.Anchor}}">{{.Name}}</a><p>{{.Price}}</p><p>{{if .Options}}{{.Options}}{{else}}연결된 선택 옵션 원문 미확인{{end}}</p><small>{{.PriceEvidence}}{{with .ObservedAt}} · 옵션 확인 {{.}}{{end}}</small></article>{{end}}<small>대표 사진은 상품 외관 확인용입니다. 다른 옵션의 리뷰나 상세 설명을 이 옵션의 실측 성능으로 쓰지 않습니다.</small></div></details>
+      <details open><summary>04 · 통과한 조건과 보류된 판단</summary><div class="evidence-body"><p>상세 조사·표시 목록의 고유 판매 옵션별로 재계산했습니다.</p><p class="flow-condition-count">충족 {{.Flow.Met}} · 불충족 {{.Flow.Unmet}} · 미확인 {{.Flow.Unknown}} · 조건 미선언 {{.Flow.Undeclared}}</p><p>충족은 입력된 필수 조건에 한정됩니다. 가격 통과가 성능·품질 검증이나 구매 추천의 확정을 뜻하지 않습니다.</p><p>{{.Flow.Conclusion}}</p></div></details>
+      <div class="flow-paths"><h3>05 · 조건을 달리하면 제안도 달라집니다</h3>{{range .Flow.Paths}}<article class="flow-path"><h4>{{.Label}}</h4><p><small>가정 · 추론</small><br>{{.When}}</p><p>{{.Reason}}</p><ul>{{range .Products}}<li><a href="#{{.Anchor}}">{{.Name}}</a> · {{.Price}}</li>{{end}}</ul></article>{{end}}</div>
+    </div>
+  </div>
+</div></section>
+{{end}}

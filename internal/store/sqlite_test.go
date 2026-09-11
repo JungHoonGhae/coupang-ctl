@@ -73,8 +73,8 @@ func TestOpenMigratesMetadataOnlySchema(t *testing.T) {
 	}
 	defer store.Close()
 
-	assertCount(t, store.db, "SELECT COUNT(*) FROM schema_migrations", 13)
-	assertCount(t, store.db, "SELECT COUNT(*) FROM pragma_table_info('sync_runs')", 10)
+	assertCount(t, store.db, "SELECT COUNT(*) FROM schema_migrations", 18)
+	assertCount(t, store.db, "SELECT COUNT(*) FROM pragma_table_info('sync_runs')", 12)
 	assertCount(t, store.db, "SELECT COUNT(*) FROM pragma_table_info('product_category_observations')", 5)
 }
 
@@ -93,7 +93,7 @@ func TestOpenIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer second.Close()
-	assertCount(t, second.db, "SELECT COUNT(*) FROM schema_migrations", 13)
+	assertCount(t, second.db, "SELECT COUNT(*) FROM schema_migrations", 18)
 }
 
 func TestOpenLabelsLegacySyncAcquisitionWithoutGuessing(t *testing.T) {
@@ -133,7 +133,7 @@ func TestOpenLabelsLegacySyncAcquisitionWithoutGuessing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Source != core.SyncSourceUnknownLegacy || status.Provenance != "unavailable_legacy" || status.State != core.SyncRunCompleted || !status.HistoryComplete {
+	if status.Source != core.SyncSourceUnknownLegacy || status.Provenance != "unavailable_legacy" || status.State != core.SyncRunCompleted || status.HistoryComplete || status.CursorExhausted != nil || status.CoverageStatus != core.SyncCoverageUnknownLegacy {
 		t.Fatalf("legacy sync evidence was guessed or lost: %#v", status)
 	}
 }

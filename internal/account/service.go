@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"errors"
+	"math"
 	"time"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
@@ -38,7 +39,7 @@ func (s *Service) Snapshot(ctx context.Context, request core.AccountBenefitsRequ
 	if request.MaxCashTransactionPages == 0 {
 		request.MaxCashTransactionPages = defaultCashTransactionPages
 	}
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return core.AccountBenefitsSnapshot{}, err
 	}
 	if s.source == nil {
@@ -66,7 +67,7 @@ func (s *Service) Snapshot(ctx context.Context, request core.AccountBenefitsRequ
 		result.MembershipCosts = unavailableMembershipCosts()
 		result.Warnings = append(result.Warnings, "the private local order ledger could not be read, so historical membership costs remain unavailable")
 	} else {
-		if result.Membership.IsPaidMember && costs.ObservedPaymentCount == 0 && costs.CompleteHistorySync {
+		if result.Membership.IsPaidMember != nil && *result.Membership.IsPaidMember && costs.ObservedPaymentCount == 0 && costs.CompleteHistorySync {
 			costs.Status = "unavailable_no_explicit_membership_order_metadata"
 			costs.Limitations = append(costs.Limitations, "the complete live order history exposed no membership-specific item metadata, so zero observed charges must not be read as zero fees paid")
 		}
@@ -101,14 +102,14 @@ func applyMembershipValue(result *core.AccountBenefitsSnapshot) {
 	if result.BenefitUsage.WindowStatus != "observed" || result.BenefitUsage.WindowKind != "rolling_recent_months" || result.BenefitUsage.WindowMonths < 1 {
 		value.MissingEvidence = append(value.MissingEvidence, "benefit_window")
 	}
-	if result.Membership.CurrentMonthlyFeeKRW <= 0 {
+	if !result.Coverage.CurrentMembershipFeeObserved || result.Membership.CurrentMonthlyFeeKRW <= 0 {
 		value.MissingEvidence = append(value.MissingEvidence, "current_monthly_membership_fee")
 	}
 	if result.Membership.SourceFeeChangeDate != "" {
 		value.Limitations = append(value.Limitations, "the source fee change date is observed, but prior fee amounts and actual charges remain unavailable")
 	}
 	value.MissingEvidence = append(value.MissingEvidence, "actual_membership_payments_for_benefit_window")
-	if result.Coverage.BenefitUsageObserved && result.BenefitUsage.WindowStatus == "observed" && result.BenefitUsage.WindowKind == "rolling_recent_months" && result.BenefitUsage.WindowMonths > 0 && result.Membership.CurrentMonthlyFeeKRW > 0 {
+	if result.Coverage.BenefitUsageObserved && result.BenefitUsage.WindowStatus == "observed" && result.BenefitUsage.WindowKind == "rolling_recent_months" && result.BenefitUsage.WindowMonths > 0 && result.Coverage.CurrentMembershipFeeObserved && result.Membership.CurrentMonthlyFeeKRW > 0 && result.Membership.CurrentMonthlyFeeKRW <= math.MaxInt64/int64(result.BenefitUsage.WindowMonths) {
 		value.EstimatedMembershipFeeKRW = result.Membership.CurrentMonthlyFeeKRW * int64(result.BenefitUsage.WindowMonths)
 		value.EstimatedNetValueKRW = value.ObservedBenefitKRW - value.EstimatedMembershipFeeKRW
 		value.Status = "estimated_current_fee_window"

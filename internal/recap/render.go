@@ -28,6 +28,7 @@ var pageTemplate = template.Must(template.New("recap").Funcs(template.FuncMap{
 	"clock":             formatClock,
 	"comma":             formatInteger,
 	"pct":               formatPercent,
+	"observedPct":       formatObservedPercent,
 	"seq":               boundedSequence,
 	"weekday":           localizeWeekday,
 	"typeTitle":         profileTitle,
@@ -103,8 +104,8 @@ func publicShareText(summary core.ShoppingInsights) string {
 	if summary.LongestActiveMonthStreak > 0 {
 		parts = append(parts, fmt.Sprintf("%d개월 연속 구매 기록", summary.LongestActiveMonthStreak))
 	}
-	if summary.Samples.DeliveryEvents > 0 {
-		parts = append(parts, fmt.Sprintf("배송의 %.1f%%가 24시간 안에 도착", summary.DeliveredWithin24HoursRate*100))
+	if summary.Samples.DeliveryEvents > 0 && summary.DeliveredWithin24HoursRate != nil {
+		parts = append(parts, fmt.Sprintf("배송의 %.1f%%가 24시간 안에 도착", *summary.DeliveredWithin24HoursRate*100))
 	}
 	parts = append(parts, "성격검사가 아닌 내 주문 기록 요약", "#coupangctl #쇼핑리캡")
 	return strings.Join(parts, "\n")
@@ -417,6 +418,13 @@ func formatInteger(value any) string {
 
 func formatPercent(value float64) string {
 	return fmt.Sprintf("%.1f", value*100)
+}
+
+func formatObservedPercent(value *float64, sampleSize int) string {
+	if value == nil || sampleSize <= 0 {
+		return "기록 부족"
+	}
+	return formatPercent(*value) + "%"
 }
 
 func boundedSequence(count int) []int {

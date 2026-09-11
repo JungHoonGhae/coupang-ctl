@@ -14,9 +14,9 @@ stable 공개 태그 릴리스는 아직 없습니다. README의 `go install …
 열 수 있습니다.
 
 1. 타입화된 release policy로 malformed tag와 unsigned stable publication 거부
-2. Go 테스트·vet, TypeScript 연구 probe typecheck, MV3 확장 계약 테스트
-3. Linux·macOS·Windows의 실제 설치 Chrome을 깨끗한 임시 전용 프로필로 두 번
-   headless 실행·종료해 발견·프로필 재사용·잠금 해제·정상 종료를 검증
+2. Go 테스트·vet, TypeScript 연구 probe typecheck, Camofox 실행·데이터 읽기 합성 테스트
+3. Linux·macOS·Windows에서 전용 프로필 잠금과 Camofox·CLI 계약 테스트 실행.
+   이 검사는 실제 쿠팡 접속이나 운영체제별 브라우저 실행 성공을 보증하지 않음
 4. CGO를 끈 macOS·Linux·Windows의 amd64·arm64 바이너리 여섯 개 빌드
 5. macOS·Linux는 `tar.gz`, Windows는 `zip`으로 패키징
 6. 각 아카이브의 SPDX JSON SBOM과 SHA-256 `checksums.txt` 생성
@@ -33,6 +33,10 @@ stable 공개 태그 릴리스는 아직 없습니다. README의 `go install …
 - `README.md`
 - `BROWSER_BRIDGE.md`
 
+`BROWSER_BRIDGE.md`는 구 릴리스와의 파일 목록 계약을 유지하기 위해 포함한 과거 기록이며,
+현재 설치 안내가 아닙니다. Camofox 개발 소스의 설정은 README를 따릅니다.
+조회에는 별도로 설치한 Node·Camofox 서버·Camoufox 엔진이 필요합니다.
+
 연구 probe, Node 런타임, 브라우저, 프로필, 쿠키, 자격 증명, 원본 주문
 payload, 테스트 fixture는 배포물에 들어갈 수 없습니다. 아카이브에 파일이 하나라도
 더 있거나 여섯 대상 중 하나가 빠지면 draft 공개 전에 실패합니다.
@@ -48,7 +52,7 @@ go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color=false
 go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 npm ci
 npm run typecheck
-npm run test:extension
+npm run test:camofox
 goreleaser check
 goreleaser release --snapshot --clean
 go run ./cmd/releasecheck --require-sbom ./dist
@@ -103,17 +107,9 @@ CI는 합성 tag와 hash만으로 같은 생성기를 실행해 Homebrew Ruby �
 파싱, x64·arm64 portable 계약을 확인합니다. 실제 tag URL과 hash의 원격 접근성,
 Homebrew tap 반영, WinGet community validation/PR은 릴리스 이후의 외부 단계입니다.
 
-선택적 일반 Chrome 호환 확장의 스토어 ZIP은 CLI 릴리스 아카이브와 분리해 새
-경로에 만들고 검증합니다. 이는 일반 사용자의 기본 설치물이 아닙니다.
-
-```bash
-go run ./cmd/extensionpack --output /new/path/coupangctl-extension.zip
-go run ./cmd/extensionpack --verify /new/path/coupangctl-extension.zip
-```
-
-CI도 같은 생성·재검증 계약을 실행합니다. 실제 Web Store 업로드 전에는
-[`extension/STORE_LISTING.md`](extension/STORE_LISTING.md)의 UI 미디어, public
-key/extension ID, 개인정보 답안, 심사 게이트를 별도로 완료해야 합니다.
+일반 Chrome 확장과 ZIP 생성기는 Camofox 전환으로 제거했습니다.
+확장 설치·Web Store 제출 절차는 현재 릴리스에 포함하지 않습니다.
+[`extension/STORE_LISTING.md`](extension/STORE_LISTING.md)는 과거 검토 기록입니다.
 
 ## 다운로드 검증
 
@@ -156,9 +152,6 @@ Windows 아카이브는 `.zip` 파일명을 사용합니다. SHA-256은 다운�
 - 언어 기준은 Go 1.26이지만 저장소의 `toolchain` 지시문과 CI 빌드는 보안 수정이
   반영된 Go 1.26.8을 사용합니다. 새 보안 패치가 나오면 Dependabot과
   `govulncheck` 결과를 확인해 같은 minor 계열에서 올립니다.
-- 일반 Chrome 확장의 자동 설치는 Chrome Web Store 검토와 배포가 끝나기
-  전까지 지원하지 않습니다. 현재 바이너리는 검토된 번들을 풀어 주지만 사용자가
-  Chrome에서 그 경로를 직접 로드해야 합니다. 이 확장은 기본 설치나 첫 실행에는
-  필요하지 않은 선택적 호환 adapter입니다.
-- 깨끗한 macOS·Linux·Windows 사용자 환경에서 install/doctor/sync/uninstall
-  전체 행렬을 통과하기 전 일반 Chrome 브리지는 `experimental`입니다.
+- Camofox 개발 소스의 macOS 실측과 합성 테스트를 다른 운영체제의 실행 검증으로
+  확대하지 않습니다. 깨끗한 환경에서 런타임 설치·로그인·조회·재시작을 검증하기
+  전에는 여섯 대상의 바이너리 빌드 성공만으로 전체 플랫폼 지원을 주장하지 않습니다.

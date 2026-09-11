@@ -4,7 +4,6 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
@@ -37,14 +36,14 @@ func TestMembershipCostsUsesOnlyExplicitMembershipOnlyOrders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != "complete_available_history" || !got.CompleteHistorySync || got.ObservedPaymentCount != 2 || got.ObservedGrossAmountKRW != 15_780 {
+	if got.Status != "partial_history" || got.CompleteHistorySync || got.ObservedPaymentCount != 2 || got.ObservedGrossAmountKRW != 15_780 {
 		t.Fatalf("unexpected membership cost coverage: %#v", got)
 	}
 	if got.ObservedNonCanceledPaymentCount != 1 || got.ObservedPaidAmountKRW != 7_890 || got.FirstObservedPaymentDate != "2025-08-01" || got.LastObservedPaymentDate != "2025-09-01" {
 		t.Fatalf("unexpected membership costs: %#v", got)
 	}
-	if _, err := time.Parse(time.RFC3339Nano, got.LastCompleteHistorySyncAt); err != nil {
-		t.Fatalf("invalid complete sync time %q: %v", got.LastCompleteHistorySyncAt, err)
+	if got.LastCompleteHistorySyncAt != "" {
+		t.Fatal("unverified legacy completion was given a verified coverage timestamp")
 	}
 }
 

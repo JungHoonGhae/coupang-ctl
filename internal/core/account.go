@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const AccountBenefitsSchemaVersion = 3
+const AccountBenefitsSchemaVersion = 6
 
 type AccountBenefitsRequest struct {
 	MaxCashTransactionPages int `json:"max_cash_transaction_pages,omitempty" jsonschema:"Maximum Coupang Cash transaction pages to inspect,from 1 through 100"`
@@ -51,20 +51,22 @@ type WowCardProgramTerms struct {
 	LastVerified                          string  `json:"last_verified"`
 }
 
+// Optional source scalars use nil for unobserved values, including booleans.
+// Status alone does not establish the separate member/payment flags.
 type WowMembership struct {
 	Status               string               `json:"status"`
-	IsMember             bool                 `json:"is_member"`
-	IsPaidMember         bool                 `json:"is_paid_member"`
-	IsTrialMember        bool                 `json:"is_trial_member"`
-	IsOnHold             bool                 `json:"is_on_hold"`
+	IsMember             *bool                `json:"is_member,omitempty"`
+	IsPaidMember         *bool                `json:"is_paid_member,omitempty"`
+	IsTrialMember        *bool                `json:"is_trial_member,omitempty"`
+	IsOnHold             *bool                `json:"is_on_hold,omitempty"`
 	SubscriptionPlan     string               `json:"subscription_plan,omitempty"`
-	CurrentMonthlyFeeKRW int64                `json:"current_monthly_fee_krw"`
+	CurrentMonthlyFeeKRW int64                `json:"current_monthly_fee_krw,omitempty"`
 	SourceFeeChangeDate  string               `json:"source_fee_change_date,omitempty"`
 	FirstJoinDate        string               `json:"first_join_date,omitempty"`
 	CurrentPeriodStart   string               `json:"current_period_start,omitempty"`
 	CurrentPeriodEnd     string               `json:"current_period_end,omitempty"`
 	NextPaymentDate      string               `json:"next_payment_date,omitempty"`
-	MembershipDays       int                  `json:"membership_days"`
+	MembershipDays       *int                 `json:"membership_days,omitempty"`
 	BillingMethod        PaymentMethodSummary `json:"billing_method"`
 }
 
@@ -72,7 +74,7 @@ type PaymentMethodSummary struct {
 	Type                string `json:"type,omitempty"`
 	Name                string `json:"name,omitempty"`
 	Issuer              string `json:"issuer,omitempty"`
-	RecurringRegistered bool   `json:"recurring_registered"`
+	RecurringRegistered *bool  `json:"recurring_registered,omitempty"`
 }
 
 // OrderPaymentStatistics is deliberately separate from registered payment
@@ -104,42 +106,44 @@ type PaymentMethodUsage struct {
 	InstallmentCount int    `json:"installment_count"`
 }
 
+// Individual components are independent observations, not a decomposition
+// computed from TotalObservedSavingsKRW. Nil is not zero savings or zero uses.
 type WowBenefitUsage struct {
 	Source                     string `json:"source"`
 	WindowStatus               string `json:"window_status"`
 	WindowKind                 string `json:"window_kind,omitempty"`
 	WindowMonths               int    `json:"window_months"`
-	TotalObservedSavingsKRW    int64  `json:"total_observed_savings_krw"`
-	RocketFreeDeliveryKRW      int64  `json:"rocket_free_delivery_krw"`
-	DawnAndSameDayDeliveryKRW  int64  `json:"dawn_and_same_day_delivery_krw"`
-	FreshDeliveryKRW           int64  `json:"fresh_delivery_krw"`
-	FreeDeliveryTotalKRW       int64  `json:"free_delivery_total_krw"`
-	WowOnlyDiscountKRW         int64  `json:"wow_only_discount_krw"`
-	FreeReturnKRW              int64  `json:"free_return_krw"`
-	RocketJikguFreeDeliveryKRW int64  `json:"rocket_jikgu_free_delivery_krw"`
-	EatsDiscountKRW            int64  `json:"eats_discount_krw"`
-	CoupangDiscountKRW         int64  `json:"coupang_discount_krw"`
-	AdditionalCashbackKRW      int64  `json:"additional_cashback_krw"`
-	RetentionCashbackKRW       int64  `json:"retention_cashback_krw"`
-	RetailFreeShippingCount    int    `json:"retail_free_shipping_count"`
-	DawnAndSameDayOrderCount   int    `json:"dawn_and_same_day_order_count"`
-	RocketFreshOrderCount      int    `json:"rocket_fresh_order_count"`
-	FreeReturnCount            int    `json:"free_return_count"`
-	JikguFreeShippingCount     int    `json:"jikgu_free_shipping_count"`
-	EatsOrderCount             int    `json:"eats_order_count"`
+	TotalObservedSavingsKRW    int64  `json:"total_observed_savings_krw,omitempty"`
+	RocketFreeDeliveryKRW      *int64 `json:"rocket_free_delivery_krw,omitempty"`
+	DawnAndSameDayDeliveryKRW  *int64 `json:"dawn_and_same_day_delivery_krw,omitempty"`
+	FreshDeliveryKRW           *int64 `json:"fresh_delivery_krw,omitempty"`
+	FreeDeliveryTotalKRW       *int64 `json:"free_delivery_total_krw,omitempty"`
+	WowOnlyDiscountKRW         *int64 `json:"wow_only_discount_krw,omitempty"`
+	FreeReturnKRW              *int64 `json:"free_return_krw,omitempty"`
+	RocketJikguFreeDeliveryKRW *int64 `json:"rocket_jikgu_free_delivery_krw,omitempty"`
+	EatsDiscountKRW            *int64 `json:"eats_discount_krw,omitempty"`
+	CoupangDiscountKRW         *int64 `json:"coupang_discount_krw,omitempty"`
+	AdditionalCashbackKRW      *int64 `json:"additional_cashback_krw,omitempty"`
+	RetentionCashbackKRW       *int64 `json:"retention_cashback_krw,omitempty"`
+	RetailFreeShippingCount    *int   `json:"retail_free_shipping_count,omitempty"`
+	DawnAndSameDayOrderCount   *int   `json:"dawn_and_same_day_order_count,omitempty"`
+	RocketFreshOrderCount      *int   `json:"rocket_fresh_order_count,omitempty"`
+	FreeReturnCount            *int   `json:"free_return_count,omitempty"`
+	JikguFreeShippingCount     *int   `json:"jikgu_free_shipping_count,omitempty"`
+	EatsOrderCount             *int   `json:"eats_order_count,omitempty"`
 }
 
 type WowCardRewardSummary struct {
 	UsageObserved                 bool                `json:"usage_observed"`
-	ExpectedAccumulationKRW       int64               `json:"expected_accumulation_krw"`
-	ExpectedThisMonthKRW          int64               `json:"expected_this_month_krw"`
+	ExpectedAccumulationKRW       int64               `json:"expected_accumulation_krw,omitempty"`
+	ExpectedThisMonthKRW          int64               `json:"expected_this_month_krw,omitempty"`
 	ExpectedThisMonthEarningDate  string              `json:"expected_this_month_earning_date,omitempty"`
-	ExpectedNextMonthKRW          int64               `json:"expected_next_month_krw"`
-	ObservedTransactionCount      int                 `json:"observed_transaction_count"`
-	ObservedAccumulationKRW       int64               `json:"observed_accumulation_krw"`
+	ExpectedNextMonthKRW          int64               `json:"expected_next_month_krw,omitempty"`
+	ObservedTransactionCount      int                 `json:"observed_transaction_count,omitempty"`
+	ObservedAccumulationKRW       int64               `json:"observed_accumulation_krw,omitempty"`
 	FirstObservedRewardDate       string              `json:"first_observed_reward_date,omitempty"`
 	LastObservedRewardDate        string              `json:"last_observed_reward_date,omitempty"`
-	AverageMonthlyAccumulationKRW int64               `json:"average_monthly_accumulation_krw"`
+	AverageMonthlyAccumulationKRW int64               `json:"average_monthly_accumulation_krw,omitempty"`
 	Monthly                       []MonthlyCardReward `json:"monthly"`
 }
 
@@ -150,12 +154,12 @@ type MonthlyCardReward struct {
 }
 
 type MembershipNetValue struct {
-	ObservedBenefitKRW        int64    `json:"observed_benefit_krw"`
-	ConfirmedMembershipFeeKRW int64    `json:"confirmed_membership_fee_krw"`
-	EstimatedMembershipFeeKRW int64    `json:"estimated_membership_fee_krw"`
-	ConfirmedCardAnnualFeeKRW int64    `json:"confirmed_card_annual_fee_krw"`
-	ConfirmedNetValueKRW      int64    `json:"confirmed_net_value_krw"`
-	EstimatedNetValueKRW      int64    `json:"estimated_net_value_krw"`
+	ObservedBenefitKRW        int64    `json:"observed_benefit_krw,omitempty"`
+	ConfirmedMembershipFeeKRW int64    `json:"confirmed_membership_fee_krw,omitempty"`
+	EstimatedMembershipFeeKRW int64    `json:"estimated_membership_fee_krw,omitempty"`
+	ConfirmedCardAnnualFeeKRW int64    `json:"confirmed_card_annual_fee_krw,omitempty"`
+	ConfirmedNetValueKRW      int64    `json:"confirmed_net_value_krw,omitempty"`
+	EstimatedNetValueKRW      int64    `json:"estimated_net_value_krw,omitempty"`
 	ComparisonFrom            string   `json:"comparison_from,omitempty"`
 	ComparisonTo              string   `json:"comparison_to,omitempty"`
 	Provenance                string   `json:"provenance"`
@@ -186,14 +190,18 @@ type MembershipCostEvidence struct {
 }
 
 type AccountBenefitsCoverage struct {
-	MembershipStateObserved     bool `json:"membership_state_observed"`
-	BenefitUsageObserved        bool `json:"benefit_usage_observed"`
-	CardRewardSummaryObserved   bool `json:"card_reward_summary_observed"`
-	CashTransactionPagesRead    int  `json:"cash_transaction_pages_read"`
-	CashTransactionHasMore      bool `json:"cash_transaction_has_more"`
-	PaymentMethodsObserved      bool `json:"payment_methods_observed"`
-	MembershipPaymentsObserved  bool `json:"membership_payments_observed"`
-	OrderPaymentDetailsObserved bool `json:"order_payment_details_observed"`
+	CurrentMembershipFeeObserved bool   `json:"current_membership_fee_observed"`
+	MembershipStateObserved      bool   `json:"membership_state_observed"`
+	BenefitUsageObserved         bool   `json:"benefit_usage_observed"`
+	CardRewardSummaryObserved    bool   `json:"card_reward_summary_observed"`
+	CardRewardThisMonthObserved  bool   `json:"card_reward_this_month_observed"`
+	CardRewardNextMonthObserved  bool   `json:"card_reward_next_month_observed"`
+	CashTransactionStatus        string `json:"cash_transaction_status"`
+	CashTransactionPagesRead     int    `json:"cash_transaction_pages_read"`
+	CashTransactionHasMore       bool   `json:"cash_transaction_has_more,omitempty"`
+	PaymentMethodsObserved       bool   `json:"payment_methods_observed"`
+	MembershipPaymentsObserved   bool   `json:"membership_payments_observed"`
+	OrderPaymentDetailsObserved  bool   `json:"order_payment_details_observed"`
 }
 
 type AccountBenefitDefinitions struct {

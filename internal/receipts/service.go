@@ -14,7 +14,7 @@ const (
 	defaultMaxCards        = 20
 )
 
-var ErrSourceUnavailable = errors.New("receipt source unavailable")
+var ErrSourceUnavailable = core.WithErrorCode("receipt_source_unavailable", errors.New("receipt source unavailable"))
 
 type Download struct {
 	Metadata core.ReceiptDownloadMetadata
@@ -60,7 +60,7 @@ func (s *Service) History(ctx context.Context, request core.ReceiptHistoryReques
 	if request.PageSize == 0 {
 		request.PageSize = defaultHistoryPageSize
 	}
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return core.ReceiptHistoryPage{}, err
 	}
 	if s.source == nil {
@@ -85,7 +85,7 @@ func (s *Service) Summary(ctx context.Context, request core.ReceiptSummaryReques
 	if request.MaxCards == 0 {
 		request.MaxCards = defaultMaxCards
 	}
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return core.ReceiptSummary{}, err
 	}
 	if s.source == nil {
@@ -119,7 +119,7 @@ func (s *Service) Overview(ctx context.Context, request core.ReceiptOverviewRequ
 	if request.MaxCards == 0 {
 		request.MaxCards = defaultMaxCards
 	}
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return core.ReceiptOverview{}, err
 	}
 	if s.source == nil {
@@ -254,7 +254,7 @@ func (s *Service) Download(ctx context.Context, request core.ReceiptDownloadRequ
 	if request.PageSize == 0 {
 		request.PageSize = defaultHistoryPageSize
 	}
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return Download{}, err
 	}
 	if s.source == nil {
@@ -277,7 +277,7 @@ func (s *Service) Vendor(ctx context.Context, request core.VendorReceiptRequest)
 	if request.MaxPages == 0 {
 		request.MaxPages = 1000
 	}
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return core.VendorReceiptSnapshot{}, err
 	}
 	if s.source == nil {

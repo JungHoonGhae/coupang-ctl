@@ -1,5 +1,9 @@
 # 일반 Chrome 브리지 계약
 
+> 과거 구현 기록입니다. Camofox 전환으로 Chrome 브리지, 확장 번들, ZIP 생성기를
+> 제거했습니다. 아래 명령과 설치 절차는 현재 개발 소스에서 지원하지 않습니다.
+> 현재 설정은 [README](README.md#camofox-기본-연결-개발-소스)를 참고하세요.
+
 일반 Chrome 브리지는 기본 설치 요구 사항이 아니라, 전용 프로필과 Chrome
 144+의 사용자 승인 `--current-browser` 연결이 적합하지 않을 때 선택하는 호환
 경로입니다. 사용자가 이미 로그인한 주문목록 탭을 한 번 선택해
@@ -106,6 +110,8 @@ coupangctl browser-bridge uninstall
 합성 계약 테스트는 설치 충돌의 사전 차단, Unix 비공개 파일 권한, 정확한 확장
 origin, digest 기반 정상 업그레이드, 중단 복구, 실행 경로 이동, 기록되지 않은
 변조와 예상 밖 파일 거부, 소유권 기반 제거, MCP typed provider 분리를 검증합니다.
+여기서 Unix 권한 검증은 POSIX 모드에 한정됩니다. Windows의 상속된 ACL이나
+소유자 전용 DACL 보호를 검증한 결과가 아니며, 소유자 전용 DACL 설정·검증은 구현하지 않았습니다.
 Linux, macOS, Windows 바이너리는 CGO 없이 교차 빌드합니다. 실제 macOS
 관리형 호스트 설치는 일곱 doctor 검사를 통과했고, 동의 팝업을 추가하기 전의
 일반 Chrome에서

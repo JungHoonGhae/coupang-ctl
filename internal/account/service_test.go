@@ -47,10 +47,11 @@ func TestSnapshotAddsVersionedProgramTermsWithoutInventingPaidFees(t *testing.T)
 
 func TestSnapshotEstimatesRecentMembershipValueFromObservedWindowAndCurrentFee(t *testing.T) {
 	now := time.Date(2026, 9, 2, 1, 0, 0, 0, time.UTC)
+	paid := true
 	service := NewWithCosts(syntheticSource{snapshot: core.AccountBenefitsSnapshot{
-		Membership:   core.WowMembership{FirstJoinDate: "2025-08-01", IsPaidMember: true, CurrentMonthlyFeeKRW: 7_890, SourceFeeChangeDate: "2026-08-01"},
+		Membership:   core.WowMembership{FirstJoinDate: "2025-08-01", IsPaidMember: &paid, CurrentMonthlyFeeKRW: 7_890, SourceFeeChangeDate: "2026-08-01"},
 		BenefitUsage: core.WowBenefitUsage{TotalObservedSavingsKRW: 210_000, WindowStatus: "observed", WindowKind: "rolling_recent_months", WindowMonths: 3},
-		Coverage:     core.AccountBenefitsCoverage{BenefitUsageObserved: true},
+		Coverage:     core.AccountBenefitsCoverage{BenefitUsageObserved: true, CurrentMembershipFeeObserved: true},
 	}}, syntheticCosts{evidence: core.MembershipCostEvidence{
 		Status: "complete_available_history", Provenance: "derived", CompleteHistorySync: true,
 	}})

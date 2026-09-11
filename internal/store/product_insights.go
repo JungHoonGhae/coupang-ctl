@@ -18,7 +18,7 @@ type rankedProduct struct {
 	spendEligibleUnitCount int
 }
 
-func (s *SQLite) ProductInsights(ctx context.Context, filter core.OrderFilter) (core.ProductInsights, error) {
+func (s orderAggregateReader) ProductInsights(ctx context.Context, filter core.OrderFilter) (core.ProductInsights, error) {
 	filter, err := normalizeFilterForAggregate(filter)
 	if err != nil {
 		return core.ProductInsights{}, err
@@ -76,7 +76,7 @@ func (s *SQLite) ProductInsights(ctx context.Context, filter core.OrderFilter) (
 	return result, nil
 }
 
-func (s *SQLite) productSpendWindow(ctx context.Context, filter core.OrderFilter, result *core.ProductInsights) error {
+func (s orderAggregateReader) productSpendWindow(ctx context.Context, filter core.OrderFilter, result *core.ProductInsights) error {
 	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MIN(purchased_at), ''), COALESCE(MAX(purchased_at), ''),
 		COUNT(DISTINCT substr(purchased_at, 1, 7)), COALESCE(SUM(total_amount), 0)
 		FROM orders WHERE fully_canceled = 0
@@ -94,7 +94,7 @@ func (s *SQLite) productSpendWindow(ctx context.Context, filter core.OrderFilter
 	return nil
 }
 
-func (s *SQLite) productCoverage(ctx context.Context, filter core.OrderFilter, result *core.ProductInsights) error {
+func (s orderAggregateReader) productCoverage(ctx context.Context, filter core.OrderFilter, result *core.ProductInsights) error {
 	err := s.db.QueryRowContext(ctx, `WITH retained AS (
 		SELECT CASE
 			WHEN COALESCE(i.vendor_item_id, '') != '' THEN 'vendor:' || i.vendor_item_id
@@ -126,7 +126,7 @@ func (s *SQLite) productCoverage(ctx context.Context, filter core.OrderFilter, r
 	return nil
 }
 
-func (s *SQLite) productAggregates(ctx context.Context, filter core.OrderFilter) ([]rankedProduct, error) {
+func (s orderAggregateReader) productAggregates(ctx context.Context, filter core.OrderFilter) ([]rankedProduct, error) {
 	rows, err := s.db.QueryContext(ctx, `WITH retained AS (
 		SELECT i.id, i.order_ref, i.name, i.quantity, i.paid_price,
 			i.cancelled_quantity, i.returned_quantity, o.purchased_at,
@@ -183,7 +183,7 @@ func (s *SQLite) productAggregates(ctx context.Context, filter core.OrderFilter)
 	return products, nil
 }
 
-func (s *SQLite) paidUnitHighlight(ctx context.Context, filter core.OrderFilter, highest bool) (core.PaidUnitHighlight, error) {
+func (s orderAggregateReader) paidUnitHighlight(ctx context.Context, filter core.OrderFilter, highest bool) (core.PaidUnitHighlight, error) {
 	direction := "ASC"
 	if highest {
 		direction = "DESC"
@@ -210,7 +210,7 @@ func (s *SQLite) paidUnitHighlight(ctx context.Context, filter core.OrderFilter,
 	return result, nil
 }
 
-func (s *SQLite) spendDayInsight(ctx context.Context, filter core.OrderFilter, highest bool) (core.SpendDayInsight, error) {
+func (s orderAggregateReader) spendDayInsight(ctx context.Context, filter core.OrderFilter, highest bool) (core.SpendDayInsight, error) {
 	direction := "ASC"
 	if highest {
 		direction = "DESC"
@@ -237,7 +237,7 @@ func (s *SQLite) spendDayInsight(ctx context.Context, filter core.OrderFilter, h
 	return result, nil
 }
 
-func (s *SQLite) spendDayProducts(ctx context.Context, date string) ([]core.DayProductSummary, int, int, error) {
+func (s orderAggregateReader) spendDayProducts(ctx context.Context, date string) ([]core.DayProductSummary, int, int, error) {
 	rows, err := s.db.QueryContext(ctx, `WITH retained AS (
 		SELECT i.id, i.name, i.quantity, i.paid_price, i.cancelled_quantity, i.returned_quantity,
 			CASE

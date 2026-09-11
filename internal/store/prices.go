@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -34,15 +35,19 @@ func (s *SQLite) RecordPriceObservations(ctx context.Context, observations []cor
 		if err != nil {
 			return err
 		}
+		evidence, err := json.Marshal(observation.FieldEvidence)
+		if err != nil {
+			return errors.New("invalid price evidence")
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO product_price_observations(
 			product_key, product_id, item_id, vendor_item_id, name, canonical_url,
-			current_amount, original_amount, discount_rate, currency, source, observed_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			current_amount, original_amount, discount_rate, currency, source, observed_at, provenance, field_evidence_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			key, observation.Reference.ProductID, observation.Reference.ItemID,
 			observation.Reference.VendorItemID, strings.TrimSpace(observation.Name),
 			observation.CanonicalURL, observation.CurrentAmount, observation.OriginalAmount,
 			observation.DiscountRate, observation.Currency, observation.Source,
-			observation.ObservedAt.UTC().Format(time.RFC3339Nano)); err != nil {
+			observation.ObservedAt.UTC().Format(time.RFC3339Nano), observation.Provenance, string(evidence)); err != nil {
 			return fmt.Errorf("record product price observation: %w", err)
 		}
 	}
@@ -60,11 +65,11 @@ func (s *SQLite) ListPriceObservations(ctx context.Context, request core.Product
 		return nil, false, errors.New("price history limit must be resolved before storage")
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT product_id, item_id, vendor_item_id, name,
-		canonical_url, current_amount, original_amount, discount_rate, currency, source, observed_at
+		canonical_url, current_amount, original_amount, discount_rate, currency, source, observed_at, provenance, field_evidence_json
 		FROM product_price_observations
-		WHERE ((? != '' AND vendor_item_id = ?) OR (? = '' AND product_id = ?))
+		WHERE product_id = ? AND (? = '' OR vendor_item_id = ?)
 		ORDER BY observed_at DESC, id DESC LIMIT ?`,
-		request.VendorItemID, request.VendorItemID, request.VendorItemID, request.ProductID, request.Limit+1)
+		request.ProductID, request.VendorItemID, request.VendorItemID, request.Limit+1)
 	if err != nil {
 		return nil, false, fmt.Errorf("list product price observations: %w", err)
 	}
@@ -73,17 +78,24 @@ func (s *SQLite) ListPriceObservations(ctx context.Context, request core.Product
 	for rows.Next() {
 		var observation core.ProductPriceObservation
 		var observedAt string
+		var evidence string
 		if err := rows.Scan(&observation.Reference.ProductID, &observation.Reference.ItemID,
 			&observation.Reference.VendorItemID, &observation.Name, &observation.CanonicalURL,
 			&observation.CurrentAmount, &observation.OriginalAmount, &observation.DiscountRate,
-			&observation.Currency, &observation.Source, &observedAt); err != nil {
+			&observation.Currency, &observation.Source, &observedAt, &observation.Provenance, &evidence); err != nil {
 			return nil, false, fmt.Errorf("scan product price observation: %w", err)
 		}
 		observation.ObservedAt, err = time.Parse(time.RFC3339Nano, observedAt)
 		if err != nil {
 			return nil, false, fmt.Errorf("parse product price observation time: %w", err)
 		}
-		observation.Provenance = "observed"
+		if json.Unmarshal([]byte(evidence), &observation.FieldEvidence) != nil {
+			return nil, false, errors.New("stored price evidence is invalid")
+		}
+		if !observation.HasPriceEvidence() {
+			observation.Provenance = "unknown_legacy"
+			observation.FieldEvidence = nil
+		}
 		observations = append(observations, observation)
 	}
 	if err := rows.Err(); err != nil {
@@ -132,8 +144,8 @@ func (s *SQLite) AddPriceWatch(ctx context.Context, request core.ProductWatchReq
 	var reference core.ProductReference
 	var name, canonicalURL string
 	err := s.db.QueryRowContext(ctx, `SELECT product_id, item_id, vendor_item_id, name, canonical_url
-		FROM product_price_observations WHERE product_key = ?
-		ORDER BY observed_at DESC, id DESC LIMIT 1`, key).Scan(
+		FROM product_price_observations WHERE product_key = ? AND product_id = ? AND provenance IN ('observed','derived') AND field_evidence_json != '[]'
+		ORDER BY observed_at DESC, id DESC LIMIT 1`, key, request.ProductID).Scan(
 		&reference.ProductID, &reference.ItemID, &reference.VendorItemID, &name, &canonicalURL)
 	if errors.Is(err, sql.ErrNoRows) {
 		return core.ProductWatchEntry{}, false, nil
@@ -317,20 +329,42 @@ func validatePriceObservation(observation core.ProductPriceObservation) (string,
 	if name == "" || !utf8.ValidString(name) || len([]rune(name)) > 500 {
 		return "", errors.New("price observation name is invalid")
 	}
-	if observation.CurrentAmount <= 0 || observation.OriginalAmount < 0 || observation.DiscountRate < 0 || observation.DiscountRate > 100 || observation.Currency != "KRW" {
+	if observation.CurrentAmount < 0 || observation.OriginalAmount < 0 || observation.DiscountRate < 0 || observation.DiscountRate > 100 || observation.Currency != "KRW" {
 		return "", errors.New("price observation amounts are invalid")
+	}
+	if !observation.HasPriceEvidence() {
+		return "", errors.New("price observation requires matching source and scope evidence")
+	}
+	if len(observation.FieldEvidence) > 3 {
+		return "", errors.New("too many price evidence fields")
+	}
+	seen := map[string]bool{}
+	var current core.ProductFieldEvidence
+	for _, e := range observation.FieldEvidence {
+		if e.Field == "price.current_amount" {
+			current = e
+		}
+	}
+	for _, e := range observation.FieldEvidence {
+		if seen[e.Field] || (e.Field != "price.current_amount" && e.Field != "price.original_amount" && e.Field != "price.discount_rate") || !e.ValidFor(observation.Reference) || e.Provenance == "inferred" || !e.CapturedAt.Equal(observation.ObservedAt) || e.Scope != current.Scope || e.Reference != current.Reference {
+			return "", errors.New("invalid optional price evidence")
+		}
+		seen[e.Field] = true
 	}
 	if observation.ObservedAt.IsZero() || (observation.Source != "coupang_product_search" && observation.Source != "coupang_product_inspection") {
 		return "", errors.New("price observation source metadata is invalid")
 	}
 	if observation.CanonicalURL != "" {
 		parsed, err := url.Parse(observation.CanonicalURL)
-		if err != nil || parsed.Scheme != "https" || parsed.Host != "www.coupang.com" || parsed.Path != "/vp/products/"+observation.Reference.ProductID {
+		if err != nil || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Scheme != "https" || parsed.Host != "www.coupang.com" || parsed.Path != "/vp/products/"+observation.Reference.ProductID {
 			return "", errors.New("price observation canonical URL is invalid")
 		}
 	}
 	if observation.Reference.VendorItemID != "" {
 		return "vendor:" + observation.Reference.VendorItemID, nil
+	}
+	if observation.Reference.ItemID != "" {
+		return "item:" + observation.Reference.ProductID + "/" + observation.Reference.ItemID, nil
 	}
 	return "product:" + observation.Reference.ProductID, nil
 }

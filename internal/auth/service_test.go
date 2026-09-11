@@ -53,7 +53,7 @@ func TestStatusLiveChecksAndRefreshesStoredBrowserSession(t *testing.T) {
 	if !got.CheckedAt.Equal(fixed.UTC()) {
 		t.Fatalf("checked_at = %s, want %s", got.CheckedAt, fixed.UTC())
 	}
-	if got.NextAction != "the read-only browser session is available" {
+	if got.NextAction != verifiedSessionNextAction {
 		t.Fatalf("next_action = %q", got.NextAction)
 	}
 	if !browser.verified {
@@ -94,6 +94,14 @@ func TestStatusReportsBackgroundAccessBlockWithoutOpeningLogin(t *testing.T) {
 	}
 	if got.NextAction != "retry later, or explicitly run `coupangctl auth verify --headed` when an interactive check is acceptable" {
 		t.Fatalf("next_action = %q", got.NextAction)
+	}
+}
+
+func TestStatusPreservesSelectedAdapterRecovery(t *testing.T) {
+	b := &fakeBrowser{status: BrowserStatus{Name: "Camofox", ProfilePresent: true, AccessBlockedAction: "retry in selected profile"}, verify: core.ErrBrowserAccessDenied}
+	r, err := NewService(b).Status(context.Background())
+	if err != nil || r.State != core.AuthAccessBlocked || r.NextAction != "retry in selected profile" || b.loginRan {
+		t.Fatal("selected adapter recovery was replaced")
 	}
 }
 
@@ -198,7 +206,7 @@ func TestLoginDelegatesToBrowser(t *testing.T) {
 	if got.State != core.AuthVerified {
 		t.Fatalf("state = %q, want %q", got.State, core.AuthVerified)
 	}
-	if got.NextAction != "the protected read-only browser session is available" {
+	if got.NextAction != verifiedSessionNextAction {
 		t.Fatalf("next_action = %q", got.NextAction)
 	}
 	if got.Mode != core.LoginModeQR {

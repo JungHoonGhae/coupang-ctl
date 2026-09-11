@@ -25,6 +25,17 @@ func (s *SQLite) UpsertOrderPage(ctx context.Context, page core.OrderPage) (core
 	}
 	defer tx.Rollback()
 
+	result, err := upsertOrderPageTx(ctx, tx, page)
+	if err != nil {
+		return core.UpsertResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return core.UpsertResult{}, fmt.Errorf("commit order update: %w", err)
+	}
+	return result, nil
+}
+
+func upsertOrderPageTx(ctx context.Context, tx *sql.Tx, page core.OrderPage) (core.UpsertResult, error) {
 	result := core.UpsertResult{OrdersSeen: len(page.Orders)}
 	for _, order := range page.Orders {
 		if err := validateOrder(order); err != nil {
@@ -78,49 +89,16 @@ func (s *SQLite) UpsertOrderPage(ctx context.Context, page core.OrderPage) (core
 			}
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return core.UpsertResult{}, fmt.Errorf("commit order update: %w", err)
-	}
 	return result, nil
 }
 
-// ReconcileOrders removes normalized rows that were not observed during one
-// complete history walk. Callers must not use it for partial or resumed syncs.
-func (s *SQLite) ReconcileOrders(ctx context.Context, sourceRefs []string) (int, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("begin order reconciliation: %w", err)
-	}
-	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `CREATE TEMP TABLE IF NOT EXISTS sync_seen_orders (
-		source_ref TEXT PRIMARY KEY
-	)`); err != nil {
-		return 0, fmt.Errorf("prepare order reconciliation: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM sync_seen_orders"); err != nil {
-		return 0, fmt.Errorf("reset order reconciliation: %w", err)
-	}
-	for _, sourceRef := range sourceRefs {
-		if sourceRef == "" {
-			return 0, fmt.Errorf("%w: invalid reconciliation reference", core.ErrInvalidOrderData)
-		}
-		if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO sync_seen_orders(source_ref) VALUES (?)", sourceRef); err != nil {
-			return 0, fmt.Errorf("record order reconciliation reference: %w", err)
-		}
-	}
-	var removed int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM orders
-		WHERE NOT EXISTS (SELECT 1 FROM sync_seen_orders seen WHERE seen.source_ref = orders.source_ref)`).Scan(&removed); err != nil {
-		return 0, fmt.Errorf("count stale normalized orders: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM orders
-		WHERE NOT EXISTS (SELECT 1 FROM sync_seen_orders seen WHERE seen.source_ref = orders.source_ref)`); err != nil {
-		return 0, fmt.Errorf("remove stale normalized orders: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("commit order reconciliation: %w", err)
-	}
-	return removed, nil
+var ErrVerifiedReconciliationRequired = errors.New("order reconciliation requires verified account and scan scope")
+
+// ReconcileOrders rejects the old, unscoped list-of-references API. Even an
+// empty or apparently exhaustive list cannot authorize deleting retained data.
+// Deprecated: use verified account/scan reconciliation when implemented.
+func (s *SQLite) ReconcileOrders(context.Context, []string) (int, error) {
+	return 0, ErrVerifiedReconciliationRequired
 }
 
 func (s *SQLite) ListOrders(ctx context.Context, filter core.OrderFilter) ([]core.Order, error) {
@@ -175,7 +153,7 @@ func (s *SQLite) ListOrders(ctx context.Context, filter core.OrderFilter) ([]cor
 	return orders, nil
 }
 
-func (s *SQLite) Spend(ctx context.Context, filter core.OrderFilter) (core.SpendSummary, error) {
+func (s orderAggregateReader) Spend(ctx context.Context, filter core.OrderFilter) (core.SpendSummary, error) {
 	filter, err := normalizeFilterForAggregate(filter)
 	if err != nil {
 		return core.SpendSummary{}, err
@@ -234,7 +212,7 @@ func (s *SQLite) Spend(ctx context.Context, filter core.OrderFilter) (core.Spend
 	return result, nil
 }
 
-func (s *SQLite) Stats(ctx context.Context, filter core.OrderFilter) (core.OrderStats, error) {
+func (s orderAggregateReader) Stats(ctx context.Context, filter core.OrderFilter) (core.OrderStats, error) {
 	filter, err := normalizeFilterForAggregate(filter)
 	if err != nil {
 		return core.OrderStats{}, err
@@ -274,10 +252,10 @@ func (s *SQLite) Stats(ctx context.Context, filter core.OrderFilter) (core.Order
 	if err != nil {
 		return core.OrderStats{}, fmt.Errorf("summarize normalized order items: %w", err)
 	}
-	result.FullyCanceledOrderRate = ratio(result.FullyCanceledOrderCount, result.OrderCount)
-	result.CanceledUnitRate = ratio(result.CanceledUnits, result.OrderedUnits)
-	result.ReturnedItemLineRate = ratio(result.ReturnedItemLineCount, result.ItemLineCount)
-	result.ReturnedUnitRate = ratio(result.ReturnedUnits, result.OrderedUnits)
+	result.FullyCanceledOrderRate = nullableRatio(result.FullyCanceledOrderCount, result.OrderCount)
+	result.CanceledUnitRate = nullableRatio(result.CanceledUnits, result.OrderedUnits)
+	result.ReturnedItemLineRate = nullableRatio(result.ReturnedItemLineCount, result.ItemLineCount)
+	result.ReturnedUnitRate = nullableRatio(result.ReturnedUnits, result.OrderedUnits)
 	result.PurchaseHours, err = s.purchaseHourBuckets(ctx, filter)
 	if err != nil {
 		return core.OrderStats{}, err
@@ -302,7 +280,7 @@ func (s *SQLite) Stats(ctx context.Context, filter core.OrderFilter) (core.Order
 	return result, nil
 }
 
-func (s *SQLite) Insights(ctx context.Context, filter core.OrderFilter) (core.ShoppingInsights, error) {
+func (s orderAggregateReader) Insights(ctx context.Context, filter core.OrderFilter) (core.ShoppingInsights, error) {
 	filter, err := normalizeFilterForAggregate(filter)
 	if err != nil {
 		return core.ShoppingInsights{}, err
@@ -387,7 +365,7 @@ func (s *SQLite) Insights(ctx context.Context, filter core.OrderFilter) (core.Sh
 			return core.ShoppingInsights{}, fmt.Errorf("summarize branded purchases: %w", err)
 		}
 		result.Samples.BrandedRetainedItemLines = brandedLines
-		result.TopBrandShare = ratio(result.TopBrand.Count, brandedLines)
+		result.TopBrandShare = nullableRatio(result.TopBrand.Count, brandedLines)
 	}
 	var timedOrders, nightOrders, lateEveningOrders, weekendOrders int
 	var allNightOrders, nightCanceled, allOtherOrders, otherCanceled int
@@ -411,11 +389,16 @@ func (s *SQLite) Insights(ctx context.Context, filter core.OrderFilter) (core.Sh
 		&nightCanceled, &allOtherOrders, &otherCanceled); err != nil {
 		return core.ShoppingInsights{}, fmt.Errorf("summarize purchase-time insights: %w", err)
 	}
-	result.NightOrderRate = ratio(nightOrders, timedOrders)
-	result.LateEveningOrderRate = ratio(lateEveningOrders, timedOrders)
-	result.WeekendOrderRate = ratio(weekendOrders, timedOrders)
-	result.NightFullyCanceledOrderRate = ratio(nightCanceled, allNightOrders)
-	result.OtherFullyCanceledOrderRate = ratio(otherCanceled, allOtherOrders)
+	result.NightOrderRate = nullableRatio(nightOrders, timedOrders)
+	result.LateEveningOrderRate = nullableRatio(lateEveningOrders, timedOrders)
+	result.WeekendOrderRate = nullableRatio(weekendOrders, timedOrders)
+	result.Samples.WeekendOrders = weekendOrders
+	result.NightFullyCanceledOrderRate = nullableRatio(nightCanceled, allNightOrders)
+	result.OtherFullyCanceledOrderRate = nullableRatio(otherCanceled, allOtherOrders)
+	result.Samples.NightAllTimedOrders = allNightOrders
+	result.Samples.OtherAllTimedOrders = allOtherOrders
+	result.Samples.NightFullyCanceledOrders = nightCanceled
+	result.Samples.OtherFullyCanceledOrders = otherCanceled
 	result.Samples.TimedOrders = timedOrders
 	result.Samples.NightOrders = nightOrders
 	result.Samples.LateEveningOrders = lateEveningOrders
@@ -437,8 +420,10 @@ func (s *SQLite) Insights(ctx context.Context, filter core.OrderFilter) (core.Sh
 		&nightUnits, &nightReturned, &otherUnits, &otherReturned); err != nil {
 		return core.ShoppingInsights{}, fmt.Errorf("summarize return-time insights: %w", err)
 	}
-	result.NightReturnedUnitRate = ratio(nightReturned, nightUnits)
-	result.OtherReturnedUnitRate = ratio(otherReturned, otherUnits)
+	result.NightReturnedUnitRate = nullableRatio(nightReturned, nightUnits)
+	result.OtherReturnedUnitRate = nullableRatio(otherReturned, otherUnits)
+	result.Samples.NightReturnedUnits = nightReturned
+	result.Samples.OtherReturnedUnits = otherReturned
 	result.Samples.NightOrderedUnits = nightUnits
 	result.Samples.OtherOrderedUnits = otherUnits
 	var shipments, within24, within48 int
@@ -457,8 +442,10 @@ func (s *SQLite) Insights(ctx context.Context, filter core.OrderFilter) (core.Sh
 		&shipments, &within24, &within48); err != nil {
 		return core.ShoppingInsights{}, fmt.Errorf("summarize delivery-speed insights: %w", err)
 	}
-	result.DeliveredWithin24HoursRate = ratio(within24, shipments)
-	result.DeliveredWithin48HoursRate = ratio(within48, shipments)
+	result.DeliveredWithin24HoursRate = nullableRatio(within24, shipments)
+	result.DeliveredWithin48HoursRate = nullableRatio(within48, shipments)
+	result.Samples.DeliveredWithin24Hours = within24
+	result.Samples.DeliveredWithin48Hours = within48
 	result.Samples.DeliveryEvents = shipments
 	result.RepeatPurchases, err = s.repeatPurchaseInsights(ctx, filter)
 	if err != nil {
@@ -471,7 +458,7 @@ func (s *SQLite) Insights(ctx context.Context, filter core.OrderFilter) (core.Sh
 	return result, nil
 }
 
-func (s *SQLite) repeatPurchaseInsights(ctx context.Context, filter core.OrderFilter) (core.RepeatPurchaseInsights, error) {
+func (s orderAggregateReader) repeatPurchaseInsights(ctx context.Context, filter core.OrderFilter) (core.RepeatPurchaseInsights, error) {
 	var result core.RepeatPurchaseInsights
 	err := s.db.QueryRowContext(ctx, `WITH retained AS (
 		SELECT CASE
@@ -513,7 +500,7 @@ func (s *SQLite) repeatPurchaseInsights(ctx context.Context, filter core.OrderFi
 	return result, nil
 }
 
-func (s *SQLite) basketInsights(ctx context.Context, filter core.OrderFilter) (core.BasketInsights, error) {
+func (s orderAggregateReader) basketInsights(ctx context.Context, filter core.OrderFilter) (core.BasketInsights, error) {
 	var result core.BasketInsights
 	var average float64
 	err := s.db.QueryRowContext(ctx, `WITH baskets AS (
@@ -599,7 +586,7 @@ func (s *SQLite) basketInsights(ctx context.Context, filter core.OrderFilter) (c
 	return result, nil
 }
 
-func (s *SQLite) orderDaySeries(ctx context.Context, filter core.OrderFilter) ([]time.Time, []int, error) {
+func (s orderAggregateReader) orderDaySeries(ctx context.Context, filter core.OrderFilter) ([]time.Time, []int, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT purchased_at, COUNT(*) FROM orders
 		WHERE fully_canceled = 0 AND (NOT EXISTS (
 			SELECT 1 FROM order_items any_item WHERE any_item.order_ref = orders.source_ref
@@ -725,7 +712,7 @@ func compareDeliveryTrend(trend []core.DeliveryDurationSummary) core.DeliveryTre
 	return result
 }
 
-func (s *SQLite) purchaseHourBuckets(ctx context.Context, filter core.OrderFilter) ([]core.CountBucket, error) {
+func (s orderAggregateReader) purchaseHourBuckets(ctx context.Context, filter core.OrderFilter) ([]core.CountBucket, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT strftime('%H', purchased_at_time, '+9 hours'), COUNT(*)
 		FROM orders WHERE purchased_at_time IS NOT NULL AND fully_canceled = 0 AND (NOT EXISTS (
 			SELECT 1 FROM order_items any_item WHERE any_item.order_ref = orders.source_ref
@@ -742,7 +729,7 @@ func (s *SQLite) purchaseHourBuckets(ctx context.Context, filter core.OrderFilte
 	return scanCountBuckets(rows, nil)
 }
 
-func (s *SQLite) purchaseWeekdayBuckets(ctx context.Context, filter core.OrderFilter) ([]core.CountBucket, error) {
+func (s orderAggregateReader) purchaseWeekdayBuckets(ctx context.Context, filter core.OrderFilter) ([]core.CountBucket, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT strftime('%w', purchased_at_time, '+9 hours'), COUNT(*)
 		FROM orders WHERE purchased_at_time IS NOT NULL AND fully_canceled = 0 AND (NOT EXISTS (
 			SELECT 1 FROM order_items any_item WHERE any_item.order_ref = orders.source_ref
@@ -760,7 +747,7 @@ func (s *SQLite) purchaseWeekdayBuckets(ctx context.Context, filter core.OrderFi
 	return scanCountBuckets(rows, weekday)
 }
 
-func (s *SQLite) purchaseMonthStats(ctx context.Context, filter core.OrderFilter) ([]core.MonthlyOrderStats, error) {
+func (s orderAggregateReader) purchaseMonthStats(ctx context.Context, filter core.OrderFilter) ([]core.MonthlyOrderStats, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT substr(purchased_at, 1, 7), COUNT(*),
 		COALESCE(SUM(total_amount), 0),
 		COALESCE(SUM(CASE WHEN fully_canceled = 0 THEN total_amount ELSE 0 END), 0),
@@ -792,7 +779,7 @@ func (s *SQLite) purchaseMonthStats(ctx context.Context, filter core.OrderFilter
 	return result, nil
 }
 
-func (s *SQLite) topBrandBuckets(ctx context.Context, filter core.OrderFilter) ([]core.CountBucket, error) {
+func (s orderAggregateReader) topBrandBuckets(ctx context.Context, filter core.OrderFilter) ([]core.CountBucket, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT i.brand_name, COUNT(*)
 		FROM order_items i JOIN orders o ON o.source_ref = i.order_ref
 		WHERE i.brand_name IS NOT NULL AND i.brand_name != '' AND o.fully_canceled = 0
@@ -826,7 +813,7 @@ func scanCountBuckets(rows *sql.Rows, labels map[string]string) ([]core.CountBuc
 	return result, nil
 }
 
-func (s *SQLite) deliveryDurationStats(ctx context.Context, filter core.OrderFilter) (core.DeliveryDurationSummary, []core.DeliveryDurationSummary, error) {
+func (s orderAggregateReader) deliveryDurationStats(ctx context.Context, filter core.OrderFilter) (core.DeliveryDurationSummary, []core.DeliveryDurationSummary, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT substr(o.purchased_at, 1, 4), o.purchased_at_time, event.delivered_at
 		FROM (SELECT DISTINCT order_ref, delivered_at FROM order_items WHERE delivered_at IS NOT NULL AND commerce_kind = 'product_purchase') event
 		JOIN orders o ON o.source_ref = event.order_ref
@@ -893,6 +880,14 @@ func durationSummary(period string, values []float64) core.DeliveryDurationSumma
 	return result
 }
 
+func nullableRatio(numerator, denominator int) *float64 {
+	if denominator == 0 {
+		return nil
+	}
+	value := roundDecimal(float64(numerator)/float64(denominator), 6)
+	return &value
+}
+
 func ratio(numerator, denominator int) float64 {
 	if denominator == 0 {
 		return 0
@@ -947,17 +942,17 @@ func (s *SQLite) ReorderCandidates(ctx context.Context, filter core.OrderFilter)
 			PARTITION BY product_key ORDER BY purchased_at DESC, id DESC
 		) AS position FROM retained WHERE retained_units > 0 AND paid_unit_amount IS NOT NULL
 	), latest_price AS (
-		SELECT product_key, current_amount, observed_at, ROW_NUMBER() OVER (
-			PARTITION BY product_key ORDER BY observed_at DESC, id DESC
-		) AS position FROM product_price_observations
+		SELECT product_key, product_id, current_amount, observed_at, provenance, ROW_NUMBER() OVER (
+			PARTITION BY product_key, product_id ORDER BY observed_at DESC, id DESC
+		) AS position FROM product_price_observations WHERE provenance IN ('observed','derived') AND field_evidence_json != '[]'
 	)
 	SELECT product.product_id, product.vendor_item_id, product.name,
 		aggregates.purchase_count, aggregates.total_quantity, aggregates.last_purchased,
-		paid.paid_unit_amount, paid.purchased_at, price.current_amount, price.observed_at
+		paid.paid_unit_amount, paid.purchased_at, price.current_amount, price.observed_at, price.provenance
 	FROM aggregates
 	JOIN latest_product product ON product.product_key = aggregates.product_key AND product.position = 1
 	LEFT JOIN latest_paid paid ON paid.product_key = aggregates.product_key AND paid.position = 1
-	LEFT JOIN latest_price price ON price.product_key = aggregates.product_key AND price.position = 1
+	LEFT JOIN latest_price price ON price.product_key = aggregates.product_key AND price.product_id = product.product_id AND price.position = 1
 	ORDER BY aggregates.last_purchased DESC, aggregates.total_quantity DESC
 	LIMIT ?`, filter.From, filter.From, filter.To, filter.To, filter.Limit)
 	if err != nil {
@@ -968,13 +963,16 @@ func (s *SQLite) ReorderCandidates(ctx context.Context, filter core.OrderFilter)
 	for rows.Next() {
 		var candidate core.ReorderCandidate
 		var lastPaidAmount, latestObservedAmount sql.NullInt64
-		var lastPaidAt, observedAt sql.NullString
+		var lastPaidAt, observedAt, priceProvenance sql.NullString
 		if err := rows.Scan(&candidate.ProductID, &candidate.VendorItemID, &candidate.Name,
 			&candidate.PurchaseCount, &candidate.TotalQuantity, &candidate.LastPurchased,
-			&lastPaidAmount, &lastPaidAt, &latestObservedAmount, &observedAt); err != nil {
+			&lastPaidAmount, &lastPaidAt, &latestObservedAmount, &observedAt, &priceProvenance); err != nil {
 			return nil, fmt.Errorf("scan reorder candidate: %w", err)
 		}
 		candidate.PriceComparison = buildReorderPriceComparison(lastPaidAmount, lastPaidAt, latestObservedAmount, observedAt)
+		if candidate.PriceComparison.Status == "available" {
+			candidate.PriceComparison.PriceProvenance = priceProvenance.String
+		}
 		result = append(result, candidate)
 	}
 	if err := rows.Err(); err != nil {
@@ -995,7 +993,7 @@ func buildReorderPriceComparison(lastPaidAmount sql.NullInt64, lastPaidAt sql.Nu
 	}
 	result.LastPaidUnitAmountKRW = lastPaidAmount.Int64
 	result.LastPaidAt = lastPaidAt.String
-	if !latestObservedAmount.Valid || latestObservedAmount.Int64 <= 0 {
+	if !latestObservedAmount.Valid || latestObservedAmount.Int64 < 0 {
 		result.Status = "unavailable_no_local_price_observation"
 		result.Limitations = append(result.Limitations, "run a product search or inspection for the exact identity to record a current-price observation")
 		return result
@@ -1011,7 +1009,7 @@ func buildReorderPriceComparison(lastPaidAmount sql.NullInt64, lastPaidAt sql.Nu
 	} else if result.DifferenceKRW > 0 {
 		result.Direction = "higher"
 	}
-	result.Provenance = "derived_from_normalized_paid_unit_and_latest_observed_exact_identity_price"
+	result.Provenance = "derived_from_normalized_paid_unit_and_verified_exact_identity_price"
 	result.Limitations = append(result.Limitations, "the latest observation is not a guaranteed checkout price; verify options and promotions on the final product page")
 	return result
 }

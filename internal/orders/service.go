@@ -20,10 +20,14 @@ const (
 	defaultCategoryBudget = 25
 	maxCategoryBudget     = 500
 	defaultCatalogLimit   = 50
+	syncTimeBudget        = 5 * time.Minute
+	syncPageTimeout       = 60 * time.Second
 )
 
-var ErrDocumentSource = errors.New("protected document source unavailable")
-var ErrCursorLoop = errors.New("order pagination cursor repeated")
+var ErrDocumentSource = core.WithErrorCode("document_source_unavailable", errors.New("protected document source unavailable"))
+var ErrCursorLoop = core.ErrSyncCursorLoop
+var ErrSyncTimeBudget = core.ErrSyncTimeBudget
+var ErrSyncPageDeadline = core.ErrSyncPageDeadline
 
 type DocumentSource interface {
 	Fetch(context.Context, *core.OrderCursor) ([]byte, error)
@@ -56,10 +60,19 @@ func NewWithSyncSource(ledger *store.SQLite, source DocumentSource, syncSource c
 }
 
 func NewWithPageSource(ledger *store.SQLite, source PageSource) *Service {
-	return &Service{ledger: ledger, pageSource: source, syncSource: core.SyncSourceOrdinaryBrowser, now: time.Now}
+	return NewWithPageSourceAndSyncSource(ledger, source, core.SyncSourceOrdinaryBrowser)
+}
+
+func NewWithPageSourceAndSyncSource(ledger *store.SQLite, source PageSource, syncSource core.SyncSource) *Service {
+	categorySource, _ := source.(CategoryDocumentSource)
+	return &Service{ledger: ledger, pageSource: source, categorySource: categorySource, syncSource: syncSource, now: time.Now}
 }
 
 func (s *Service) Sync(ctx context.Context, request core.SyncRequest) (core.SyncResult, error) {
+	return s.syncWithTimeLimits(ctx, request, syncTimeBudget, syncPageTimeout)
+}
+
+func (s *Service) syncWithTimeLimits(ctx context.Context, request core.SyncRequest, total, perPage time.Duration) (result core.SyncResult, err error) {
 	budget := request.MaxPages
 	if budget == 0 {
 		budget = defaultPageBudget
@@ -73,63 +86,92 @@ func (s *Service) Sync(ctx context.Context, request core.SyncRequest) (core.Sync
 	if !s.syncSource.ValidForAcquisition() {
 		return core.SyncResult{}, errors.New("invalid sync acquisition source")
 	}
+	ctx, cancel := context.WithTimeoutCause(ctx, total, ErrSyncTimeBudget)
+	defer cancel()
+	unlock, err := s.ledger.AcquireSyncWriter(ctx)
+	if err != nil {
+		return core.SyncResult{}, err
+	}
+	defer func() { err = errors.Join(err, unlock()) }()
 	cursor, err := s.ledger.LoadSyncCursor(ctx)
 	if err != nil {
 		return core.SyncResult{}, err
 	}
-	runID, err := s.ledger.BeginSync(ctx, s.syncSource, core.SyncProvenanceObservedStructuredOrderDocument)
+	var runID int64
+	if request.RestartScan {
+		runID, err = s.ledger.RestartSyncScan(ctx, s.syncSource, core.SyncProvenanceObservedStructuredOrderDocument, cursor)
+	} else {
+		runID, err = s.ledger.BeginResumableSync(ctx, s.syncSource, core.SyncProvenanceObservedStructuredOrderDocument, cursor)
+	}
 	if err != nil {
 		return core.SyncResult{}, err
 	}
-	result := core.SyncResult{
-		SchemaVersion: core.SyncResultSchemaVersion,
-		Source:        s.syncSource,
-		Provenance:    core.SyncProvenanceObservedStructuredOrderDocument,
-		Next:          cursor,
+	if request.RestartScan {
+		cursor = nil
 	}
-	completeHistoryWalk := cursor == nil
+	result = core.SyncResult{
+		SchemaVersion:  core.SyncResultSchemaVersion,
+		Source:         s.syncSource,
+		Provenance:     core.SyncProvenanceObservedStructuredOrderDocument,
+		Next:           cursor,
+		CoverageStatus: core.SyncCoverageUnverified,
+	}
 	seenCursors := map[string]bool{}
-	seenOrderRefs := map[string]struct{}{}
 
+	finish := func(code string) error {
+		// Cancellation stops acquisition, not the bounded attempt bookkeeping.
+		// No source read or page commit is performed with this cleanup context.
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		return s.ledger.FinishSync(cleanupCtx, runID, result, code)
+	}
 	fail := func(code string, cause error) (core.SyncResult, error) {
-		if finishErr := s.ledger.FinishSync(ctx, runID, result, code); finishErr != nil {
-			return result, finishErr
+		if ctx.Err() != nil {
+			cause = errors.Join(cause, ctx.Err(), context.Cause(ctx))
+		}
+		if errors.Is(cause, context.Canceled) {
+			code = "canceled"
+		} else if errors.Is(cause, ErrSyncTimeBudget) {
+			code = "time_budget_exhausted"
+		} else if errors.Is(cause, ErrSyncPageDeadline) {
+			code = "page_deadline_exceeded"
+		} else if errors.Is(cause, context.DeadlineExceeded) {
+			code = "deadline_exceeded"
+		}
+		if finishErr := finish(code); finishErr != nil {
+			return result, errors.Join(cause, finishErr)
 		}
 		return result, cause
 	}
 
 	for result.PagesProcessed < budget {
+		if err := ctx.Err(); err != nil {
+			return fail("canceled", err)
+		}
 		key := cursorKey(cursor)
 		if seenCursors[key] {
 			return fail("cursor_loop", ErrCursorLoop)
 		}
 		seenCursors[key] = true
-
-		var page core.OrderPage
-		if s.pageSource != nil {
-			page, err = s.pageSource.FetchPage(ctx, cursor)
-			if err != nil {
-				return fail("document_source", errors.Join(ErrDocumentSource, err))
+		if err := s.ledger.CheckSyncCursor(ctx, runID, cursor); err != nil {
+			if errors.Is(err, ErrCursorLoop) {
+				return fail("cursor_loop", err)
 			}
-		} else {
-			document, fetchErr := s.source.Fetch(ctx, cursor)
-			if fetchErr != nil {
-				return fail("document_source", errors.Join(ErrDocumentSource, fetchErr))
-			}
-			page, err = coupangorders.ParseOrderDocument(document)
-			if err != nil {
-				return fail("invalid_document", err)
-			}
-		}
-		for _, order := range page.Orders {
-			seenOrderRefs[order.SourceRef] = struct{}{}
-		}
-		upserted, err := s.ledger.UpsertOrderPage(ctx, page)
-		if err != nil {
 			return fail("storage", err)
 		}
-		if err := s.ledger.SaveSyncCursor(ctx, page.Next); err != nil {
-			return fail("checkpoint", err)
+
+		// The same deadline covers acquisition, parsing, and the atomic page
+		// commit. A fresh page cannot extend the enclosing attempt deadline.
+		pageCtx, cancelPage := context.WithTimeoutCause(ctx, perPage, ErrSyncPageDeadline)
+		page, upserted, code, err := s.syncPage(pageCtx, runID, cursor)
+		// A successfully committed page must remain counted even if the timer
+		// fires immediately after Commit. Subsequent work checks the deadline.
+		if err != nil && pageCtx.Err() != nil {
+			err = errors.Join(err, pageCtx.Err(), context.Cause(pageCtx))
+		}
+		cancelPage()
+		if err != nil {
+			return fail(code, err)
 		}
 		result.PagesProcessed++
 		result.OrdersSeen += upserted.OrdersSeen
@@ -137,25 +179,52 @@ func (s *Service) Sync(ctx context.Context, request core.SyncRequest) (core.Sync
 		result.Next = page.Next
 		cursor = page.Next
 		if cursor == nil {
-			result.Complete = true
-			if completeHistoryWalk {
-				references := make([]string, 0, len(seenOrderRefs))
-				for sourceRef := range seenOrderRefs {
-					references = append(references, sourceRef)
-				}
-				removed, reconcileErr := s.ledger.ReconcileOrders(ctx, references)
-				if reconcileErr != nil {
-					return fail("reconciliation", reconcileErr)
-				}
-				result.OrdersRemoved = removed
-			}
+			result.CursorExhausted = true
+			// Cursor exhaustion is not proof of account identity, coverage,
+			// or deletion upstream. Retain orders not observed by this attempt.
 			break
 		}
 	}
-	if err := s.ledger.FinishSync(ctx, runID, result, ""); err != nil {
+	if err := ctx.Err(); err != nil {
+		return fail("canceled", err)
+	}
+	if err := finish(""); err != nil {
 		return result, err
 	}
 	return result, nil
+}
+
+func (s *Service) syncPage(ctx context.Context, runID int64, cursor *core.OrderCursor) (core.OrderPage, core.UpsertResult, string, error) {
+	var page core.OrderPage
+	var err error
+	errorCode := "document_source"
+	if s.pageSource != nil {
+		page, err = s.pageSource.FetchPage(ctx, cursor)
+	} else {
+		var document []byte
+		document, err = s.source.Fetch(ctx, cursor)
+		if err == nil {
+			if err = ctx.Err(); err != nil {
+				return page, core.UpsertResult{}, "deadline_exceeded", err
+			}
+			page, err = coupangorders.ParseOrderDocument(document)
+			errorCode = "invalid_document"
+		}
+	}
+	if err != nil {
+		if errors.Is(err, core.ErrPartialOrderData) {
+			return core.OrderPage{}, core.UpsertResult{}, "partial_order_data", err
+		}
+		if errorCode == "document_source" {
+			err = errors.Join(ErrDocumentSource, err)
+		}
+		return page, core.UpsertResult{}, errorCode, err
+	}
+	if err := ctx.Err(); err != nil {
+		return page, core.UpsertResult{}, "deadline_exceeded", err
+	}
+	upserted, err := s.ledger.ApplySyncPage(ctx, runID, cursor, page)
+	return page, upserted, "storage", err
 }
 
 func (s *Service) SyncStatus(ctx context.Context) (core.SyncStatus, error) {
@@ -179,11 +248,16 @@ func (s *Service) Insights(ctx context.Context, filter core.OrderFilter) (core.S
 	if err != nil {
 		return core.ShoppingInsights{}, err
 	}
-	result.Categories, err = s.ledger.CategoryBreakdown(ctx, filter)
-	if err != nil {
-		return core.ShoppingInsights{}, err
-	}
 	result.Profile = insights.BuildShoppingProfile(result)
+	return result, nil
+}
+
+func (s *Service) ShoppingAnalysis(ctx context.Context, filter core.OrderFilter, includeProducts bool) (core.ShoppingAnalysis, error) {
+	result, err := s.ledger.ShoppingAnalysis(ctx, filter, includeProducts)
+	if err != nil {
+		return core.ShoppingAnalysis{}, err
+	}
+	result.Insights.Profile = insights.BuildShoppingProfile(result.Insights)
 	return result, nil
 }
 
@@ -192,7 +266,7 @@ func (s *Service) ProductInsights(ctx context.Context, filter core.OrderFilter) 
 }
 
 func (s *Service) CategoryCatalog(ctx context.Context, request core.CategoryCatalogRequest) (core.CategoryCatalog, error) {
-	if err := request.Validate(); err != nil {
+	if err := core.ValidateRequest(request); err != nil {
 		return core.CategoryCatalog{}, err
 	}
 	request.Query = strings.TrimSpace(request.Query)

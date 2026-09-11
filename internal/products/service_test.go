@@ -115,9 +115,9 @@ func (s syntheticSource) AddToCart(_ context.Context, request core.CartAddReques
 
 func TestSearchAppliesNaturalLanguageDerivedFiltersWithoutTreatingUnknownAsMatch(t *testing.T) {
 	service := New(syntheticSource{items: []core.ProductCard{
-		{Name: "known match", Price: core.ProductPrice{CurrentAmount: 79000}, Rating: 4.8, ReviewCount: 200, Rocket: true, ObservedFields: []string{"price.current_amount", "rating", "review_count"}},
+		withSyntheticPriceEvidence(core.ProductCard{Reference: core.ProductReference{ProductID: "101"}, Name: "known match", Price: core.ProductPrice{CurrentAmount: 79000}, Rating: 4.8, ReviewCount: 200, Rocket: true, ObservedFields: []string{"price.current_amount", "rating", "review_count", "rocket"}}),
 		{Name: "unknown price", Rating: 5, ReviewCount: 500, Rocket: true, ObservedFields: []string{"rating", "review_count"}},
-		{Name: "over budget", Price: core.ProductPrice{CurrentAmount: 120000}, Rating: 4.9, ReviewCount: 800, Rocket: true, ObservedFields: []string{"price.current_amount", "rating", "review_count"}},
+		withSyntheticPriceEvidence(core.ProductCard{Reference: core.ProductReference{ProductID: "102"}, Name: "over budget", Price: core.ProductPrice{CurrentAmount: 120000}, Rating: 4.9, ReviewCount: 800, Rocket: true, ObservedFields: []string{"price.current_amount", "rating", "review_count"}}),
 	}})
 	service.now = func() time.Time { return time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC) }
 
@@ -139,7 +139,7 @@ func TestSearchAppliesNaturalLanguageDerivedFiltersWithoutTreatingUnknownAsMatch
 func TestSearchRecordsOnlyReturnedObservedCurrentPrices(t *testing.T) {
 	history := &syntheticPriceHistory{}
 	service := NewWithAffiliateAndPrices(syntheticSource{items: []core.ProductCard{
-		{Reference: core.ProductReference{ProductID: "101", VendorItemID: "201"}, Name: "Synthetic observed", URL: "https://www.coupang.com/vp/products/101", Price: core.ProductPrice{CurrentAmount: 42000}, ObservedFields: []string{"price.current_amount"}},
+		withSyntheticPriceEvidence(core.ProductCard{Reference: core.ProductReference{ProductID: "101", VendorItemID: "201"}, Name: "Synthetic observed", URL: "https://www.coupang.com/vp/products/101", Price: core.ProductPrice{CurrentAmount: 42000}, ObservedFields: []string{"price.current_amount"}}),
 		{Reference: core.ProductReference{ProductID: "102", VendorItemID: "202"}, Name: "Synthetic unknown", URL: "https://www.coupang.com/vp/products/102", Price: core.ProductPrice{CurrentAmount: 51000}},
 	}}, nil, history)
 	service.now = func() time.Time { return time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC) }
@@ -160,6 +160,9 @@ func TestPriceHistoryKeepsVariantsSeparateAndDerivesPerSeriesTrend(t *testing.T)
 		{Reference: core.ProductReference{ProductID: "101", VendorItemID: "202"}, Name: "Synthetic B", CurrentAmount: 51000, Currency: "KRW", ObservedAt: base.Add(time.Hour), Source: "coupang_product_search", Provenance: "observed"},
 		{Reference: core.ProductReference{ProductID: "101", VendorItemID: "201"}, Name: "Synthetic A", CurrentAmount: 39000, Currency: "KRW", ObservedAt: base.Add(2 * time.Hour), Source: "coupang_product_inspection", Provenance: "observed"},
 	}}
+	for i := range history.observations {
+		history.observations[i] = withSyntheticObservationEvidence(history.observations[i])
+	}
 	result, err := NewWithAffiliateAndPrices(syntheticSource{}, nil, history).PriceHistory(context.Background(), core.ProductPriceHistoryRequest{ProductID: "101"})
 	if err != nil {
 		t.Fatal(err)
@@ -173,7 +176,7 @@ func TestPriceHistoryKeepsVariantsSeparateAndDerivesPerSeriesTrend(t *testing.T)
 			exact = &result.Series[index]
 		}
 	}
-	if exact == nil || exact.Trend.Direction != "lower" || exact.Trend.ChangeFromFirstReturnedKRW != -3000 || exact.Trend.ChangeFromFirstReturnedPercent != -7.14 || exact.Trend.Provenance == "observed" {
+	if exact == nil || exact.Trend == nil || exact.Trend.Direction != "lower" || exact.Trend.ChangeFromFirstReturnedKRW != -3000 || exact.Trend.ChangeFromFirstReturnedPercent == nil || *exact.Trend.ChangeFromFirstReturnedPercent != -7.14 || exact.Trend.Provenance == "observed" {
 		t.Fatalf("unexpected exact-option trend: %#v", exact)
 	}
 }
@@ -192,6 +195,8 @@ func TestPriceWatchRequiresObservationAndRefreshesOnlyExactIdentity(t *testing.T
 		Price: core.ProductPrice{CurrentAmount: 39000}, ObservedFields: []string{"price.current_amount"},
 	}}}
 	service := NewWithAffiliateAndPrices(source, nil, history)
+	source.inspection.Product = withSyntheticPriceEvidence(source.inspection.Product)
+	service.source = source
 	service.now = func() time.Time { return base }
 
 	added, err := service.AddPriceWatch(context.Background(), core.ProductWatchRequest{ProductID: "101", VendorItemID: "201"})
@@ -333,7 +338,7 @@ func TestComputerSpecificationParserRecognizesCommonKoreanListingSpellings(t *te
 
 func TestInspectDerivesComputerSpecificationsFromObservedSelectedOptions(t *testing.T) {
 	service := New(syntheticSource{inspection: core.ProductInspection{
-		Product:         core.ProductCard{Name: "Synthetic gaming desktop"},
+		Product:         core.ProductCard{Reference: core.ProductReference{ProductID: "101"}, Name: "Synthetic gaming desktop"},
 		SelectedOptions: []string{"16GB, 512GB, R5 5500GT, 라데온 Vega 7, WIN11 Home"},
 	}})
 	result, err := service.Inspect(context.Background(), core.ProductInspectRequest{ProductID: "101"})
@@ -432,7 +437,7 @@ func TestAffiliateConfigurationAndEmptyResultsAreDistinguished(t *testing.T) {
 func TestAffiliateFailurePreservesCanonicalLinks(t *testing.T) {
 	canonical := "https://www.coupang.com/vp/products/101"
 	linker := &syntheticAffiliateLinker{err: errors.New("synthetic upstream failure")}
-	service := NewWithAffiliate(syntheticSource{inspection: core.ProductInspection{Product: core.ProductCard{Name: "Synthetic product", URL: canonical}}}, linker)
+	service := NewWithAffiliate(syntheticSource{inspection: core.ProductInspection{Product: core.ProductCard{Reference: core.ProductReference{ProductID: "101"}, Name: "Synthetic product", URL: canonical}}}, linker)
 	result, err := service.Inspect(context.Background(), core.ProductInspectRequest{ProductID: "101"})
 	if err != nil {
 		t.Fatal(err)

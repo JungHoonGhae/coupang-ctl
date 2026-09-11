@@ -21,7 +21,7 @@ import (
 const maxReceiptDocumentBytes = 8 << 20
 
 var (
-	ErrReceiptDataMissing = errors.New("structured receipt data missing")
+	ErrReceiptDataMissing = core.WithErrorCode("structured_receipt_data_missing", errors.New("structured receipt data missing"))
 	safeFilenamePattern   = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 )
 

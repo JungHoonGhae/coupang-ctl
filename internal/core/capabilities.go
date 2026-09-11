@@ -1,5 +1,7 @@
 package core
 
+import "sort"
+
 type CapabilityStatus string
 type CapabilityNextStepKind string
 
@@ -67,34 +69,28 @@ type CapabilityNextStepCounts struct {
 func CurrentCapabilities() CapabilityReport {
 	capabilities := []Capability{
 		{
+			ID: "recommendation_report", Priority: "P1", Status: CapabilityExperimental,
+			UserValue:    "inspect supplied recommendation evidence without starting another shopping session",
+			Interface:    []string{"cli", "mcp"},
+			Implemented:  []string{"products report and products_report_render share an offline bounded report v2 renderer for recommendation v5", "source query/category scope, verified selections, unverified choices, incomplete outcomes, missing values and provenance are preserved", "bounded live category research and MCP report rendering retain incomplete evidence without claiming recommendation sufficiency", "default response is private-local HTML in JSON with no file creation; CLI --output creates a new mode-0600 file without overwriting"},
+			NextWork:     "verify browser rendering/accessibility and user understanding across broader recommendations; supplied evidence is not independently verified by rendering",
+			NextStepKind: CapabilityNextLiveValidation, LastVerified: "2026-09-11",
+		},
+		{
 			ID: "native_auth_session", Priority: "P0", Status: CapabilityAvailable,
-			UserValue:    "one headed login followed by reusable read-only sessions, with visible QR, private PNG, or explicit ephemeral app-link presentation",
+			UserValue:    "dedicated Camofox authentication reused by headless CLI and MCP reads",
 			Interface:    []string{"cli", "mcp"},
-			Implemented:  []string{"headed QR and app-link login plus headed phone/OTP UI assistance that leaves CAPTCHA to the user", "browser-owned session state in a dedicated local Chrome profile without a separate cookie export", "idempotent coupangctl login convenience command that quietly reuses a ready session and opens QR only for a missing or expired session", "all default status, verification, CLI, MCP, and scheduled reads stay non-visible without opening a headed fallback", "confirmation-gated MCP login-if-needed that quietly checks first and opens QR only for a missing or expired session", "typed access_blocked status for a denied passive check without guessing logout or opening login", "command-aware access-denied remediation that recommends only supported modes and never repeats an already-failed headed or current-browser mode", "quiet doctor checks that separate browser installation, background-session readiness, and SQLite health", "one bounded same-session retry for transient protected-read denial", "explicit --headed mode for a user-requested visible attempt", "ephemeral loopback debugging port discovered through a validated private DevToolsActivePort file", "cross-platform non-blocking profile lock with a stable profile_in_use error", "private browser-family and major-version profile marker that permits upgrades and rejects family changes or downgrades", "two consecutive actual installed-Chrome headless launches and graceful closes against one clean temporary profile on Linux, macOS, and Windows CI without visiting Coupang", "native Linux, macOS, and Windows profile compatibility and live-launch contracts that gate tagged releases"},
-			NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-03",
+			Implemented:  []string{"isolated persisted Camofox profile without importing daily-use browser data", "explicit manual authentication or ephemeral QR app link", "source-native boolean authentication check independent of order parsing, with authenticated_session verification scope", "verified sessions do not open a login window; unknown authentication is not treated as expiration", "blocked reads never silently select another browser", "local runtime checks and profile locking"},
+			NextWork:     "complete fresh mobile approval and release-platform verification; SMS automation and QR file export are not supported",
+			NextStepKind: CapabilityNextLiveValidation, LastVerified: "2026-09-11",
 		},
 		{
-			ID: "current_browser_connection", Priority: "P0", Status: CapabilityExperimental,
-			UserValue:    "extension-free order sync through a running Chrome browser after Chrome's own explicit remote-debugging opt-in and connection approval",
+			ID: "full_order_history", Priority: "P0", Status: CapabilityExperimental,
+			UserValue:    "retained normalized order history with resumable acquisition and explicit unverified coverage",
 			Interface:    []string{"cli", "mcp"},
-			Implemented:  []string{"passive current-browser status CLI command and current_browser_status MCP tool without debugger attachment or endpoint disclosure", "native Linux, macOS, and Windows status contracts that gate tagged releases", "clean macOS 26.3.1 arm64 and Chrome 152 passive not-enabled baseline with no Chrome process launched by status or doctor", "two consecutive real attachments to a clean temporary loopback Chrome profile that returned typed authentication-required, disconnected without closing Chrome, and left no residue", "explicit --current-browser CLI mode and orders_sync_current_browser MCP tool", "private DevToolsActivePort validation with loopback-only endpoint verification", "one allowlisted product-created tab per read", "disconnect without closing Chrome or copying browser session state"},
-			NextWork:     "validate Chrome 144+ official approval and authenticated repeated order-sync behavior on clean desktop profiles across macOS, Windows, and Linux",
-			NextStepKind: CapabilityNextLiveValidation, LastVerified: "2026-09-03",
-		},
-		{
-			ID: "ordinary_browser_bridge", Priority: "P1", Status: CapabilityExperimental,
-			UserValue:    "optional selected-tab compatibility path when dedicated and approved current-browser modes are unsuitable",
-			Interface:    []string{"cli", "mcp"},
-			Implemented:  []string{"optional recovery path kept out of the default single-binary dedicated-profile flow", "same-account ordinary-versus-dedicated Chrome comparison with redacted success markers", "MV3 activeTab action with isolated top-frame execution and no cookie or host permission", "Chrome Native Messaging plus an authenticated single-use CLI rendezvous", "closed normalized order-page protocol with independent extension and Go validation", "embedded per-user install, seven-check doctor with a synthetic native-host ping, ownership-checked uninstall, and digest-authorized resumable upgrades on macOS, Linux, and Windows", "16/48/128 RGBA extension icons plus a deterministic allowlist and SHA-256 verified Chrome Web Store ZIP builder", "clean macOS 26.3.1 arm64 and Chrome 152 install-doctor-ping-uninstall round trip with residue verification and no profile or account access", "native Windows CI coverage for isolated real-HKCU install, doctor, conflict, and uninstall", "CLI and MCP typed sync surfaces", "four consecutive redacted live one-page CLI-to-SQLite reads after a managed macOS host install, including the installed extension bundle", "six-target allowlisted release archives with checksums, per-archive SBOMs, and provenance-ready tag automation"},
-			NextWork:     "validate clean Chrome profiles on Linux and Windows, capture synthetic-data store media, reconcile the dashboard public key and extension ID, complete Chrome Web Store review, and add native OS signing",
-			NextStepKind: CapabilityNextLiveValidation, LastVerified: "2026-09-03",
-		},
-		{
-			ID: "full_order_history", Priority: "P0", Status: CapabilityAvailable,
-			UserValue:    "complete normalized order history with resumable synchronization",
-			Interface:    []string{"cli", "mcp"},
-			Implemented:  []string{"bounded cursor pagination", "resumable SQLite checkpoints", "complete-history reconciliation without duplicate orders", "schema-versioned sync source and observed provenance selected by the acquisition workflow", "browserless CLI and MCP latest-sync audit with timestamps, counts, failure code, and complete-history evidence", "explicit unknown_legacy provenance for pre-migration sync runs"},
-			NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-03",
+			Implemented:  []string{"orders preview and orders_preview read one current source entry page without opening or persisting a ledger; identity and complete history remain unverified", "bounded cursor pagination", "atomic page, attempt observations and resumable SQLite checkpoint commits", "unobserved local orders are retained, not deleted or marked cancelled", "sync result v2 separates cursor exhaustion from unverified coverage; sync status v3 adds cumulative scan evidence across attempts", "browserless CLI, MCP and aggregate snapshots expose scan page/attempt counts, saved cursor and distinct retained observed/unobserved order counts", "legacy completion flags are preserved in storage but are not verified whole-account coverage"},
+			NextWork:     "connect verified source-account identity and account-scoped ledgers, then validate requested-range and source-end evidence before claiming complete account history",
+			NextStepKind: CapabilityNextImplementation, LastVerified: "2026-09-11",
 		},
 		{
 			ID: "spend_cancel_return_stats", Priority: "P0", Status: CapabilityAvailable,
@@ -106,11 +102,12 @@ func CurrentCapabilities() CapabilityReport {
 		},
 		{
 			ID: "account_membership_benefits", Priority: "P0", Status: CapabilityExperimental,
-			UserValue:   "current WOW state and fee, source fee-change schedule metadata, source-labeled recent benefit usage, an explicitly inferred current-fee comparison, registered payment-method brands, and observed monthly WOW Card cash rewards",
-			Interface:   []string{"cli", "mcp"},
-			Implemented: []string{"current WOW status, current monthly fee, and source fee-change date", "observed recent benefit amount and window", "monthly WOW Card rewards and registered card brands", "explicit-only membership cost aggregation with inferred comparison kept separate"},
-			NextWork:    "adopt membership-fee receipt evidence for exact historical costs; the complete live order history has no membership-specific item metadata", NextStepKind: CapabilityNextEvidenceRequired,
-			BlockedBy: []string{"the current account exposes no explicit historical membership-payment rows in the synchronized order data or available receipt history"}, LastVerified: "2026-09-03",
+			UserValue:    "source-backed membership costs and benefits with separate observation windows",
+			Interface:    []string{"cli", "mcp"},
+			Implemented:  []string{"bounded headless Camofox membership and fixed cash GET reads under one dedicated-profile lock", "private-local schema v6 preserves missing versus observed zero/false for membership flags, benefit components, usage counts and recurring-payment summaries", "sequential cash pagination retains partial versus source-terminated coverage", "raw payment identifiers and cash descriptions are discarded in-page", "live CLI two-page and MCP one-page reads verified; both retained partial history"},
+			NextWork:     "connect verified historical membership receipts before claiming exact paid costs or net benefits; broaden live account coverage",
+			NextStepKind: CapabilityNextImplementation,
+			LastVerified: "2026-09-11",
 		},
 		{
 			ID: "purchase_delivery_trends", Priority: "P0", Status: CapabilityAvailable,
@@ -141,11 +138,12 @@ func CurrentCapabilities() CapabilityReport {
 			NextWork:    "keep layout coverage and honest unavailable-field behavior in release checks", NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-03",
 		},
 		{
-			ID: "source_native_product_rankings", Priority: "P0", Status: CapabilityAvailable,
-			UserValue:   "product-type or observed real-category rankings with label-to-ID discovery and separate Coupang ranking, sales, latest, price, rating, and review semantics",
-			Interface:   []string{"cli", "mcp"},
-			Implemented: []string{"ordinary query and source-native category-ID scopes", "separate Coupang ranking, sales, latest, and price controls", "source order preserved without treating unavailable prices as zero", "local rating and review-count sorts limited to explicitly observed fields", "observed local category label-to-ID catalog"},
-			NextWork:    "keep query and observed-category sort semantics in release checks", NextStepKind: CapabilityNextMaintenance, LastVerified: "2026-09-03",
+			ID: "source_native_product_rankings", Priority: "P0", Status: CapabilityExperimental,
+			UserValue:    "query- or category-based rankings with observed sidebar choices and explicit scope",
+			Interface:    []string{"cli", "mcp"},
+			Implemented:  []string{"Camofox query or source-native category-ID search with bounded sidebar discovery and verified cumulative selections", "category bestAsc and query scoreDesc retain their source-specific Coupang-ranking semantics", "CLI and MCP category-only requests and memory-filtered budget searches verified", "explicit category-only sidebar navigation requires both the selected label and a matching native destination breadcrumb; starting and applied category IDs remain separate", "ordered category answers preserve historical catalogs and only the last verified active category; a two-hop path was live-checked through CLI, MCP and report rendering", "recommendations preserve category identity across refinement, sort/page discovery and report output; bounded live category research reached all five sorts and exact detail inspection", "source ranking preserved separately from local rating/review sorts", "missing prices never become zero-price evidence"},
+			NextWork:     "extend ordered category refinement to query-based discovery, diagnose intermittent filter-verification failures, and validate more destination categories and sort-preserving transitions",
+			NextStepKind: CapabilityNextImplementation, LastVerified: "2026-09-11",
 		},
 		{
 			ID: "transparent_affiliate_deeplinks", Priority: "P0", Status: CapabilityExperimental,
@@ -156,28 +154,31 @@ func CurrentCapabilities() CapabilityReport {
 			BlockedBy: []string{"the live Partners API page disables API-key generation until final approval is complete"}, LastVerified: "2026-09-03",
 		},
 		{
-			ID: "explicit_cart_add", Priority: "P1", Status: CapabilityExperimental,
-			UserValue:   "add an exact searched vendor item to cart after explicit user confirmation without checkout or payment",
-			Interface:   []string{"cli", "mcp"},
-			Implemented: []string{"exact observed vendor-item validation", "explicit confirmation gate", "single reversible cart mutation with no automatic retry", "checkout, order, and payment controls excluded"},
-			NextWork:    "verify the reversible mutation on an explicitly authorized live item; never auto-retry an unverified attempt", NextStepKind: CapabilityNextUserAuthorization,
-			BlockedBy: []string{"a specific live item and explicit authorization are required for the mutation test"},
+			ID: "explicit_cart_add", Priority: "P1", Status: CapabilityPlanned,
+			UserValue:    "review exact products before any separately authorized reversible cart action",
+			Interface:    []string{},
+			Implemented:  []string{"typed exact-identity and explicit-confirmation validation retained; Camofox mutations are disabled"},
+			NextWork:     "separate future scope and approval are required for cart integration; checkout and payment remain excluded",
+			NextStepKind: CapabilityNextImplementation,
+			BlockedBy:    []string{"no Camofox cart mutation is implemented"},
 		},
 		{
-			ID: "batch_receipts", Priority: "P1", Status: CapabilityExperimental,
-			UserValue:   "read cash and card request availability, history, single-period and multi-year summaries; inspect one order's vendor receipt by hashed reference; then privately download an already-completed archive without exposing its URL",
-			Interface:   []string{"cli", "mcp"},
-			Implemented: []string{"cash and card request availability", "bounded existing request history", "single-period and multi-year receipt totals", "payment-method rankings across calendar-year reads", "source-native vendor receipt by hashed order reference", "private new-file download of an already-completed archive"},
-			NextWork:    "validate a completed archive download live; request creation remains excluded", NextStepKind: CapabilityNextEvidenceRequired,
-			BlockedBy: []string{"the current receipt history has no completed archive item to validate"}, LastVerified: "2026-09-03",
+			ID: "batch_receipts", Priority: "P1", Status: CapabilityPlanned,
+			UserValue:    "private receipt history and non-overwriting downloads",
+			Interface:    []string{},
+			Implemented:  []string{"typed receipt parsers, summaries and private file-write checks retained"},
+			NextWork:     "connect and validate bounded Camofox receipt reads; current CLI returns unsupported",
+			NextStepKind: CapabilityNextImplementation,
+			BlockedBy:    []string{"no Camofox receipt source is connected"},
 		},
 		{
-			ID: "payment_method_installment_insights", Priority: "P1", Status: CapabilityExperimental,
-			UserValue:   "show multi-year receipt-summary payment-method totals and one order's source-native vendor payment method while keeping lump-sum and installment statistics explicitly unavailable until an installment field is observed",
-			Interface:   []string{"cli", "mcp"},
-			Implemented: []string{"observed receipt payment-method display names", "per-method receipt counts and amounts", "multi-year non-overlapping calendar-year aggregation", "per-order vendor payment type and cancellation components", "installment status explicitly unavailable rather than inferred"},
-			NextWork:    "adopt installment months only if an explicit field is observed in a source-native receipt response", NextStepKind: CapabilityNextEvidenceRequired,
-			BlockedBy: []string{"no explicit installment-month field was present in the verified receipt summary, history, or vendor-receipt response shapes"}, LastVerified: "2026-09-03",
+			ID: "payment_method_installment_insights", Priority: "P1", Status: CapabilityPlanned,
+			UserValue:    "source-native payment-method totals without inventing installment information",
+			Interface:    []string{},
+			Implemented:  []string{"receipt summary calculations preserve unknown installment status"},
+			NextWork:     "connect Camofox receipt reads before assessing source-native payment and installment fields",
+			NextStepKind: CapabilityNextImplementation,
+			BlockedBy:    []string{"Camofox receipt acquisition and installment evidence remain missing"},
 		},
 		{
 			ID: "product_categories", Priority: "P1", Status: CapabilityExperimental,
@@ -196,6 +197,9 @@ func CurrentCapabilities() CapabilityReport {
 			BlockedBy: []string{"real price-change validation requires future observations of the same exact option"}, LastVerified: "2026-09-03",
 		},
 	}
+	sort.SliceStable(capabilities, func(i, j int) bool {
+		return capabilities[i].Priority < capabilities[j].Priority
+	})
 	return CapabilityReport{
 		SchemaVersion: 3,
 		Summary:       summarizeCapabilities(capabilities),

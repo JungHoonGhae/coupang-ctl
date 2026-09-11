@@ -21,14 +21,14 @@ func TestParseSearchDocumentAcceptsOnlyCanonicalPublicProductData(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 1 || items[0].Reference.VendorItemID != "301" || items[0].Price.Currency != "KRW" || items[0].SearchPosition != 7 || items[0].RankSource != "coupang_search_order" || items[0].ReviewScope != "product_page_observed" || coverage.Source != "synthetic" {
+	if len(items) != 1 || items[0].Reference.VendorItemID != "301" || items[0].Price.Currency != "" || items[0].SearchPosition != 7 || items[0].RankSource != "coupang_search_order" || items[0].ReviewScope != "product_page_observed" || coverage.Source != "synthetic" {
 		t.Fatalf("unexpected search parse: %#v %#v", items, coverage)
 	}
 }
 
 func TestParseSearchDocumentAcceptsExplicitNoResults(t *testing.T) {
-	items, _, err := ParseSearchDocument([]byte(`{"items":[],"no_results":true,"coverage":{"source":"synthetic"}}`))
-	if err != nil || len(items) != 0 {
+	items, coverage, err := ParseSearchDocument([]byte(`{"items":[],"no_results":true,"coverage":{"source":"synthetic"}}`))
+	if err != nil || len(items) != 0 || !coverage.SourceNoResults {
 		t.Fatalf("explicit empty search was rejected: items=%#v err=%v", items, err)
 	}
 }

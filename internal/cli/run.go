@@ -11,26 +11,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	accountworkflow "github.com/JungHoonGhae/coupang-ctl/internal/account"
 	"github.com/JungHoonGhae/coupang-ctl/internal/auth"
 	"github.com/JungHoonGhae/coupang-ctl/internal/browser"
-	"github.com/JungHoonGhae/coupang-ctl/internal/browserbridge"
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
-	coupangaccount "github.com/JungHoonGhae/coupang-ctl/internal/coupang/account"
-	coupangproducts "github.com/JungHoonGhae/coupang-ctl/internal/coupang/products"
-	coupangreceipts "github.com/JungHoonGhae/coupang-ctl/internal/coupang/receipts"
-	"github.com/JungHoonGhae/coupang-ctl/internal/loginassist"
-	"github.com/JungHoonGhae/coupang-ctl/internal/mcpserver"
-	orderworkflow "github.com/JungHoonGhae/coupang-ctl/internal/orders"
-	"github.com/JungHoonGhae/coupang-ctl/internal/partners"
-	"github.com/JungHoonGhae/coupang-ctl/internal/platform"
-	productworkflow "github.com/JungHoonGhae/coupang-ctl/internal/products"
 	"github.com/JungHoonGhae/coupang-ctl/internal/recap"
 	receiptworkflow "github.com/JungHoonGhae/coupang-ctl/internal/receipts"
-	"github.com/JungHoonGhae/coupang-ctl/internal/store"
 )
 
-const orderSyncUsage = "usage: coupangctl orders sync [--max-pages N] [--headed|--current-browser|--ordinary-browser]"
+const orderSyncUsage = "usage: coupangctl orders sync [--max-pages N] [--restart-scan]"
 
 type helpResponse struct {
 	SchemaVersion int           `json:"schema_version"`
@@ -48,144 +36,78 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 	if len(args) == 0 || (len(args) == 1 && isTopLevelHelp(args[0])) {
 		return writeTopLevelHelp(stdout)
 	}
-	if strings.HasPrefix(args[0], "chrome-extension://") {
-		return runChromeNativeHost(ctx, args, os.Stdin, stdout)
-	}
 	args = expandConvenienceCommand(args)
-	if args[0] == "version" {
-		return writeJSON(stdout, map[string]string{"name": "coupangctl", "version": version})
+	if legacyBrowserRequested(args) {
+		return errLegacyBrowserRetired
 	}
-	if args[0] == "capabilities" {
+	// Browser choice is no longer a configuration-dependent fallback chain.
+	// Source reads always use the dedicated Camofox profile.
+	switch args[0] {
+	case "camofox":
+		return runCamofoxSetup(ctx, args[1:], stdout)
+	case "version":
+		return writeJSON(stdout, map[string]string{"name": "coupangctl", "version": version})
+	case "capabilities":
 		if len(args) != 1 {
-			return errors.New("usage: coupangctl capabilities")
+			return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl capabilities"))
 		}
 		return writeJSON(stdout, core.CurrentCapabilities())
-	}
-	if args[0] == "current-browser" {
-		return runCurrentBrowser(ctx, args[1:], stdout, nativeCurrentBrowserStatusProvider{})
-	}
-	if len(args) >= 2 && args[0] == "products" && args[1] == "watch-schedule" {
-		executable, err := os.Executable()
-		if err != nil {
-			return fmt.Errorf("resolve coupangctl executable: %w", err)
+	case "products":
+		if len(args) == 3 && isFlagHelp(args[2:]) {
+			switch args[1] {
+			case "search", "inspect", "recommend":
+				return runProducts(ctx, args[1:], stdout, nil)
+			}
 		}
-		executable, err = filepath.Abs(executable)
-		if err != nil {
-			return fmt.Errorf("resolve absolute coupangctl executable: %w", err)
+		if len(args) >= 2 && args[1] == "report" {
+			return runProductReport(ctx, args[2:], os.Stdin, stdout)
 		}
-		return runProductWatchSchedule(args[2:], stdout, executable)
-	}
-	if args[0] == "browser-bridge" {
-		paths, err := platform.DefaultPaths()
-		if err != nil {
-			return err
-		}
-		executable, err := os.Executable()
-		if err != nil {
-			return fmt.Errorf("resolve coupangctl executable: %w", err)
-		}
-		executable, err = filepath.Abs(executable)
-		if err != nil {
-			return fmt.Errorf("resolve absolute coupangctl executable: %w", err)
-		}
-		executable, err = filepath.EvalSymlinks(executable)
-		if err != nil {
-			return fmt.Errorf("resolve coupangctl executable symlinks: %w", err)
-		}
-		return runBrowserBridge(args[1:], stdout, paths.StateDir, executable)
-	}
-	if conflictingOrderSyncBrowserModes(args) {
-		return errors.New(orderSyncUsage)
-	}
-
-	paths, err := platform.DefaultPaths()
-	if err != nil {
-		return err
-	}
-	browserAdapter := browser.NewNative(paths.ProfileDir)
-	if backgroundReadRequested(args) {
-		browserAdapter = browser.NewNativeBackground(paths.ProfileDir)
-	} else if currentBrowserReadRequested(args) {
-		browserAdapter = browser.NewNativeCurrentBrowser()
-	} else if headedReadRequested(args) {
-		browserAdapter = browser.NewNativeHeadedSync(paths.ProfileDir)
-	}
-	defer browserAdapter.Close()
-	authService := auth.NewService(browserAdapter)
-	receiptService := receiptworkflow.New(coupangreceipts.New(browserAdapter))
-
-	switch args[0] {
-	case "doctor":
-		return runDoctor(ctx, stdout, paths, authService)
-	case "auth":
-		return runAuth(ctx, args[1:], stdout, stderr, authService, loginassist.New(paths.ProfileDir), newTerminalLoginSecrets(os.Stdin, stderr))
-	case "orders":
-		ledger, err := store.Open(ctx, paths.Database)
-		if err != nil {
-			return err
-		}
-		defer ledger.Close()
-		if ordinaryBrowserReadRequested(args) {
-			bridge, err := browser.StartOrdinaryBrowserBridge(paths.StateDir)
+		if len(args) >= 2 && args[1] == "watch-schedule" {
+			executable, err := os.Executable()
 			if err != nil {
 				return err
 			}
-			defer bridge.Close()
-			if _, err := fmt.Fprintln(stderr, "일반 Chrome에서 쿠팡 주문목록을 연 뒤 coupangctl 확장 버튼을 한 번 누르세요."); err != nil {
+			executable, err = filepath.Abs(executable)
+			if err != nil {
 				return err
 			}
-			return runOrders(ctx, args[1:], stdout, orderworkflow.NewWithPageSource(ledger, bridge))
+			return runProductWatchSchedule(args[2:], stdout, executable)
 		}
-		orderService := orderworkflow.New(ledger, browserAdapter)
-		if currentBrowserReadRequested(args) {
-			orderService = orderworkflow.NewWithSyncSource(ledger, browserAdapter, core.SyncSourceCurrentBrowser)
+		return runCamofox(ctx, args, stdout, stderr, version)
+	case "orders":
+		if len(args) == 3 && args[1] == "stats" && isFlagHelp(args[2:]) {
+			return runOrders(ctx, args[1:], stdout, nil)
 		}
-		return runOrders(ctx, args[1:], stdout, orderService)
-	case "products":
-		ledger, err := store.Open(ctx, paths.Database)
-		if err != nil {
-			return err
-		}
-		defer ledger.Close()
-		productService := productworkflow.NewWithAffiliateAndPrices(coupangproducts.New(browserAdapter), partners.NewFromEnvironment(os.Getenv), ledger)
-		return runProducts(ctx, args[1:], stdout, productService)
-	case "account":
-		ledger, err := store.Open(ctx, paths.Database)
-		if err != nil {
-			return err
-		}
-		defer ledger.Close()
-		accountService := accountworkflow.NewWithCosts(coupangaccount.New(browserAdapter), ledger)
-		return runAccount(ctx, args[1:], stdout, accountService)
-	case "receipts":
-		return runReceipts(ctx, args[1:], stdout, receiptService)
-	case "mcp":
-		if len(args) != 1 {
-			return errors.New("usage: coupangctl mcp")
-		}
-		ledger, err := store.Open(ctx, paths.Database)
-		if err != nil {
-			return err
-		}
-		defer ledger.Close()
-		productService := productworkflow.NewWithAffiliateAndPrices(coupangproducts.New(browserAdapter), partners.NewFromEnvironment(os.Getenv), ledger)
-		accountService := accountworkflow.NewWithCosts(coupangaccount.New(browserAdapter), ledger)
-		return mcpserver.RunWithProviders(ctx, mcpserver.Providers{
-			Auth:                 authService,
-			AuthRecovery:         authService,
-			Orders:               orderworkflow.New(ledger, browserAdapter),
-			CurrentBrowserStatus: nativeCurrentBrowserStatusProvider{},
-			CurrentBrowserOrders: currentBrowserOrderSync{ledger: ledger},
-			OrdinaryOrders:       ordinaryBrowserOrderSync{ledger: ledger, stateDir: paths.StateDir},
-			Products:             productService,
-			Account:              accountService,
-			Receipts:             receiptService,
-		}, version)
+		return runCamofox(ctx, args, stdout, stderr, version)
+	case "auth", "mcp", "doctor", "account", "receipts":
+		return runCamofox(ctx, args, stdout, stderr, version)
 	default:
 		return usage(stderr)
 	}
 }
 
+var errLegacyBrowserRetired = core.NewError("browser_mode_retired")
+
+func legacyBrowserRequested(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	switch args[0] {
+	case "current-browser", "browser-bridge", "shopping-connection":
+		return true
+	}
+	if strings.HasPrefix(args[0], "chrome-extension://") {
+		return true
+	}
+	for _, arg := range args {
+		for _, flag := range []string{"--aside", "--headed", "--current-browser", "--ordinary-browser", "--apple-events"} {
+			if arg == flag || strings.HasPrefix(arg, flag+"=") {
+				return true
+			}
+		}
+	}
+	return false
+}
 func isTopLevelHelp(arg string) bool {
 	return arg == "help" || arg == "--help" || arg == "-h"
 }
@@ -197,13 +119,10 @@ func writeTopLevelHelp(w io.Writer) error {
 		Usage:         "coupangctl <command> [options]",
 		Commands: []helpCommand{
 			{Name: "auth", Summary: "sign in, verify, or assist an interactive login"},
-			{Name: "orders", Summary: "sync orders and produce local analytics or recap output"},
-			{Name: "products", Summary: "search, inspect, watch, and add products to the cart"},
-			{Name: "account", Summary: "inspect membership, benefits, rewards, and payment summaries"},
-			{Name: "receipts", Summary: "list, summarize, and download receipt records"},
-			{Name: "current-browser", Summary: "inspect approved current-browser connectivity"},
-			{Name: "browser-bridge", Summary: "manage the optional ordinary-browser bridge"},
-			{Name: "doctor", Summary: "check browser, profile, authentication, and local storage health"},
+			{Name: "camofox", Summary: "configure the dedicated default Camofox runtime without starting a browser"},
+			{Name: "orders", Summary: "preview current orders without a database, sync orders, or analyze local history"},
+			{Name: "products", Summary: "search, inspect, research recommendations, render reports, and watch prices through Camofox"},
+			{Name: "doctor", Summary: "check local Camofox installation without starting a browser or checking authentication"},
 			{Name: "capabilities", Summary: "report implemented and externally blocked capabilities"},
 			{Name: "version", Summary: "print the installed coupangctl version"},
 			{Name: "mcp", Summary: "run the MCP adapter over standard input and output"},
@@ -233,40 +152,6 @@ func expandConvenienceCommand(args []string) []string {
 	return append(expanded, args[1:]...)
 }
 
-func runChromeNativeHost(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) error {
-	if len(args) < 1 || len(args) > 2 {
-		return browser.ErrOrdinaryNativeProtocol
-	}
-	if len(args) == 2 && !validParentWindowArgument(args[1]) {
-		return browser.ErrOrdinaryNativeProtocol
-	}
-	paths, err := platform.DefaultPaths()
-	if err != nil {
-		return err
-	}
-	return browser.RunOrdinaryBrowserNativeHost(
-		ctx,
-		paths.StateDir,
-		args[0],
-		browser.OrdinaryBrowserExtensionID,
-		stdin,
-		stdout,
-	)
-}
-
-func validParentWindowArgument(value string) bool {
-	const prefix = "--parent-window="
-	if !strings.HasPrefix(value, prefix) || len(value) == len(prefix) {
-		return false
-	}
-	for _, character := range value[len(prefix):] {
-		if character < '0' || character > '9' {
-			return false
-		}
-	}
-	return true
-}
-
 type receiptWorkflow interface {
 	Status(context.Context) (core.ReceiptRequestStatusSnapshot, error)
 	History(context.Context, core.ReceiptHistoryRequest) (core.ReceiptHistoryPage, error)
@@ -278,13 +163,12 @@ type receiptWorkflow interface {
 
 func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow receiptWorkflow) error {
 	if len(args) == 0 {
-		return errors.New("usage: coupangctl receipts <status|list|summary|overview|vendor|download>")
+		return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl receipts <status|list|summary|overview|vendor|download>"))
 	}
 	switch args[0] {
 	case "status":
 		flags := newFlagSet("receipts status")
-		_ = flags.Bool("headed", false, "explicitly use a visible browser")
-		if err := parseFlags(flags, args[1:], "usage: coupangctl receipts status [--headed]"); err != nil {
+		if err := parseFlags(flags, args[1:], "usage: coupangctl receipts status"); err != nil {
 			return err
 		}
 		result, err := workflow.Status(ctx)
@@ -297,10 +181,9 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		from := flags.String("from", "", "inclusive YYYY-MM-DD start date")
 		to := flags.String("to", "", "inclusive YYYY-MM-DD end date")
 		maxCards := flags.Int("max-cards", 20, "maximum observed card methods per calendar-year read")
-		_ = flags.Bool("headed", false, "explicitly use a visible browser")
-		const commandUsage = "usage: coupangctl receipts overview --from YYYY-MM-DD --to YYYY-MM-DD [--max-cards N] [--headed]"
+		const commandUsage = "usage: coupangctl receipts overview --from YYYY-MM-DD --to YYYY-MM-DD [--max-cards N]"
 		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *from == "" || *to == "" {
-			return errors.New(commandUsage)
+			return core.WithErrorCode("invalid_command", errors.New(commandUsage))
 		}
 		result, err := workflow.Overview(ctx, core.ReceiptOverviewRequest{From: *from, To: *to, MaxCards: *maxCards})
 		if err != nil {
@@ -312,10 +195,9 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		kind := flags.String("kind", "", "receipt family: cash or card")
 		page := flags.Int("page", 0, "zero-based request-history page")
 		size := flags.Int("size", 5, "history rows per page")
-		_ = flags.Bool("headed", false, "explicitly use a visible browser")
-		const commandUsage = "usage: coupangctl receipts list --kind <cash|card> [--page N] [--size N] [--headed]"
+		const commandUsage = "usage: coupangctl receipts list --kind <cash|card> [--page N] [--size N]"
 		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *kind == "" {
-			return errors.New(commandUsage)
+			return core.WithErrorCode("invalid_command", errors.New(commandUsage))
 		}
 		result, err := workflow.History(ctx, core.ReceiptHistoryRequest{Kind: core.ReceiptKind(*kind), PageIndex: *page, PageSize: *size})
 		if err != nil {
@@ -328,10 +210,9 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		from := flags.String("from", "", "inclusive YYYY-MM-DD start date")
 		to := flags.String("to", "", "inclusive YYYY-MM-DD end date")
 		maxCards := flags.Int("max-cards", 20, "maximum observed card methods to summarize")
-		_ = flags.Bool("headed", false, "explicitly use a visible browser")
-		const commandUsage = "usage: coupangctl receipts summary --kind <cash|card> --from YYYY-MM-DD --to YYYY-MM-DD [--max-cards N] [--headed]"
+		const commandUsage = "usage: coupangctl receipts summary --kind <cash|card> --from YYYY-MM-DD --to YYYY-MM-DD [--max-cards N]"
 		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *kind == "" || *from == "" || *to == "" {
-			return errors.New(commandUsage)
+			return core.WithErrorCode("invalid_command", errors.New(commandUsage))
 		}
 		result, err := workflow.Summary(ctx, core.ReceiptSummaryRequest{Kind: core.ReceiptKind(*kind), From: *from, To: *to, MaxCards: *maxCards})
 		if err != nil {
@@ -346,10 +227,9 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		historyIndex := flags.Int("history-index", -1, "zero-based history row index")
 		downloadIndex := flags.Int("download-index", 0, "zero-based file index within the history row")
 		output := flags.String("output", "", "new private output file path")
-		_ = flags.Bool("headed", false, "explicitly use a visible browser")
-		const commandUsage = "usage: coupangctl receipts download --kind <cash|card> --history-index N --output PATH [--download-index N] [--page N] [--size N] [--headed]"
+		const commandUsage = "usage: coupangctl receipts download --kind <cash|card> --history-index N --output PATH [--download-index N] [--page N] [--size N]"
 		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *kind == "" || *historyIndex < 0 || *output == "" {
-			return errors.New(commandUsage)
+			return core.WithErrorCode("invalid_command", errors.New(commandUsage))
 		}
 		download, err := workflow.Download(ctx, core.ReceiptDownloadRequest{
 			Kind: core.ReceiptKind(*kind), PageIndex: *page, PageSize: *size,
@@ -368,10 +248,9 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		flags := newFlagSet("receipts vendor")
 		sourceRef := flags.String("source-ref", "", "hashed source_ref returned by orders list")
 		maxPages := flags.Int("max-pages", 1000, "maximum order pages searched in memory")
-		_ = flags.Bool("headed", false, "explicitly use a visible browser")
-		const commandUsage = "usage: coupangctl receipts vendor --source-ref HASH [--max-pages N] [--headed]"
+		const commandUsage = "usage: coupangctl receipts vendor --source-ref HASH [--max-pages N]"
 		if err := parseFlags(flags, args[1:], commandUsage); err != nil || *sourceRef == "" {
-			return errors.New(commandUsage)
+			return core.WithErrorCode("invalid_command", errors.New(commandUsage))
 		}
 		result, err := workflow.Vendor(ctx, core.VendorReceiptRequest{SourceRef: *sourceRef, MaxPages: *maxPages})
 		if err != nil {
@@ -379,7 +258,7 @@ func runReceipts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		}
 		return writeJSON(stdout, result)
 	default:
-		return errors.New("usage: coupangctl receipts <status|list|summary|overview|vendor|download>")
+		return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl receipts <status|list|summary|overview|vendor|download>"))
 	}
 }
 
@@ -421,12 +300,11 @@ type accountWorkflow interface {
 
 func runAccount(ctx context.Context, args []string, stdout io.Writer, workflow accountWorkflow) error {
 	if len(args) == 0 || args[0] != "benefits" {
-		return errors.New("usage: coupangctl account benefits [--cash-pages N] [--headed]")
+		return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl account benefits [--cash-pages N]"))
 	}
 	flags := newFlagSet("account benefits")
 	cashPages := flags.Int("cash-pages", 50, "maximum Coupang Cash transaction pages")
-	_ = flags.Bool("headed", false, "explicitly use a visible browser")
-	const commandUsage = "usage: coupangctl account benefits [--cash-pages N] [--headed]"
+	const commandUsage = "usage: coupangctl account benefits [--cash-pages N]"
 	if err := parseFlags(flags, args[1:], commandUsage); err != nil {
 		return err
 	}
@@ -452,12 +330,30 @@ type productWorkflow interface {
 
 func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow productWorkflow) error {
 	if len(args) == 0 {
-		return errors.New("usage: coupangctl products <search|inspect|price-history|price-history-purge|watch-add|watch-list|watch-remove|watch-clear|watch-refresh|watch-schedule|cart-add>")
+		return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl products <search|recommend|report|inspect|price-history|price-history-purge|watch-add|watch-list|watch-remove|watch-clear|watch-refresh|watch-schedule|cart-add>"))
 	}
 	switch args[0] {
+	case "recommend":
+		return runProductRecommendation(ctx, args[1:], stdout, workflow)
+	case "report":
+		return runProductReport(ctx, args[1:], os.Stdin, stdout)
 	case "search":
 		flags := newFlagSet("products search")
 		query := flags.String("query", "", "natural-language product query")
+		var categoryTrail []string
+		flags.Func("category-trail", "repeatable previously observed category label; replay before the active --facet 카테고리=LABEL on query searches", func(value string) error {
+			categoryTrail = append(categoryTrail, value)
+			return nil
+		})
+		var facetSelections []core.ProductFacetSelection
+		flags.Func("facet", "repeatable observed sidebar choice GROUP=LABEL; discover coverage.facets first (Camofox)", func(value string) error {
+			parts := strings.SplitN(value, "=", 2)
+			if len(parts) != 2 {
+				return errors.New("facet must be GROUP=LABEL")
+			}
+			facetSelections = append(facetSelections, core.ProductFacetSelection{Name: parts[0], Label: parts[1]})
+			return nil
+		})
 		categoryID := flags.String("category-id", "", "source-native Coupang category identifier")
 		limit := flags.Int("limit", 10, "maximum results")
 		minPrice := flags.Int64("min-price", 0, "minimum current price in KRW")
@@ -467,19 +363,23 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		rocket := flags.Bool("rocket", false, "only Rocket items")
 		freeShipping := flags.Bool("free-shipping", false, "only explicitly free-shipping items")
 		excludeSponsored := flags.Bool("exclude-sponsored", false, "exclude sponsored items")
-		minMemoryGB := flags.Int("min-memory-gb", 0, "minimum observed computer memory")
-		minStorageGB := flags.Int("min-storage-gb", 0, "minimum observed computer storage")
+		minMemoryGB := flags.Int("min-memory-gb", 0, "title-heuristic memory discovery prefilter in GB; verify the exact option")
+		minStorageGB := flags.Int("min-storage-gb", 0, "title-heuristic storage discovery prefilter in GB; verify the exact option")
 		excludeUsed := flags.Bool("exclude-used", false, "exclude explicitly used, refurbished, or display-unit items")
 		includeVariants := flags.Bool("include-variants", false, "return multiple options from the same product page")
 		noAffiliate := flags.Bool("no-affiliate", false, "return canonical Coupang URLs only")
 		sortOrder := flags.String("sort", "relevance", "relevance, coupang_ranking, sales, latest, price_asc, price_desc, rating, or review_count")
-		_ = flags.Bool("headed", false, "explicitly use a visible browser")
-		const searchUsage = "usage: coupangctl products search (--query TEXT | --category-id ID) [--limit N] [--max-price KRW] [--min-rating N] [--min-reviews N] [--min-memory-gb N] [--min-storage-gb N] [--exclude-used] [--include-variants] [--rocket] [--free-shipping] [--exclude-sponsored] [--sort ORDER] [--no-affiliate] [--headed]"
+		const searchUsage = "usage: coupangctl products search (--query TEXT | --category-id ID) [--category-trail LABEL] [--facet GROUP=LABEL] [--limit N] [--max-price KRW] [--min-rating N] [--min-reviews N] [--min-memory-gb N] [--min-storage-gb N] [--exclude-used] [--include-variants] [--rocket] [--free-shipping] [--exclude-sponsored] [--sort ORDER] [--no-affiliate]"
+		if isFlagHelp(args[1:]) {
+			return writeCommandFlagHelp(stdout, flags, searchUsage)
+		}
 		if err := parseFlags(flags, args[1:], searchUsage); err != nil || (strings.TrimSpace(*query) == "" && *categoryID == "") {
-			return errors.New(searchUsage)
+			return core.WithErrorCode("invalid_command", errors.New(searchUsage))
 		}
 		result, err := workflow.Search(ctx, core.ProductSearchRequest{
-			Query: *query, CategoryID: *categoryID, Limit: *limit, MinPrice: *minPrice, MaxPrice: *maxPrice,
+			CategoryTrail:   categoryTrail,
+			FacetSelections: facetSelections,
+			Query:           *query, CategoryID: *categoryID, Limit: *limit, MinPrice: *minPrice, MaxPrice: *maxPrice,
 			MinRating: *minRating, MinReviewCount: *minReviews, RocketOnly: *rocket,
 			FreeShippingOnly: *freeShipping, ExcludeSponsored: *excludeSponsored,
 			MinMemoryGB: *minMemoryGB, MinStorageGB: *minStorageGB, ExcludeUsed: *excludeUsed,
@@ -497,10 +397,12 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		reviewLimit := flags.Int("review-limit", 5, "maximum sanitized reviews")
 		imageLimit := flags.Int("detail-image-limit", 20, "maximum detailed images")
 		noAffiliate := flags.Bool("no-affiliate", false, "return the canonical Coupang URL only")
-		_ = flags.Bool("headed", false, "explicitly use a visible browser")
-		const inspectUsage = "usage: coupangctl products inspect --product-id ID [--item-id ID] [--vendor-item-id ID] [--review-limit N] [--detail-image-limit N] [--no-affiliate] [--headed]"
+		const inspectUsage = "usage: coupangctl products inspect --product-id ID [--item-id ID] [--vendor-item-id ID] [--review-limit N] [--detail-image-limit N] [--no-affiliate]"
+		if isFlagHelp(args[1:]) {
+			return writeCommandFlagHelp(stdout, flags, inspectUsage)
+		}
 		if err := parseFlags(flags, args[1:], inspectUsage); err != nil || *productID == "" {
-			return errors.New(inspectUsage)
+			return core.WithErrorCode("invalid_command", errors.New(inspectUsage))
 		}
 		result, err := workflow.Inspect(ctx, core.ProductInspectRequest{
 			ProductID: *productID, ItemID: *itemID, VendorItemID: *vendorItemID,
@@ -517,7 +419,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		limit := flags.Int("limit", 200, "maximum stored observations")
 		const historyUsage = "usage: coupangctl products price-history --product-id ID [--vendor-item-id ID] [--limit N]"
 		if err := parseFlags(flags, args[1:], historyUsage); err != nil || *productID == "" {
-			return errors.New(historyUsage)
+			return core.WithErrorCode("invalid_command", errors.New(historyUsage))
 		}
 		result, err := workflow.PriceHistory(ctx, core.ProductPriceHistoryRequest{ProductID: *productID, VendorItemID: *vendorItemID, Limit: *limit})
 		if err != nil {
@@ -529,7 +431,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		confirmation := flags.String("confirm", "", "confirmation token")
 		const purgeUsage = "usage: coupangctl products price-history-purge --confirm purge-product-price-history"
 		if err := parseFlags(flags, args[1:], purgeUsage); err != nil || *confirmation != "purge-product-price-history" {
-			return errors.New(purgeUsage)
+			return core.WithErrorCode("invalid_command", errors.New(purgeUsage))
 		}
 		result, err := workflow.PurgePriceHistory(ctx)
 		if err != nil {
@@ -542,7 +444,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		vendorItemID := flags.String("vendor-item-id", "", "exact vendor item identifier")
 		const watchAddUsage = "usage: coupangctl products watch-add --product-id ID [--vendor-item-id ID]"
 		if err := parseFlags(flags, args[1:], watchAddUsage); err != nil || *productID == "" {
-			return errors.New(watchAddUsage)
+			return core.WithErrorCode("invalid_command", errors.New(watchAddUsage))
 		}
 		result, err := workflow.AddPriceWatch(ctx, core.ProductWatchRequest{ProductID: *productID, VendorItemID: *vendorItemID})
 		if err != nil {
@@ -564,7 +466,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		vendorItemID := flags.String("vendor-item-id", "", "exact watched vendor item identifier")
 		const watchRemoveUsage = "usage: coupangctl products watch-remove --product-id ID [--vendor-item-id ID]"
 		if err := parseFlags(flags, args[1:], watchRemoveUsage); err != nil || *productID == "" {
-			return errors.New(watchRemoveUsage)
+			return core.WithErrorCode("invalid_command", errors.New(watchRemoveUsage))
 		}
 		result, err := workflow.RemovePriceWatch(ctx, core.ProductWatchRequest{ProductID: *productID, VendorItemID: *vendorItemID})
 		if err != nil {
@@ -576,7 +478,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		confirmation := flags.String("confirm", "", "confirmation token")
 		const watchClearUsage = "usage: coupangctl products watch-clear --confirm clear-product-watchlist"
 		if err := parseFlags(flags, args[1:], watchClearUsage); err != nil || *confirmation != "clear-product-watchlist" {
-			return errors.New(watchClearUsage)
+			return core.WithErrorCode("invalid_command", errors.New(watchClearUsage))
 		}
 		result, err := workflow.ClearPriceWatches(ctx)
 		if err != nil {
@@ -587,8 +489,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		flags := newFlagSet("products watch-refresh")
 		limit := flags.Int("limit", 10, "maximum due watch entries")
 		staleHours := flags.Int("stale-hours", 24, "minimum hours since the last check")
-		_ = flags.Bool("headed", false, "explicitly use a visible browser")
-		const watchRefreshUsage = "usage: coupangctl products watch-refresh [--limit N] [--stale-hours N] [--headed]"
+		const watchRefreshUsage = "usage: coupangctl products watch-refresh [--limit N] [--stale-hours N]"
 		if err := parseFlags(flags, args[1:], watchRefreshUsage); err != nil {
 			return err
 		}
@@ -604,10 +505,9 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		vendorItemID := flags.String("vendor-item-id", "", "exact vendor item identifier returned by search")
 		quantity := flags.Int("quantity", 1, "quantity to add")
 		confirmed := flags.Bool("confirm-add-to-cart", false, "confirm this external cart change")
-		_ = flags.Bool("headed", false, "explicitly use a visible browser")
-		const cartUsage = "usage: coupangctl products cart-add --product-id ID --vendor-item-id ID [--item-id ID] [--quantity N] --confirm-add-to-cart [--headed]"
+		const cartUsage = "usage: coupangctl products cart-add --product-id ID --vendor-item-id ID [--item-id ID] [--quantity N] --confirm-add-to-cart"
 		if err := parseFlags(flags, args[1:], cartUsage); err != nil || *productID == "" || *vendorItemID == "" || !*confirmed {
-			return errors.New(cartUsage)
+			return core.WithErrorCode("invalid_command", errors.New(cartUsage))
 		}
 		result, err := workflow.AddToCart(ctx, core.CartAddRequest{
 			ProductID: *productID, ItemID: *itemID, VendorItemID: *vendorItemID,
@@ -618,7 +518,7 @@ func runProducts(ctx context.Context, args []string, stdout io.Writer, workflow 
 		}
 		return writeJSON(stdout, result)
 	default:
-		return errors.New("usage: coupangctl products <search|inspect|price-history|price-history-purge|watch-add|watch-list|watch-remove|watch-clear|watch-refresh|watch-schedule|cart-add>")
+		return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl products <search|recommend|report|inspect|price-history|price-history-purge|watch-add|watch-list|watch-remove|watch-clear|watch-refresh|watch-schedule|cart-add>"))
 	}
 }
 
@@ -632,6 +532,7 @@ type orderWorkflow interface {
 	Spend(context.Context, core.OrderFilter) (core.SpendSummary, error)
 	Stats(context.Context, core.OrderFilter) (core.OrderStats, error)
 	Insights(context.Context, core.OrderFilter) (core.ShoppingInsights, error)
+	ShoppingAnalysis(context.Context, core.OrderFilter, bool) (core.ShoppingAnalysis, error)
 	ProductInsights(context.Context, core.OrderFilter) (core.ProductInsights, error)
 	ReorderCandidates(context.Context, core.OrderFilter) ([]core.ReorderCandidate, error)
 	Export(context.Context, core.OrderFilter) (core.OrderExport, error)
@@ -641,35 +542,24 @@ type orderWorkflow interface {
 
 func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow orderWorkflow) error {
 	if len(args) == 0 {
-		return errors.New("usage: coupangctl orders <sync|sync-status|categories|category-catalog|category-stability|list|spend|stats|insights|products|recap|recap-image|reorder|export|import|purge>")
+		return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl orders <preview|sync|sync-status|categories|category-catalog|category-stability|list|spend|stats|insights|products|recap|recap-image|reorder|export|import|purge>"))
 	}
 	switch args[0] {
 	case "sync":
 		flags := newFlagSet("orders sync")
 		maxPages := flags.Int("max-pages", 100, "maximum pages to process")
-		headed := flags.Bool("headed", false, "explicitly use a visible browser")
-		currentBrowser := flags.Bool("current-browser", false, "use a user-approved connection to running Chrome")
-		ordinaryBrowser := flags.Bool("ordinary-browser", false, "use the optional selected-tab extension compatibility path")
+		restartScan := flags.Bool("restart-scan", false, "explicitly begin a new scan; retain existing orders and prior scan evidence")
 		if err := parseFlags(flags, args[1:], orderSyncUsage); err != nil {
 			return err
 		}
-		selectedBrowserModes := 0
-		for _, selected := range []bool{*headed, *currentBrowser, *ordinaryBrowser} {
-			if selected {
-				selectedBrowserModes++
-			}
-		}
-		if selectedBrowserModes > 1 {
-			return errors.New(orderSyncUsage)
-		}
-		result, err := workflow.Sync(ctx, core.SyncRequest{MaxPages: *maxPages})
+		result, err := workflow.Sync(ctx, core.SyncRequest{MaxPages: *maxPages, RestartScan: *restartScan})
 		if err != nil {
 			return err
 		}
 		return writeJSON(stdout, result)
 	case "sync-status":
 		if len(args) != 1 {
-			return errors.New("usage: coupangctl orders sync-status")
+			return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl orders sync-status"))
 		}
 		result, err := workflow.SyncStatus(ctx)
 		if err != nil {
@@ -680,8 +570,7 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 		flags := newFlagSet("orders categories")
 		maxProducts := flags.Int("max-products", 25, "maximum uncached products to enrich")
 		recheck := flags.Bool("recheck", false, "explicitly re-read cached breadcrumbs, oldest first")
-		_ = flags.Bool("headed", false, "use a headed browser")
-		if err := parseFlags(flags, args[1:], "usage: coupangctl orders categories [--max-products N] [--recheck] [--headed]"); err != nil {
+		if err := parseFlags(flags, args[1:], "usage: coupangctl orders categories [--max-products N] [--recheck]"); err != nil {
 			return err
 		}
 		result, err := workflow.EnrichCategories(ctx, core.CategoryEnrichmentRequest{MaxProducts: *maxProducts, Recheck: *recheck})
@@ -691,7 +580,7 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 		return writeJSON(stdout, result)
 	case "category-stability":
 		if len(args) != 1 {
-			return errors.New("usage: coupangctl orders category-stability")
+			return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl orders category-stability"))
 		}
 		result, err := workflow.CategoryStability(ctx)
 		if err != nil {
@@ -731,7 +620,12 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 		}
 		return writeJSON(stdout, result)
 	case "stats":
-		filter, err := parseOrderFilter(args[1:], false, "usage: coupangctl orders stats [--from YYYY-MM-DD] [--to YYYY-MM-DD]")
+		const statsUsage = "usage: coupangctl orders stats [--from YYYY-MM-DD] [--to YYYY-MM-DD]"
+		if isFlagHelp(args[1:]) {
+			flags, _ := orderFilterFlags(false)
+			return writeCommandFlagHelp(stdout, flags, statsUsage)
+		}
+		filter, err := parseOrderFilter(args[1:], false, statsUsage)
 		if err != nil {
 			return err
 		}
@@ -767,22 +661,15 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 		output := flags.String("output", "", "new standalone HTML output file")
 		includeProducts := flags.Bool("include-products", false, "include private product names, exact dates, and amounts")
 		if err := parseFlags(flags, args[1:], "usage: coupangctl orders recap --output PATH [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--include-products]"); err != nil || *output == "" {
-			return errors.New("usage: coupangctl orders recap --output PATH [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--include-products]")
+			return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl orders recap --output PATH [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--include-products]"))
 		}
 		filter := core.OrderFilter{From: *from, To: *to}
-		result, err := workflow.Insights(ctx, filter)
+		analysis, err := workflow.ShoppingAnalysis(ctx, filter, *includeProducts)
 		if err != nil {
 			return err
 		}
-		options := recap.Options{}
-		if *includeProducts {
-			products, err := workflow.ProductInsights(ctx, filter)
-			if err != nil {
-				return err
-			}
-			options.Products = &products
-		}
-		written, err := recap.WriteNewFileWithOptions(*output, result, options)
+		options := recap.Options{Products: analysis.Products}
+		written, err := recap.WriteNewFileWithOptions(*output, analysis.Insights, options)
 		if err != nil {
 			return err
 		}
@@ -806,7 +693,7 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 			return writeJSON(stdout, preview)
 		}
 		if *output == "" {
-			return errors.New(imageUsage)
+			return core.WithErrorCode("invalid_command", errors.New(imageUsage))
 		}
 		written, err := recap.WritePublicShareImage(ctx, *output, result, browser.NewLocalPageRenderer())
 		if err != nil {
@@ -837,7 +724,7 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 		flags := newFlagSet("orders import")
 		path := flags.String("file", "", "normalized export file")
 		if err := parseFlags(flags, args[1:], "usage: coupangctl orders import --file PATH"); err != nil || *path == "" {
-			return errors.New("usage: coupangctl orders import --file PATH")
+			return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl orders import --file PATH"))
 		}
 		exported, err := readOrderExport(*path)
 		if err != nil {
@@ -855,7 +742,7 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 			return err
 		}
 		if *confirmation != "purge-normalized-orders" {
-			return errors.New("usage: coupangctl orders purge --confirm purge-normalized-orders")
+			return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl orders purge --confirm purge-normalized-orders"))
 		}
 		result, err := workflow.Purge(ctx)
 		if err != nil {
@@ -863,7 +750,7 @@ func runOrders(ctx context.Context, args []string, stdout io.Writer, workflow or
 		}
 		return writeJSON(stdout, result)
 	default:
-		return errors.New("usage: coupangctl orders <sync|categories|category-catalog|category-stability|list|spend|stats|insights|products|recap|recap-image|reorder|export|import|purge>")
+		return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl orders <preview|sync|sync-status|categories|category-catalog|category-stability|list|spend|stats|insights|products|recap|recap-image|reorder|export|import|purge>"))
 	}
 }
 
@@ -885,22 +772,23 @@ func readOrderExport(path string) (core.OrderExport, error) {
 	return exported, nil
 }
 
-func parseOrderFilter(args []string, allowLimit bool, usage string) (core.OrderFilter, error) {
+func orderFilterFlags(allowLimit bool) (*flag.FlagSet, *core.OrderFilter) {
 	flags := newFlagSet("orders filter")
-	from := flags.String("from", "", "start date")
-	to := flags.String("to", "", "end date")
-	var limit *int
+	filter := &core.OrderFilter{}
+	flags.StringVar(&filter.From, "from", "", "start date")
+	flags.StringVar(&filter.To, "to", "", "end date")
 	if allowLimit {
-		limit = flags.Int("limit", 100, "maximum results")
+		flags.IntVar(&filter.Limit, "limit", 100, "maximum results")
 	}
+	return flags, filter
+}
+
+func parseOrderFilter(args []string, allowLimit bool, usage string) (core.OrderFilter, error) {
+	flags, filter := orderFilterFlags(allowLimit)
 	if err := parseFlags(flags, args, usage); err != nil {
 		return core.OrderFilter{}, err
 	}
-	filter := core.OrderFilter{From: *from, To: *to}
-	if limit != nil {
-		filter.Limit = *limit
-	}
-	return filter, nil
+	return *filter, nil
 }
 
 func newFlagSet(name string) *flag.FlagSet {
@@ -909,222 +797,49 @@ func newFlagSet(name string) *flag.FlagSet {
 	return flags
 }
 
+func isFlagHelp(args []string) bool {
+	return len(args) == 1 && (args[0] == "--help" || args[0] == "-h")
+}
+
+// Render the registered options instead of maintaining a parallel help catalog.
+func writeCommandFlagHelp(w io.Writer, flags *flag.FlagSet, usage string) error {
+	type optionHelp struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Default     string `json:"default"`
+	}
+	options := []optionHelp{}
+	flags.VisitAll(func(f *flag.Flag) {
+		options = append(options, optionHelp{Name: "--" + f.Name, Description: f.Usage, Default: f.DefValue})
+	})
+	return writeJSON(w, map[string]any{"schema_version": 1, "name": "coupangctl", "usage": strings.TrimPrefix(usage, "usage: "), "options": options})
+}
+
 func parseFlags(flags *flag.FlagSet, args []string, usage string) error {
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
-		return errors.New(usage)
+		return core.WithErrorCode("invalid_command", errors.New(usage))
 	}
 	return nil
 }
 
-func headedReadRequested(args []string) bool {
-	if !commandSupportsHeadedRead(args) {
-		return false
+func runAuth(ctx context.Context, args []string, stdout io.Writer, service *auth.Service) error {
+	if len(args) != 1 {
+		return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl auth <status|verify>"))
 	}
-	for _, argument := range args[2:] {
-		if argument == "--headed" || argument == "--headed=true" {
-			return true
-		}
-	}
-	return false
-}
-
-func commandSupportsHeadedRead(args []string) bool {
-	if len(args) < 2 {
-		return false
-	}
-	return (args[0] == "auth" && args[1] == "verify") ||
-		(args[0] == "orders" && (args[1] == "sync" || args[1] == "categories")) ||
-		(args[0] == "products" && (args[1] == "search" || args[1] == "inspect" || args[1] == "watch-refresh" || args[1] == "cart-add")) ||
-		(args[0] == "account" && args[1] == "benefits") ||
-		args[0] == "receipts"
-}
-
-func ordinaryBrowserReadRequested(args []string) bool {
-	if len(args) < 2 || args[0] != "orders" || args[1] != "sync" {
-		return false
-	}
-	for _, argument := range args[2:] {
-		if argument == "--ordinary-browser" || argument == "--ordinary-browser=true" {
-			return true
-		}
-	}
-	return false
-}
-
-func currentBrowserReadRequested(args []string) bool {
-	if !commandSupportsCurrentBrowserRead(args) {
-		return false
-	}
-	for _, argument := range args[2:] {
-		if argument == "--current-browser" || argument == "--current-browser=true" {
-			return true
-		}
-	}
-	return false
-}
-
-func commandSupportsCurrentBrowserRead(args []string) bool {
-	return len(args) >= 2 && args[0] == "orders" && args[1] == "sync"
-}
-
-func backgroundReadRequested(args []string) bool {
-	if len(args) == 1 && args[0] == "mcp" {
-		return true
-	}
-	return len(args) >= 2 && args[0] == "products" && args[1] == "watch-refresh" && !headedReadRequested(args)
-}
-
-func conflictingOrderSyncBrowserModes(args []string) bool {
-	if len(args) < 2 || args[0] != "orders" || args[1] != "sync" {
-		return false
-	}
-	selected := 0
-	for _, requested := range []bool{headedReadRequested(args), currentBrowserReadRequested(args), ordinaryBrowserReadRequested(args)} {
-		if requested {
-			selected++
-		}
-	}
-	return selected > 1
-}
-
-type resendAssistant interface {
-	Resend(context.Context) (core.OTPResendResult, error)
-}
-
-type loginSecretSource interface {
-	Phone(context.Context) (string, error)
-	OTP(context.Context) (string, error)
-}
-
-func runAuth(ctx context.Context, args []string, stdout, stderr io.Writer, service *auth.Service, assistant resendAssistant, secrets loginSecretSource) error {
-	if len(args) == 0 {
-		return errors.New("usage: coupangctl auth <status|login|ensure|verify|resend>")
-	}
+	var status core.AuthStatus
+	var err error
 	switch args[0] {
 	case "status":
-		if len(args) != 1 {
-			return errors.New("usage: coupangctl auth status")
-		}
-		status, err := service.Status(ctx)
-		if err != nil {
-			return err
-		}
-		return writeJSON(stdout, status)
-	case "login":
-		flags := newFlagSet("auth login")
-		qr := flags.Bool("qr", false, "use QR login")
-		phone := flags.Bool("phone", false, "use phone-number login")
-		qrOutput := flags.String("qr-output", "", "write the ephemeral QR page to a private PNG")
-		link := flags.Bool("link", false, "print the ephemeral QR app link and approval number to stderr")
-		const loginUsage = "usage: coupangctl auth login [--qr|--phone] [--qr-output PATH|--link]"
-		if err := parseFlags(flags, args[1:], loginUsage); err != nil || (*qr && *phone) || (*phone && (*qrOutput != "" || *link)) || (*link && *qrOutput != "") {
-			return errors.New(loginUsage)
-		}
-		mode := core.LoginModeQR
-		request := core.LoginRequest{Mode: mode, QROutputPath: *qrOutput}
-		if *link {
-			request.PresentQRLink = func(_ context.Context, link core.QRLoginLink) error {
-				if _, err := io.WriteString(stderr, "Ephemeral Coupang QR login link (do not share):\n"); err != nil {
-					return err
-				}
-				if _, err := fmt.Fprintln(stderr, link.URL); err != nil {
-					return err
-				}
-				_, err := fmt.Fprintf(stderr, "Approval number: %s\n", link.ApprovalCode)
-				return err
-			}
-		}
-		if *phone {
-			mode = core.LoginModePhone
-			phoneNumber, err := secrets.Phone(ctx)
-			if err != nil {
-				return err
-			}
-			request = core.LoginRequest{Mode: mode, Phone: phoneNumber, ReadOTP: secrets.OTP}
-		}
-		result, err := service.Login(ctx, request)
-		if err != nil {
-			return err
-		}
-		return writeJSON(stdout, result)
-	case "ensure":
-		if len(args) != 1 {
-			return errors.New("usage: coupangctl auth ensure")
-		}
-		result, err := service.Recover(ctx, core.AuthRecoveryRequest{Confirmed: true})
-		if err != nil {
-			return err
-		}
-		return writeJSON(stdout, result)
+		status, err = service.Status(ctx)
 	case "verify":
-		if len(args) != 1 && !(len(args) == 2 && args[1] == "--headed") {
-			return errors.New("usage: coupangctl auth verify [--headed]")
-		}
-		status, err := service.Verify(ctx)
-		if err != nil {
-			return err
-		}
-		return writeJSON(stdout, status)
-	case "resend":
-		if len(args) != 1 {
-			return errors.New("usage: coupangctl auth resend")
-		}
-		result, err := assistant.Resend(ctx)
-		if err != nil {
-			return err
-		}
-		return writeJSON(stdout, result)
+		status, err = service.Verify(ctx)
 	default:
-		return errors.New("usage: coupangctl auth <status|login|ensure|verify|resend>")
+		return core.WithErrorCode("invalid_command", errors.New("usage: coupangctl auth <status|verify>"))
 	}
-}
-
-type authStatusProvider interface {
-	Status(context.Context) (core.AuthStatus, error)
-}
-
-func runDoctor(ctx context.Context, stdout io.Writer, paths platform.Paths, authProvider authStatusProvider) error {
-	report := core.DoctorReport{OK: true}
-	status, err := authProvider.Status(ctx)
 	if err != nil {
-		report.OK = false
-		report.Checks = append(report.Checks, core.Check{Name: "browser", Status: core.CheckError, Message: "a supported browser is unavailable or misconfigured"})
-		report.Checks = append(report.Checks, core.Check{Name: "background_session", Status: core.CheckError, Message: "background session readiness could not be checked"})
-	} else {
-		report.Checks = append(report.Checks, core.Check{Name: "browser", Status: core.CheckOK})
-		check := core.Check{Name: "background_session", Status: core.CheckError}
-		switch status.State {
-		case core.AuthVerified:
-			check.Status = core.CheckOK
-		case core.AuthNotConfigured:
-			check.Message = "run coupangctl login on an interactive desktop"
-		case core.AuthUnverified:
-			check.Message = "the stored login must be renewed with coupangctl login"
-		case core.AuthAccessBlocked:
-			check.Message = "background access was denied; retry later or explicitly run coupangctl auth verify --headed"
-		default:
-			check.Message = "the background session returned an unknown readiness state"
-		}
-		if check.Status != core.CheckOK {
-			report.OK = false
-		}
-		report.Checks = append(report.Checks, check)
+		return err
 	}
-
-	db, err := store.Open(ctx, paths.Database)
-	if err != nil {
-		report.OK = false
-		report.Checks = append(report.Checks, core.Check{Name: "sqlite", Status: core.CheckError, Message: "the local database could not be opened"})
-	} else {
-		defer db.Close()
-		if err := db.Ping(ctx); err != nil {
-			report.OK = false
-			report.Checks = append(report.Checks, core.Check{Name: "sqlite", Status: core.CheckError, Message: "the local database did not respond"})
-		} else {
-			report.Checks = append(report.Checks, core.Check{Name: "sqlite", Status: core.CheckOK})
-		}
-	}
-	return writeJSON(stdout, report)
+	return writeJSON(stdout, status)
 }
 
 func writeJSON(w io.Writer, value any) error {
@@ -1137,163 +852,5 @@ func writeJSON(w io.Writer, value any) error {
 }
 
 func usage(_ io.Writer) error {
-	return errors.New("invalid command")
-}
-
-func WriteError(w io.Writer, err error) {
-	code := "internal_error"
-	message := "coupangctl could not complete the command"
-	switch {
-	case errors.Is(err, browser.ErrDesktopRequired):
-		code = "desktop_required"
-		message = "open this command from an interactive desktop"
-	case errors.Is(err, browser.ErrBrowserNotFound):
-		code = "browser_not_found"
-		message = "install a supported Chrome-family browser or set COUPANGCTL_BROWSER_PATH"
-	case errors.Is(err, browser.ErrCurrentBrowserUnavailable):
-		code = "current_browser_unavailable"
-		message = "in Chrome 144 or newer, enable remote debugging at chrome://inspect/#remote-debugging, keep Chrome running, approve the connection, then retry with --current-browser"
-	case errors.Is(err, browser.ErrProfileInUse):
-		code = "profile_in_use"
-		message = "another coupangctl browser operation is using the dedicated profile; wait for it to finish and retry"
-	case errors.Is(err, browser.ErrProfileIncompatible):
-		code = "browser_profile_incompatible"
-		message = "the dedicated profile belongs to another browser family or a newer major version; use the original browser, or deliberately create a new state directory and sign in again"
-	case errors.Is(err, browser.ErrAuthenticationRequired):
-		code = "authentication_required"
-		message = "run coupangctl login on an interactive desktop first"
-	case errors.Is(err, browser.ErrStructuredOrderDataMissing):
-		code = "structured_order_data_missing"
-		message = "the authenticated order document was not available"
-	case errors.Is(err, browser.ErrStructuredAccountBenefitsDataMissing):
-		code = "structured_account_benefits_data_missing"
-		message = "the authenticated membership or reward document was not available"
-	case errors.Is(err, browser.ErrStructuredReceiptDataMissing), errors.Is(err, coupangreceipts.ErrReceiptDataMissing):
-		code = "structured_receipt_data_missing"
-		message = "the authenticated receipt read endpoint did not expose the expected structure"
-	case errors.Is(err, core.ErrVendorReceiptNotFound):
-		code = "vendor_receipt_not_found"
-		message = "the hashed order reference was not found within the requested page bound"
-	case errors.Is(err, receiptworkflow.ErrSourceUnavailable):
-		code = "receipt_source_unavailable"
-		message = "the authenticated receipt source was temporarily unavailable"
-	case errors.Is(err, browser.ErrStructuredProductDataMissing), errors.Is(err, coupangproducts.ErrProductDataMissing):
-		code = "structured_product_data_missing"
-		message = "the product search or detail document did not expose the expected structured fields"
-	case errors.Is(err, browser.ErrBrowserAccessDenied):
-		code = "browser_access_denied"
-		message = "browser access was denied; retry later or explicitly choose a supported headed or current-browser mode"
-	case errors.Is(err, browser.ErrOrdinaryRendezvous), errors.Is(err, browser.ErrOrdinaryBrowserUnavailable):
-		code = "ordinary_browser_unavailable"
-		message = "open the Coupang order-history page in ordinary Chrome and click the coupangctl extension before the pairing window expires"
-	case errors.Is(err, browserbridge.ErrInstallationConflict):
-		code = "browser_bridge_installation_conflict"
-		message = "run coupangctl browser-bridge doctor and resolve the reported local installation conflict"
-	case errors.Is(err, browser.ErrLocalPageRenderFailed):
-		code = "recap_image_render_failed"
-		message = "the installed browser could not render the local recap image"
-	case errors.Is(err, productworkflow.ErrSourceUnavailable):
-		code = "product_source_unavailable"
-		message = "the public product source was temporarily unavailable; the request may be retried"
-	case errors.Is(err, productworkflow.ErrPriceHistoryUnavailable):
-		code = "product_price_history_unavailable"
-		message = "the local product price history was unavailable"
-	case errors.Is(err, productworkflow.ErrPriceWatchRequiresObservation):
-		code = "product_price_watch_requires_observation"
-		message = "observe this exact product option with search or inspect before adding it to the watchlist"
-	case errors.Is(err, productworkflow.ErrPriceWatchUnavailable):
-		code = "product_price_watch_unavailable"
-		message = "the local product price watchlist was unavailable"
-	case errors.Is(err, browser.ErrQRExpired):
-		code = "qr_expired"
-		message = "the QR login expired; run auth login again"
-	case errors.Is(err, browser.ErrQRLoginTimedOut):
-		code = "qr_login_timeout"
-		message = "the QR login was not approved before timeout"
-	case errors.Is(err, browser.ErrQRUnexpectedDestination):
-		code = "qr_return_context_missing"
-		message = "QR approval did not return to the protected order page"
-	case errors.Is(err, browser.ErrQRLinkUnavailable):
-		code = "qr_link_unavailable"
-		message = "the ephemeral QR app link could not be decoded; retry without --link or use --qr-output"
-	case errors.Is(err, browser.ErrPhoneRequestUnverified):
-		code = "otp_request_unverified"
-		message = "the SMS request was not confirmed by the login page"
-	case errors.Is(err, browser.ErrPhoneSystemError):
-		code = "phone_login_system_error"
-		message = "the phone login page reported a system error"
-	case errors.Is(err, browser.ErrPhoneVerificationFailed):
-		code = "otp_verification_failed"
-		message = "the SMS OTP was rejected or could not be submitted"
-	case errors.Is(err, browser.ErrPhoneLoginTimedOut):
-		code = "phone_login_timeout"
-		message = "phone login did not complete before timeout"
-	case errors.Is(err, browser.ErrPhoneUnexpectedDestination):
-		code = "phone_return_context_missing"
-		message = "phone login did not return to the protected order page"
-	case errors.Is(err, loginassist.ErrAccessibilityPermissionRequired):
-		code = "accessibility_permission_required"
-		message = "allow accessibility control for coupangctl, then retry auth resend"
-	case errors.Is(err, loginassist.ErrDedicatedBrowserNotRunning):
-		code = "dedicated_browser_not_running"
-		message = "run coupangctl auth login before requesting an OTP resend"
-	case errors.Is(err, loginassist.ErrResendControlNotFound):
-		code = "otp_resend_control_not_found"
-		message = "open the phone-number login step in the dedicated browser first"
-	case errors.Is(err, loginassist.ErrResendOutcomeUnverified):
-		code = "otp_resend_outcome_unverified"
-		message = "the OTP control was pressed but the browser did not remain on the OTP verification step"
-	case errors.Is(err, loginassist.ErrUnsupported):
-		code = "login_assistance_unsupported"
-		message = "OTP resend assistance is not available on this platform"
-	case errors.Is(err, orderworkflow.ErrDocumentSource):
-		code = "document_source_unavailable"
-		message = "the protected order document could not be loaded"
-	case errors.Is(err, core.ErrInvalidOrderData):
-		code = "invalid_order_data"
-		message = "the upstream order document has an unsupported shape"
-	case errors.Is(err, core.ErrInvalidLoginMode), errors.Is(err, core.ErrInvalidLoginRequest):
-		code = "invalid_command"
-		message = "usage: coupangctl auth login [--qr|--phone] [--qr-output PATH|--link]"
-	case err != nil && strings.HasPrefix(err.Error(), "usage:"):
-		code = "invalid_command"
-		message = err.Error()
-	case err != nil && err.Error() == "invalid command":
-		code = "invalid_command"
-		message = "see the usage message"
-	}
-	_ = writeJSON(w, core.ErrorResponse{Error: core.ErrorBody{Code: code, Message: message}})
-}
-
-// WriteCommandError keeps user-facing remediation consistent with the mode
-// that actually failed. In particular, a denied explicit headed attempt must
-// not recommend selecting headed mode again.
-func WriteCommandError(w io.Writer, args []string, err error) {
-	normalizedArgs := expandConvenienceCommand(args)
-	if errors.Is(err, browser.ErrBrowserAccessDenied) && headedReadRequested(normalizedArgs) {
-		_ = writeJSON(w, core.ErrorResponse{Error: core.ErrorBody{
-			Code:    "headed_browser_access_denied",
-			Message: "the explicit visible browser attempt was also denied; retry later and do not assume the session expired from this result",
-		}})
-		return
-	}
-	if errors.Is(err, browser.ErrBrowserAccessDenied) && currentBrowserReadRequested(normalizedArgs) {
-		_ = writeJSON(w, core.ErrorResponse{Error: core.ErrorBody{
-			Code:    "current_browser_access_denied",
-			Message: "the user-approved current-browser read was denied; retry later without changing or copying browser session state",
-		}})
-		return
-	}
-	if errors.Is(err, browser.ErrBrowserAccessDenied) && commandSupportsHeadedRead(normalizedArgs) {
-		message := "browser access was denied; retry later or rerun this command with --headed for one explicit visible attempt"
-		if commandSupportsCurrentBrowserRead(normalizedArgs) {
-			message = "browser access was denied; retry later, use --headed for one explicit visible attempt, or use --current-browser after Chrome approval"
-		}
-		_ = writeJSON(w, core.ErrorResponse{Error: core.ErrorBody{
-			Code:    "browser_access_denied",
-			Message: message,
-		}})
-		return
-	}
-	WriteError(w, err)
+	return core.WithErrorCode("invalid_command", errors.New("invalid command"))
 }

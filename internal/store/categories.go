@@ -469,6 +469,10 @@ func categoryLabelMatch(label, query string) (string, int) {
 }
 
 func (s *SQLite) CategoryBreakdown(ctx context.Context, filter core.OrderFilter) (core.CategoryBreakdown, error) {
+	return (orderAggregateReader{db: s.db}).CategoryBreakdown(ctx, filter)
+}
+
+func (s orderAggregateReader) CategoryBreakdown(ctx context.Context, filter core.OrderFilter) (core.CategoryBreakdown, error) {
 	filter, err := normalizeFilterForAggregate(filter)
 	if err != nil {
 		return core.CategoryBreakdown{}, err

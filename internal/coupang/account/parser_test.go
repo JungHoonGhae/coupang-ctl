@@ -49,13 +49,13 @@ func TestParseSnapshotDocumentNormalizesMembershipBenefitsAndCardRewards(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Membership.Status != "ACTIVE" || !got.Membership.IsMember || !got.Membership.IsPaidMember || got.Membership.CurrentMonthlyFeeKRW != 7890 || got.Membership.SourceFeeChangeDate != "2026-10-01" || got.Membership.NextPaymentDate != "2026-10-01" {
+	if got.Membership.Status != "ACTIVE" || got.Membership.IsMember == nil || !*got.Membership.IsMember || got.Membership.IsPaidMember == nil || !*got.Membership.IsPaidMember || got.Membership.CurrentMonthlyFeeKRW != 7890 || got.Membership.SourceFeeChangeDate != "2026-10-01" || got.Membership.NextPaymentDate != "2026-10-01" {
 		t.Fatalf("unexpected membership: %#v", got.Membership)
 	}
-	if got.Membership.BillingMethod.Name != "Synthetic card" || got.Membership.BillingMethod.Type != "CARD" || !got.Membership.BillingMethod.RecurringRegistered || len(got.PaymentMethods) != 2 {
+	if got.Membership.BillingMethod.Name != "Synthetic card" || got.Membership.BillingMethod.Type != "CARD" || got.Membership.BillingMethod.RecurringRegistered == nil || !*got.Membership.BillingMethod.RecurringRegistered || len(got.PaymentMethods) != 2 {
 		t.Fatalf("unexpected payment methods: billing=%#v all=%#v", got.Membership.BillingMethod, got.PaymentMethods)
 	}
-	if got.BenefitUsage.TotalObservedSavingsKRW != 210000 || got.BenefitUsage.FreeDeliveryTotalKRW != 90000 || got.BenefitUsage.EatsOrderCount != 3 {
+	if got.BenefitUsage.TotalObservedSavingsKRW != 210000 || got.BenefitUsage.FreeDeliveryTotalKRW == nil || *got.BenefitUsage.FreeDeliveryTotalKRW != 90000 || got.BenefitUsage.EatsOrderCount == nil || *got.BenefitUsage.EatsOrderCount != 3 {
 		t.Fatalf("unexpected benefit usage: %#v", got.BenefitUsage)
 	}
 	if got.BenefitUsage.WindowStatus != "observed" || got.BenefitUsage.WindowKind != "rolling_recent_months" || got.BenefitUsage.WindowMonths != 3 {

@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>{{.Report.Title}}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;family=Geist:wght@400;500;600&amp;family=Noto+Sans+KR:wght@400;500;600&amp;family=Noto+Serif+KR:wght@400&amp;display=swap" rel="stylesheet">
+  <style>
+    /* diagram-design 2.6 + minimalist-ui: editorial type, one accent, border-only surfaces.
+       Product photos and evidence tables remain native report content. */
+    :root {
+      color-scheme:light;--paper:#faf9f6;--paper-2:#f0efeb;--ink:#252724;
+      --muted:#4f5d75;--soft:#7a8399;--rule:rgba(45,49,66,.12);--rule-solid:#bfc0c0;
+      --accent:#eb6c36;--accent-tint:rgba(235,108,54,.08);--link:#2e5aa8;
+      --sans:"Geist","Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+      --serif:"Instrument Serif","Noto Serif KR","AppleMyungjo",serif;
+    }
+    *,*::before,*::after{box-sizing:border-box}
+    html{background:var(--paper);color:var(--ink);font:16px/1.7 var(--sans);scroll-padding-top:80px}
+    body{margin:0}a{color:var(--link);text-underline-offset:4px;overflow-wrap:anywhere}
+    a:hover{text-decoration-thickness:2px}button,select{font:inherit}
+    :focus-visible{outline:2px solid var(--link);outline-offset:4px}
+    .wrap{width:min(1120px,calc(100% - 64px));margin-inline:auto}
+    .skip{position:absolute;left:16px;top:-100px;background:var(--paper);padding:12px;z-index:3}.skip:focus{top:16px}
+    .masthead{display:flex;justify-content:space-between;gap:16px;align-items:center;padding-block:16px;border-bottom:1px solid var(--rule)}
+    .wordmark{font-weight:600;letter-spacing:-.04em;color:var(--ink);text-decoration:none;font-size:20px}
+    .edition{font-size:12px;color:var(--muted)}
+    .hero{padding-block:32px 20px;max-width:880px}
+    .kicker{font-size:12px;font-weight:500;letter-spacing:.12em;color:var(--muted);margin-bottom:12px}
+    h1{font:500 clamp(28px,3.5vw,42px)/1.4 var(--sans);letter-spacing:-.05em;margin:0 0 12px;text-wrap:balance;word-break:keep-all}
+    h2{font-size:28px;line-height:1.4;letter-spacing:-.04em;margin:0 0 12px;font-weight:600;text-wrap:balance}
+    h3{font-size:20px;line-height:1.5;letter-spacing:-.02em;margin:0 0 12px;font-weight:600}
+    h4{font-size:16px;margin:20px 0 8px}p{margin:12px 0;overflow-wrap:anywhere}li{margin-block:8px}
+    .subtitle,.lead{font-size:14px;color:var(--muted);max-width:68ch;line-height:1.8}.lead{margin:0 0 24px}
+    .hero-note{border-top:4px solid var(--accent);padding-top:16px}.hero-note b{display:block;font-size:20px}.hero-note p{font-size:12px;color:var(--muted)}
+    .contents{position:sticky;top:0;z-index:2;background:var(--paper);border-block:1px solid var(--rule-solid)}
+    .contents .wrap{display:flex;gap:32px}.contents a{display:flex;align-items:center;min-height:56px;font-size:16px;color:var(--ink);text-decoration:none;white-space:nowrap}.contents a:hover{color:var(--link)}
+    section{padding-block:48px;border-bottom:1px solid var(--rule)}
+    .brief{padding-block:24px}.brief h2{font-size:20px}.brief .lead{margin:0;font-size:16px}
+    .brief .summary-panel{max-width:820px}
+    .brief .summary-panel h2{font-size:12px;color:var(--muted);font-weight:400;margin-bottom:8px}
+    .brief .summary-panel .lead{color:var(--ink);font-size:17px}
+    .brief .report-status{color:var(--muted);font-size:12px;margin:10px 0 0}
+    .brief details{margin-top:16px}.brief details .lead{padding:0 16px 16px}
+    .finalists{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px;counter-reset:candidate}
+    .card{counter-increment:candidate;min-width:0;display:flex;flex-direction:column;gap:20px}
+    .thumb{aspect-ratio:1;background:#fff;display:grid;place-items:center;border-radius:4px;overflow:hidden;position:relative}
+    .thumb img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain;padding:20px}.missing{color:var(--muted);font-size:12px}
+    .body{min-width:0}.body .candidate-index{display:block;color:var(--muted);font-size:12px;letter-spacing:.08em;margin-bottom:8px}
+    .candidate-index::after{content:counter(candidate,decimal-leading-zero)}
+    .body h3{font-size:20px;margin:0 0 12px;text-wrap:pretty}
+    .option-brief{font-size:13px;color:var(--muted);line-height:1.8;margin:8px 0 16px}
+    .editorial-note{font-size:15px;line-height:1.9;margin:20px 0}
+    .editorial-note small{display:block;margin-bottom:6px}
+    .tradeoffs{padding-left:18px;font-size:13px;line-height:1.8}.tradeoffs li{margin:6px 0}
+    .price{font-size:32px;line-height:1.3;font-weight:600;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+    .price-caption{font-size:12px;color:var(--muted);margin:8px 0 16px}
+    .product-link{display:inline-flex;align-items:center;min-height:44px;gap:24px;color:var(--ink);font-weight:600;text-decoration:none;border-bottom:1px solid var(--ink)}
+    .product-link:hover{color:var(--link);border-color:var(--link)}
+    .open-questions{margin-block:16px;font-size:12px;color:var(--muted)}.open-questions b{font-weight:600;color:var(--ink)}
+    .open-questions ul{padding-left:20px;margin:4px 0}
+    details{border:0;border-top:1px solid var(--rule);background:transparent;min-width:0}
+    summary{cursor:pointer;padding:12px 0;font-weight:500;min-height:48px;overflow-wrap:anywhere}
+    summary:hover{background:var(--paper-2)}details[open]>summary{border-bottom:1px solid var(--rule)}
+    .evidence-body{padding:16px}.evidence-body>p:first-child{margin-top:0}
+    .candidate-evidence{margin-top:20px;font-size:13px}.axis-note,small{font-size:12px;color:var(--muted);line-height:1.7;overflow-wrap:anywhere}
+    .appendix{margin:32px auto;width:min(1120px,calc(100% - 64px))}.appendix>summary{font-size:18px}.appendix section .wrap{width:100%}
+    .facts{display:grid;grid-template-columns:1fr 1fr;margin:20px 0;border-block:1px solid var(--rule)}
+    .facts div{padding:12px 8px;min-width:0}.facts b{display:block;font-size:20px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+    .visual-note{padding:16px;background:var(--paper-2);margin-top:16px}.visual-note strong{font-size:16px}
+    .empty{padding:16px;border:1px dashed var(--rule-solid);font-size:16px;color:var(--muted);overflow-wrap:anywhere}
+    .compare-controls{display:grid;grid-template-columns:minmax(0,1fr) 32px minmax(0,1fr);gap:16px;align-items:end}
+    .compare-controls label{display:block;min-width:0;color:var(--muted);font-size:12px}
+    .compare-controls select{display:block;margin-top:8px;width:100%;min-height:48px;padding:12px;background:var(--paper);color:var(--ink);border:1px solid var(--rule-solid);border-radius:4px;font-size:16px}
+    .compare-controls b{padding-bottom:12px;text-align:center;color:var(--muted);font-size:12px}
+    #pairwise{margin-top:24px}table{width:100%;border-collapse:collapse;table-layout:fixed}
+    caption{text-align:left;font-size:12px;color:var(--muted);padding-bottom:12px}
+    th,td{text-align:left;padding:16px;border-bottom:1px solid var(--rule);vertical-align:top;overflow-wrap:anywhere;font-weight:400}
+    thead th{font-weight:600;border-bottom:1px solid var(--rule-solid)}
+    .pair-table th:first-child{width:24%}.pair-table tbody th{font-size:12px;color:var(--muted)}
+    .pair-table .value-row td{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+    .pair-table .evidence-row td{font-size:12px;color:var(--muted)}
+    .same-choice{font-size:12px;color:var(--muted);margin-top:12px}
+    .audit{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-block:1px solid var(--rule)}
+    .metric{padding:20px 16px;border-right:1px solid var(--rule)}.metric:last-child{border:0}.metric span{font-size:12px;color:var(--muted)}.metric strong{display:block;font-size:28px;font-weight:500;font-variant-numeric:tabular-nums}
+    .source{padding:24px;border:1px solid var(--rule);border-radius:4px;min-width:0}
+    .sources{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px}
+    .source-head{display:flex;gap:12px;align-items:center}.source-head img{width:24px;height:24px}.source-head h3{margin:0}
+    .tag{font-size:12px;color:var(--muted);display:inline-block;margin-block:12px}
+    .decision,.purchase-card{margin:24px 0;overflow-wrap:anywhere}.decision td p{margin:0 0 8px}
+    dl{margin:12px 0}dt{font-size:12px;color:var(--muted)}dd{margin:0 0 12px;overflow-wrap:anywhere}
+    .purchase-data{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:8px 24px}.purchase-data dd{margin:0}
+    .private-notice{padding:16px;border:1px solid var(--rule-solid);font-size:12px}
+    .visual-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:24px}
+    .visual{border:1px solid var(--rule);border-radius:4px;overflow:hidden}.visual img{width:100%;aspect-ratio:4/3;object-fit:contain;background:#fff}.visual .body{padding:16px}
+    .discovered{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}.discovered article{padding:16px;border-bottom:1px solid var(--rule);min-width:0}
+    .mini-thumb{height:128px;background:#fff;display:grid;place-items:center;margin-bottom:12px}.mini-thumb img{width:100%;height:100%;object-fit:contain}.discovered h3{font-size:16px}
+    #radar{width:100%;max-width:760px;display:block;margin:24px auto;background:var(--paper)}
+    code{font-size:12px;font-family:ui-monospace,Menlo,monospace;overflow-wrap:anywhere}
+    .section-heading{margin-bottom:24px}.section-heading .lead{margin-bottom:0}
+    footer{padding:32px 0 64px;font-size:12px;color:var(--muted)}footer .wrap{display:flex;gap:24px;justify-content:space-between}
+    [hidden]{display:none!important}
+    .flow-scope{font-size:14px;max-width:84ch}.flow-scope b{display:block;margin-bottom:4px}
+    .flow-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,1fr);gap:40px;align-items:start;margin-top:24px}
+    .flow-figure{margin:0;min-width:0}.flow-desktop{width:100%;display:block}.flow-mobile{display:none}
+    .flow-svg-title{font:600 24px var(--sans);fill:var(--ink)}.flow-svg-value{font:400 20px var(--sans);fill:var(--muted)}.flow-svg-index{font:500 20px var(--sans);fill:var(--muted)}
+    .flow-figure figcaption{font-size:12px;color:var(--muted);margin-top:12px}
+    .flow-receipts{min-width:0}.flow-receipts summary{font-size:15px}.flow-receipts .evidence-body{font-size:14px;padding:8px 0 20px}
+    .flow-product{margin-block:20px}.flow-product p{margin:8px 0}.flow-condition-count{font-weight:600}
+    .flow-paths{padding-top:24px}.flow-paths h3{font-size:18px}.flow-path{border-top:1px solid var(--rule);padding-block:8px 16px;font-size:14px}.flow-path h4{font-size:16px}.flow-path ul{padding-left:20px}
+    @media(max-width:1100px){.flow-layout{grid-template-columns:1fr}.flow-desktop{max-width:960px;margin:auto}}
+    @media(max-width:760px){
+      .wrap{width:calc(100% - 40px)}.hero{padding-block:24px 12px}
+      .hero-note{display:none}h1{font-size:30px;line-height:1.4;margin-bottom:12px}h2{font-size:23px}
+      .contents .wrap{gap:0;justify-content:space-between}.contents a{font-size:12px;min-height:48px}
+      section{padding-block:28px}.brief{padding-block:20px}.brief .summary-panel{padding:0}
+      .finalists{grid-template-columns:1fr;gap:36px}.card{gap:16px}.body h3{font-size:23px}.price{font-size:28px}
+      .card .thumb{aspect-ratio:4/3}.card .thumb img{padding:16px}.option-brief{font-size:14px}
+      .appendix{width:calc(100% - 40px)}.editorial-note{font-size:16px}
+      .audit{grid-template-columns:repeat(2,minmax(0,1fr))}.metric{border-bottom:1px solid var(--rule)}
+      .discovered{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .compare-controls{gap:8px;grid-template-columns:minmax(0,1fr) 16px minmax(0,1fr)}
+      .pair-table th,.pair-table td{padding:12px 8px}.pair-table th:first-child{width:24%}.pair-table .value-row td{font-size:16px}
+      .source{padding:16px}.decision table,.decision tbody,.decision tr,.decision th,.decision td{display:block;width:100%}
+      .decision thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+      .decision tr{padding:12px 0;border-top:1px solid var(--rule)}.decision th,.decision td{padding:8px 0;border:0}
+      .decision td::before{content:attr(data-label);display:block;color:var(--muted);font-size:12px;margin-bottom:4px}
+      .purchase-data{grid-template-columns:1fr;gap:4px}.purchase-data dd{margin-bottom:12px}
+      footer .wrap{display:block}.edition{max-width:50%;text-align:right}
+      .flow-desktop{display:none}.flow-mobile{display:block}.flow-layout{gap:24px}.flow-steps{list-style:none;padding:0;margin:0}
+      .flow-steps li{display:flex;gap:16px;border:1px solid var(--rule-solid);padding:16px;margin:0 0 32px;position:relative;background:#fff;border-radius:4px}
+      .flow-steps li::after{content:"";position:absolute;height:32px;left:31px;top:100%;border-left:1px solid var(--muted)}
+      .flow-step-index{color:var(--muted);font-size:12px;padding-top:4px}.flow-steps b{font-size:16px}.flow-steps p{font-size:14px;color:var(--muted);margin:4px 0 0}
+      .flow-choice{border-left:2px solid var(--accent);padding:12px 16px;background:var(--accent-tint)}.flow-choice p{font-size:13px;margin:4px 0}
+      .flow-mobile-branches{list-style:none;margin:0 0 0 32px;padding:24px 0 0 20px;border-left:1px dashed var(--muted)}
+      .flow-mobile-branches li{border:1px dashed var(--muted);padding:12px;position:relative;margin:0 0 16px}.flow-mobile-branches li::before{content:"";position:absolute;width:20px;left:-21px;top:20px;border-top:1px dashed var(--muted)}
+      .flow-mobile-branches span{display:block;font-size:12px;color:var(--muted);margin-top:4px}.flow-end{border-top:1px solid var(--rule-solid);padding-top:16px;font-size:14px}
+    }
+    @media(max-width:380px){.wrap,.appendix{width:calc(100% - 32px)}h1{font-size:28px}.facts{grid-template-columns:1fr}.discovered{grid-template-columns:1fr}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+    @media print{
+      .contents,.skip,.compare-controls{display:none!important}.wrap{width:100%}.hero{padding:24px 0}
+      html{background:white;color:var(--ink);font-size:12px}.card .thumb{position:static}section{padding:24px 0}
+      details::details-content{content-visibility:visible!important;display:block!important;height:auto!important}
+      details>summary{list-style:none}details>*:not(summary){display:block!important}
+      article{break-inside:avoid}#radar{max-height:400px}.candidate-evidence{break-inside:auto}
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#shortlist">상품 비교로 건너뛰기</a>
+  <header id="top"><div class="wrap">
+    <div class="masthead"><a class="wordmark" href="#top">coupangctl<span aria-hidden="true">.</span></a><span class="edition">개인용 쇼핑 리포트</span></div>
+    <div class="hero"><h1>{{.Report.Title}}</h1><p class="subtitle">{{if .Report.Subtitle}}{{.Report.Subtitle}}{{else}}상품의 표시 정보와 판단의 근거를 함께 확인하세요.{{end}}</p></div>
+  </div></header>
+  <nav class="contents" aria-label="리포트 목차"><div class="wrap"><a href="#shortlist">상품 보기</a><a href="#decision-flow">판단 흐름</a><a href="#comparison">나란히 비교</a><a href="#evidence">상세 기록</a></div></nav>
+
+  <main>
+    {{if .Purchase.HasContext}}<div class="wrap"><p class="private-notice">개인용 로컬 보고서 · 구매 집계가 포함되어 있습니다. 공개 링크나 외부 게시물로 공유하지 마세요. 보고서를 열면 입력에 포함된 외부 이미지가 로드될 수 있습니다.</p></div>{{end}}
+
+    <section id="shortlist"><div class="wrap"><h2>어떤 차이가 있나요?</h2><p class="lead">표시 순서는 추천 순위가 아닙니다. 사진은 판매 페이지 이미지이며 최종 구성은 옵션을 확인하세요.</p>
+      <div class="finalists">{{range $i,$candidate := .Candidates}}<article class="card" id="candidate-{{add $i 1}}">
+        <div class="thumb">{{if .Candidate.Product.ImageURL}}<img src="{{.Candidate.Product.ImageURL}}" alt="{{.Candidate.Product.Name}} 상품 이미지" loading="lazy">{{else}}<span class="missing">목록 이미지 미보존</span>{{end}}</div>
+        <div class="body"><span class="candidate-index">후보 </span><h3>{{.DisplayName}}</h3>{{if .SelectedAttributes}}<p class="option-brief">{{optionText .SelectedAttributes}}<br><small>선택 옵션 원문 · 판매자 표기</small></p>{{end}}<div class="price">{{.PriceText}}</div><p class="price-caption">관찰 당시 표시 가격 · 현재 결제 금액 미확인</p>
+          {{with .Rationale}}<p class="editorial-note"><small>선택 이유 · 추론</small>{{.}}</p>{{end}}{{if .Tradeoffs}}<ul class="tradeoffs">{{range .Tradeoffs}}<li>{{.}}</li>{{end}}</ul>{{end}}
+          {{if .Candidate.Product.URL}}<a class="product-link" href="{{.Candidate.Product.URL}}" target="_blank" rel="noopener noreferrer">쿠팡 상품 보기 <span aria-hidden="true">↗</span></a>{{end}}
+          <details class="candidate-evidence"><summary>원문·리뷰·미확인 사항</summary><div class="evidence-body"><p>{{.Candidate.Product.Name}}</p>{{if .Candidate.MissingEvidence}}<div class="open-questions"><b>아직 확인할 것</b><ul>{{range .Candidate.MissingEvidence}}<li>{{.}}</li>{{end}}</ul></div>{{end}}<p class="axis-note">{{.PriceEvidence}}</p><small>표시 금액의 출처입니다. 현재 구매 가능 금액이나 회원·쿠폰·배송 조건까지 보장하지 않습니다.</small>
+          <div class="facts"><div><b>{{integer .Candidate.ReviewsExamined}} / {{.ReviewCountText}}</b><small>읽은 리뷰 / {{.ReviewCountLabel}}</small></div><div><b>{{integer .Candidate.DetailImagesFound}}</b><small>찾은 상세 이미지</small></div><div><b>{{.VisualCount}}</b><small>직접 시각 확인</small></div><div><b>미확인</b><small>리뷰 표본 전략</small></div></div>
+          <div class="sampling"><div class="empty">리뷰 정렬·표본 메타데이터가 보존되지 않았습니다.</div></div>
+          {{if .SelectedAttributes}}<div class="selected-attributes"><h4>선택 옵션 원문</h4><dl>{{range .SelectedAttributes}}<dt>{{.Name}}</dt><dd>{{.Value}}</dd>{{end}}</dl><small>원본 구조화 옵션 · 선택한 판매 옵션과 일치 · {{.SelectedAttributesCapturedAt}}</small><p class="axis-note">복합 항목은 원문 그대로입니다. 항목 순서나 값 개수가 맞지 않을 수 있어 메모리·저장용량 조건을 충족한다고 확정하지 않습니다.</p></div>{{else}}<p class="axis-note">선택 옵션 원문 미확인</p>{{end}}
+          {{if .Capacities}}<div class="capacity-evidence"><h4>용량 조건의 근거</h4><dl>{{range .Capacities}}<dt>{{.Label}}</dt><dd>{{.Value}}<br><small>{{.Evidence}}</small></dd>{{end}}</dl><p class="axis-note">독립 항목의 판매자 표기를 GB로 환산한 값입니다(1 TB = 1000 GB). 실제 장착 용량·성능을 측정한 결과가 아닙니다.</p></div>{{end}}
+          <div class="visual-note"><strong>상세 이미지 {{.Candidate.DetailImagesFound}}장 중 {{.VisualCount}}장 직접 확인</strong><br><small>{{if .VisualCount}}아래 시각 증거에서 관찰 내용을 확인할 수 있어요.{{else}}아직 이미지를 실제로 읽지 않았으므로 이미지 기반 판단을 하지 않았어요.{{end}}</small></div>
+          <p class="axis-note">상품 페이지 리뷰 수와 읽은 표본을 구분합니다. URL만 찾은 이미지와 실제 바이트로 확인한 이미지도 구분합니다.</p></div></details>
+        </div>
+      </article>{{else}}<p class="empty">표시할 비교 후보가 없습니다. 조사 상태와 조건을 먼저 확인해 주세요.</p>{{end}}</div>
+    </div></section>
+
+    {{template "decision-flow" .}}
+    <section class="brief"><div class="wrap"><div class="summary-panel">{{if .Report.Summary}}<h2>현재 판단 · 확인한 자료에서의 추론</h2><p class="lead">{{.Report.Summary}}</p>{{end}}<p class="report-status">{{.StatusLabel}} · 전체 시장의 최적성이나 구매 적합성 보증은 아닙니다.</p></div></div></section>
+
+    <section id="comparison"><div class="wrap"><h2>두 후보, 나란히 비교</h2><p class="lead">비교할 상품을 각각 선택하세요. 확인되지 않은 값은 점수나 0으로 바꾸지 않습니다.</p>
+      {{if ge (len .Candidates) 2}}<div class="compare-controls" id="compare-controls" hidden><label for="compare-a">왼쪽 후보<select id="compare-a"></select></label><b aria-hidden="true">VS</b><label for="compare-b">오른쪽 후보<select id="compare-b"></select></label></div><div id="pairwise"></div><noscript><p class="empty">선택형 비교는 JavaScript가 필요합니다. 위 후보별 가격과 펼쳐보기 근거는 그대로 읽을 수 있습니다.</p></noscript>
+      {{else}}<p class="empty">나란히 비교하려면 후보가 2개 이상 필요합니다. 현재 후보 {{len .Candidates}}개.</p>{{end}}
+    </div></section>
+
+    <details class="appendix" id="evidence"><summary>조사 근거와 확인 범위</summary><p>중단 이유: {{.Report.Recommendation.Audit.DiscoveryStopReason}}</p>{{if .Report.Recommendation.Audit.TimeBudgetExhausted}}<p>조사 시간 한도에 도달했습니다.</p>{{end}}{{range .Report.Recommendation.Warnings}}<p>{{.}}</p>{{end}}{{range .Report.Recommendation.Questions}}<p>확인할 조건: {{.Prompt}}</p>{{end}}
+    <section id="condition-review"><div class="wrap"><h2>필수 조건 검토</h2><p class="lead">최종 표시 목록뿐 아니라 제외·미확인 후보의 상세 조사 기록도 표시합니다. 조건 판정은 입력된 상세 근거로 다시 계산합니다. 충족은 아래 명시한 조건에 한정되며 전체 용도 적합성이나 시장 최적성을 뜻하지 않습니다.</p>
+      {{range .Decisions}}<article class="source decision" data-condition-reference="{{.Reference}}"><h3>{{.Name}}</h3><p>{{.Reference}}</p><p>{{.Selection}}</p><p>{{.Outcome}}</p>{{with .IdentityWarning}}<p class="empty">{{.}}</p>{{end}}{{with .RecordWarning}}<p class="empty">{{.}}</p>{{end}}
+        {{if .SelectedAttributes}}<div class="decision-options"><h4>선택 옵션 원문</h4><dl>{{range .SelectedAttributes}}<dt>{{.Name}}</dt><dd>{{.Value}}</dd>{{end}}</dl><p class="axis-note">선택한 판매 옵션과 연결된 원본 항목 · 관찰 시각: {{.OptionsObservedAt}}</p><p>복합 항목은 원문 그대로입니다. 아래 조건의 충족 근거로 분리하거나 추정하지 않습니다.</p></div>{{end}}
+        {{if .Conditions}}<div style="overflow-x:auto"><table><thead><tr><th>조건</th><th>판정</th><th>확인한 값</th><th>근거와 미확인 이유</th></tr></thead><tbody>{{range .Conditions}}<tr><th scope="row">{{.Requirement}}<br><small>{{.ID}}</small></th><td data-label="판정">{{.Status}}</td><td data-label="확인한 값">{{.Value}}</td><td data-label="근거와 미확인 이유">{{with .Derivation}}<p>{{.}}</p>{{end}}{{range .Evidence}}<p>{{.}}</p>{{end}}{{with .Missing}}<p>{{.}}</p>{{end}}</td></tr>{{end}}</tbody></table></div>{{else}}<p>검색어·카테고리 선택만으로 필수 조건 충족을 판정하지 않습니다.</p>{{end}}
+      </article>{{else}}<div class="empty">상세 조사 기록이 없습니다. 검색 목록만으로 조건 충족을 판단하지 않습니다.</div>{{end}}
+      <p class="lead">용량은 독립된 판매자 표기의 환산값이며 하드웨어 실측 결과가 아닙니다. 원본 관찰 시각 이후의 가격·옵션 변경은 반영하지 않습니다.</p>
+    </div></section>
+
+    {{if .NextActions}}<section><div class="wrap"><h2>다음에 확인할 것</h2><p class="lead">조사 결과에 기록된 다음 단계입니다. 이 보고서는 조회를 재시도하거나 로그인 창을 열거나 구매를 실행하지 않습니다.</p>{{range .NextActions}}<article class="source"><h3>{{.Label}}</h3><p>이유: <code>{{.Reason}}</code></p>{{if .ConditionIDs}}<p>조건: {{range .ConditionIDs}}<code>{{.}}</code> {{end}}</p>{{end}}{{if .Fields}}<p>항목: {{range .Fields}}<code>{{.}}</code> {{end}}</p>{{end}}{{if .References}}<details><summary>대상 판매 옵션 {{len .References}}개</summary><ul>{{range .References}}<li>{{.}}</li>{{end}}</ul></details>{{end}}</article>{{end}}</div></section>{{end}}
+
+    <section id="purchase-context"><div class="wrap"><h2>구매 이력과의 연결</h2><h3>{{.Purchase.Status}}</h3>{{with .Purchase.Empty}}<p class="empty">{{.}}</p>{{end}}
+      {{if .Purchase.HasContext}}<p class="lead">입력된 로컬 주문 집계를 표시합니다. 보고서는 계정을 인증하거나 주문 자료를 새로 읽지 않습니다. 구매 사실은 선호·만족도·소비 완료·재구매 필요성의 증거가 아니며 추천 순위를 바꾸지 않습니다.</p>
+      {{range .Purchase.Matches}}<article class="source purchase-card"><h3>{{.Name}}</h3><p>{{.Reference}}</p><p>{{.Scope}}</p><dl class="purchase-data"><dt>구매 주문 수</dt><dd>{{integer .Orders}}건</dd><dt>구매 품목 행 수</dt><dd>{{integer .Lines}}행</dd><dt>취소·반품 차감 수량</dt><dd>{{integer .Units}}개</dd><dt>확인된 최초 구매 월</dt><dd>{{.FirstMonth}}</dd><dt>확인된 최근 구매 월</dt><dd>{{.LatestMonth}}</dd></dl></article>{{end}}
+      {{if .Purchase.Matches}}<p class="lead">집계는 정규화된 구조화 주문 자료에서 파생했습니다. 상품 구매 행만 포함하며 전체 취소 주문과 취소·반품 상태 행은 제외합니다. 수량은 구매 수량에서 취소·반품 수량을 차감한 값으로 현재 보유량이 아닙니다. 상품 단위 집계와 판매 옵션 집계는 겹칠 수 있어 합산하지 않습니다. 구매 월은 확인된 기록의 범위이며 수집 기간 전체를 뜻하지 않습니다.</p>{{end}}
+      <h3>수집 범위와 마지막 시도</h3><p class="lead">아래 시각은 보고서에 입력된 기록입니다. 현재 로그인·프로세스 상태나 상품별 자료의 최신성을 보장하지 않습니다. 전체 계정의 구매 이력 확보는 미검증입니다.</p>
+      {{if .Purchase.HasSync}}<dl class="purchase-data">{{range .Purchase.SyncRows}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}</dl>{{else}}<p class="empty">동기화 기록이 없어 수집 범위와 마지막 시도 시각을 확인할 수 없습니다.</p>{{end}}
+      {{if .Purchase.HasScan}}<h3>이어받기를 포함한 누적 수집 기록</h3><dl class="purchase-data">{{range .Purchase.ScanRows}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}</dl><p class="lead">누적 주문 수는 현재 로컬에 남아 있는 주문을 이 스캔에서 본 것과 못 본 것으로 구분합니다. 계정 전체의 주문 수나 구매 집계에 포함된 주문 수와 다릅니다. 이번 스캔에서 못 본 주문을 삭제·취소로 해석하지 않습니다.</p>{{else}}<p class="empty">누적 스캔 기록이 없습니다. 마지막 시도의 페이지 수를 전체 수집량으로 해석하지 않습니다.</p>{{end}}
+      {{if .Purchase.Limitations}}<details class="purchase-card"><summary>입력에 기록된 추가 한계</summary><ul>{{range .Purchase.Limitations}}<li>{{.}}</li>{{end}}</ul></details>{{end}}{{end}}
+    </div></section>
+
+
+
+    <section id="research"><div class="wrap"><div class="kicker">RESEARCH / COVERAGE</div><h2>얼마나 많이 비교했나요?</h2><p class="lead">초기 목록을 정리해 고유 모델군 {{integer .Report.Recommendation.Audit.UniqueModelFamilies}}개를 남겼습니다. 중복 행은 제품 수에서 제외했고, 목표보다 실제 확인 수가 적다면 중단 이유도 데이터에 남습니다.</p>
+      {{with .InspectionStop}}<p>{{.}}</p>{{end}}{{with .Report.Recommendation.Audit.InspectionStopReason}}<p>상세 조사 중단 이유: <code>{{.}}</code></p>{{end}}
+      <p>상세 확인을 마치지 못한 판매 옵션: {{.UninspectedText}}</p>
+      <div class="audit">
+        <div class="metric"><span>목록 스크리닝 목표</span><strong>{{integer .Report.Recommendation.Audit.DiscoveryTarget}}개</strong></div>
+        <div class="metric"><span>목록 관찰 행</span><strong>{{integer .Report.Recommendation.Audit.ListingsObserved}}건</strong></div>
+        <div class="metric"><span>중복 제거한 고유 모델군</span><strong>{{integer .Report.Recommendation.Audit.UniqueModelFamilies}}개</strong></div>
+        <div class="metric"><span>상세 페이지 확인</span><strong>{{integer .Report.Recommendation.Audit.DetailsInspected}}개</strong></div>
+        <div class="metric"><span>최종 조건부 후보</span><strong>{{len .Report.Recommendation.Candidates}}개</strong></div>
+      </div>
+    </div></section>
+
+    {{if or .Report.Recommendation.Query .Report.Recommendation.CategoryID .Report.Recommendation.Refinement}}<section><div class="wrap"><h2>어떤 조건으로 찾았나요?</h2>
+      {{if .Report.Recommendation.AppliedCategoryID}}<p>조회 범위: 쿠팡 카테고리 {{.Report.Recommendation.AppliedCategoryID}}</p><p>시작 카테고리 {{.Report.Recommendation.CategoryID}}에서 명시적으로 선택한 사이드바 항목으로 이동했습니다. 선택 표시와 원천의 분류 경로가 일치하는지 확인한 범위입니다.</p>{{else if .Report.Recommendation.CategoryID}}<p>조회 범위: 쿠팡 카테고리 {{.Report.Recommendation.CategoryID}}</p>{{else if .Report.Recommendation.Query}}<p>조회 범위: 검색어 {{.Report.Recommendation.Query}}</p>{{end}}
+      {{with .Report.Recommendation.Refinement}}
+        {{if .CategoryTrail}}<p>현재 카테고리까지 다시 따라간 이전 선택 경로입니다. 아래 항목은 현재 활성 필터가 아닙니다.</p><ol>{{range .CategoryTrail}}<li>{{.}}</li>{{end}}</ol>{{end}}
+        {{if .AppliedSelections}}<p>적용이 확인된 필터</p><ul>{{range .AppliedSelections}}<li>{{.Name}}: {{.Label}}</li>{{end}}</ul>{{else}}<p>적용이 확인된 필터가 없습니다.</p>{{end}}
+        {{with .Issue}}<p class="empty">적용을 확인하지 못한 선택: {{.Selection.Name}}: {{.Selection.Label}} ({{.Reason}}). 이 선택을 적용한 결과로 해석하지 마세요.</p>{{end}}
+        <p class="lead">필터 선택은 개별 상품의 조건 충족을 보증하지 않습니다. 가격·규격 등 상세 근거를 따로 확인하세요.</p>
+      {{end}}
+    </div></section>{{end}}
+
+    {{if .HasScores}}<section><div class="wrap"><div class="kicker">COMPARISON / DECLARED CRITERIA</div><h2>입력된 비교 기준과 근거</h2><p class="lead">보편적인 품질이나 과학적으로 검증된 적합도 점수가 아닙니다. 입력된 축·가중치·설명을 표시합니다. 가용성은 값이 있는 축의 가중치 합이며 신뢰도와 다릅니다. 미확인 값은 0점으로 채우지 않고, 모든 축에 값이 입력된 후보만 차트로 그립니다.</p>{{range .Comparisons}}<article class="source"><h3>{{.Name}}</h3>{{if not .Complete}}<p class="empty">미확인 축이 있어 차트와 종합점수를 표시하지 않습니다.</p>{{end}}<div style="overflow-x:auto"><table><thead><tr><th>비교 축</th><th>가중치</th><th>값</th><th>구분</th><th>규칙과 설명</th></tr></thead><tbody>{{range .Cells}}<tr><th scope="row">{{.Label}}</th><td>{{.Weight}}</td><td>{{.Value}}</td><td>{{.Provenance}}</td><td>{{.Rule}}<br>{{.Explanation}}</td></tr>{{end}}</tbody></table></div></article>{{end}}{{if .HasRadar}}<svg id="radar" viewBox="0 0 760 600" role="img" aria-labelledby="comparison-radar-title comparison-radar-desc"></svg>{{end}}</div></section>{{end}}
+
+    <section><div class="wrap"><div class="kicker">EVIDENCE / VISUAL REVIEW</div><h2>상세 이미지는 실제로 무엇을 봤나요?</h2><p class="lead">{{.Report.Recommendation.Audit.DetailImagesFound}}장을 찾았고, 그중 {{.VisualTotal}}장을 실제 바이트로 열어 확인했습니다. 캐시 재사용 여부도 함께 남겼습니다.</p>
+      {{if .Report.VisualEvidence}}<div class="visual-grid">{{range .Candidates}}{{range .VisualEvidence}}<article class="visual"><img src="{{.Evidence.ImageURL}}" alt="검토한 제품 상세 이미지" loading="lazy"><div class="body"><span class="tag">{{.RetrievalLabel}}</span>{{range .Evidence.Findings}}<p>✓ {{.}}</p>{{end}}<small>{{.Evidence.Source}}</small></div></article>{{end}}{{end}}</div>{{else}}<div class="empty">직접 확인한 상세 이미지가 없습니다. 이미지 URL 개수만으로는 시각 검토를 주장하지 않습니다.</div>{{end}}
+    </div></section>
+
+    <section><div class="wrap"><div class="kicker">APPENDIX / DISCOVERY</div><h2>처음 본 제품도 숨기지 않았어요</h2><p class="lead">로컬 모델명 규칙으로 묶은 후보와 검색 축별 재등장 기록입니다. 재등장은 상품 품질·판매량·추천 신뢰도의 증거가 아닙니다.</p>
+      <details><summary>고유 모델군 {{len .Report.Recommendation.Discovered}}개 모두 보기</summary><div class="discovered">{{range .Report.Recommendation.Discovered}}<article><div class="mini-thumb">{{if .Product.ImageURL}}<img src="{{.Product.ImageURL}}" alt="{{.Product.Name}} 썸네일" loading="lazy">{{else}}<small>이미지 미보존</small>{{end}}</div><h3>{{.Product.Name}}</h3><p class="axis-note">검색축 {{.AxisCount}}개 재등장 · {{percent .CrossListCoverage}}</p><b>{{observedPrice .Product}}</b><p class="axis-note">{{priceEvidence .Product}}</p></article>{{end}}</div></details>
+    </div></section>
+
+    <section><div class="wrap"><div class="kicker">APPENDIX / SOURCES</div><h2>어디에서 무엇을 확인했나요?</h2>{{if .Report.Sources}}<div class="sources">{{range .Report.Sources}}<article class="source"><div class="source-head">{{if .FaviconURL}}<img src="{{.FaviconURL}}" alt="" loading="lazy">{{end}}<h3>{{.Name}}</h3></div><span class="tag">{{.Kind}}</span><ul>{{range .Facts}}<li>{{.}}</li>{{end}}</ul><a href="{{.URL}}" target="_blank" rel="noopener noreferrer">출처 열기 →</a></article>{{end}}</div>{{else}}<div class="empty">추가 외부 출처가 입력되지 않았습니다. 쿠팡 관찰과 외부 자료를 섞어 표시하지 않습니다.</div>{{end}}</div></section>
+    </details>
+  </main>
+  <footer><div class="wrap">coupangctl report schema {{.Report.SchemaVersion}} · 중단 이유: {{.Report.Recommendation.Audit.DiscoveryStopReason}} · 이 보고서는 구매·결제를 실행하지 않습니다.<a href="#top">맨 위로 ↑</a></div></footer>
+  <script>
+    const pairwise = {{.PairwiseJSON}};
+    const a = document.querySelector('#compare-a'), b = document.querySelector('#compare-b'), box = document.querySelector('#pairwise');
+    if (a && b && box && pairwise.length >= 2) {
+      for (const select of [a,b]) pairwise.forEach((item,index)=>{const option=document.createElement('option');option.value=String(index);option.textContent=item.name;select.appendChild(option)});
+      b.value='1';
+      document.querySelector('#compare-controls').hidden=false;
+      const draw = () => {
+        const x=pairwise[+a.value], y=pairwise[+b.value]; if(!x||!y)return;
+        const rows=[['표시 가격',x.price_text,y.price_text,'value-row'],['가격 근거',x.price_evidence,y.price_evidence,'evidence-row'],['평점',x.rating_text,y.rating_text,'value-row'],['평점 근거',x.rating_evidence,y.rating_evidence,'evidence-row'],['읽은 리뷰 / 원천 수',x.reviews_examined+' / '+x.review_count_text,y.reviews_examined+' / '+y.review_count_text,''],['상세 이미지 직접 확인',x.images_reviewed+' / '+x.images_found,y.images_reviewed+' / '+y.images_found,'']];
+        if(x.option_text||y.option_text)rows.splice(1,0,['선택 옵션 원문',x.option_text||'미확인',y.option_text||'미확인','']);
+        if(x.rationale||y.rationale)rows.splice(2,0,['선택 이유 · 추론',x.rationale||'미입력',y.rationale||'미입력','']);
+        if(x.capacity_text||y.capacity_text)rows.push(['용량 (원문 표기 환산)',x.capacity_text||'미확인',y.capacity_text||'미확인','']);
+        const table=document.createElement('table');table.className='pair-table';
+        const caption=document.createElement('caption');caption.textContent='관찰된 값의 비교 · 미확인은 값이 없다는 뜻입니다.';table.appendChild(caption);
+        const head=document.createElement('thead'), heading=document.createElement('tr');
+        for(const name of ['비교 항목',x.name,y.name]){const cell=document.createElement('th');cell.scope='col';cell.textContent=name;heading.appendChild(cell)}head.appendChild(heading);table.appendChild(head);
+        const body=document.createElement('tbody');
+        for(const row of rows){const element=document.createElement('tr');element.className=row[3];row.slice(0,3).forEach((value,index)=>{const cell=document.createElement(index===0?'th':'td');if(index===0)cell.scope='row';cell.textContent=String(value);element.appendChild(cell)});body.appendChild(element)}
+        table.appendChild(body);box.replaceChildren(table);
+        if(a.value===b.value){const note=document.createElement('p');note.className='same-choice';note.textContent='같은 후보를 선택했습니다. 다른 상품을 선택하면 차이를 비교할 수 있습니다.';box.prepend(note)}
+      }; a.onchange=draw;b.onchange=draw;draw();
+    }
+    const radarData = {{.RadarJSON}};
+    {{.RadarScript}}
+    renderRecommendationRadar(document.querySelector('#radar'), radarData);
+  </script>
+</body>
+</html>

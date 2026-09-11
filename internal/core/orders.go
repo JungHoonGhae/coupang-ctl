@@ -15,6 +15,7 @@ func OrderSourceReference(sourceID string) string {
 }
 
 var ErrInvalidOrderData = errors.New("invalid order data")
+var ErrPartialOrderData = errors.New("source returned a partial order page")
 var ErrProductCategoryUnavailable = errors.New("product category unavailable")
 
 const CategorySourceProductJSONLDBreadcrumb = "coupang_product_jsonld_breadcrumb_v1"
@@ -99,6 +100,8 @@ type UpsertResult struct {
 }
 
 type SpendSummary struct {
+	SchemaVersion           int                    `json:"schema_version"`
+	Evidence                OrderReadEvidence      `json:"evidence"`
 	From                    string                 `json:"from,omitempty"`
 	To                      string                 `json:"to,omitempty"`
 	Currency                string                 `json:"currency"`
@@ -132,6 +135,8 @@ type CommerceSpendBucket struct {
 }
 
 type OrderStats struct {
+	SchemaVersion           int                       `json:"schema_version"`
+	Evidence                OrderReadEvidence         `json:"evidence"`
 	From                    string                    `json:"from,omitempty"`
 	To                      string                    `json:"to,omitempty"`
 	OrderCount              int                       `json:"order_count"`
@@ -142,10 +147,10 @@ type OrderStats struct {
 	CanceledUnits           int                       `json:"canceled_units"`
 	ReturnedItemLineCount   int                       `json:"returned_item_line_count"`
 	ReturnedUnits           int                       `json:"returned_units"`
-	FullyCanceledOrderRate  float64                   `json:"fully_canceled_order_rate"`
-	CanceledUnitRate        float64                   `json:"canceled_unit_rate"`
-	ReturnedItemLineRate    float64                   `json:"returned_item_line_rate"`
-	ReturnedUnitRate        float64                   `json:"returned_unit_rate"`
+	FullyCanceledOrderRate  *float64                  `json:"fully_canceled_order_rate" jsonschema:"Derived fully_canceled_order_count / order_count, rounded to six decimals; null when order_count is zero, numeric zero when the denominator is positive and numerator is zero"`
+	CanceledUnitRate        *float64                  `json:"canceled_unit_rate" jsonschema:"Derived canceled_units / ordered_units, rounded to six decimals; null when ordered_units is zero. Uses normalized ledger quantities, not independently verified upstream quantities"`
+	ReturnedItemLineRate    *float64                  `json:"returned_item_line_rate" jsonschema:"Derived returned_item_line_count / item_line_count, rounded to six decimals; null when item_line_count is zero"`
+	ReturnedUnitRate        *float64                  `json:"returned_unit_rate" jsonschema:"Derived returned_units / ordered_units, rounded to six decimals; null when ordered_units is zero. Uses normalized ledger quantities, not independently verified upstream quantities"`
 	PurchaseHours           []CountBucket             `json:"purchase_hours"`
 	PurchaseWeekdays        []CountBucket             `json:"purchase_weekdays"`
 	PurchaseMonths          []MonthlyOrderStats       `json:"purchase_months"`
@@ -153,6 +158,32 @@ type OrderStats struct {
 	DeliveryDuration        DeliveryDurationSummary   `json:"delivery_duration"`
 	DeliveryByYear          []DeliveryDurationSummary `json:"delivery_by_year"`
 	DeliveryTrend           DeliveryTrendComparison   `json:"delivery_trend"`
+}
+
+const OrderAggregateSchemaVersion = 2
+
+// v3 distinguishes undefined cancellation/return rates from computed zero.
+// Spend and product aggregates retain their own v2 snapshot contract.
+const OrderStatsSchemaVersion = 3
+
+// ShoppingInsights v3 preserves undefined top-level rates and their counts.
+const ShoppingInsightsSchemaVersion = 3
+
+// ShoppingAnalysis is the internal composite used for one-snapshot recap reads.
+// Products are collected only when the caller explicitly requests that scope.
+type ShoppingAnalysis struct {
+	Insights ShoppingInsights
+	Products *ProductInsights
+}
+
+// OrderReadEvidence describes a local read snapshot, not a live account check.
+// LatestAttempt is ledger-wide; it does not certify the requested date range.
+type OrderReadEvidence struct {
+	Visibility         string     `json:"visibility"`
+	Dataset            string     `json:"dataset" jsonschema:"retained_local_history: stored records may include orders not seen in the latest scan; not a verified current-account or latest-source set"`
+	SnapshotCapturedAt time.Time  `json:"snapshot_captured_at" jsonschema:"Local timestamp captured after the first snapshot read; not the source freshness timestamp"`
+	LatestAttempt      SyncStatus `json:"latest_attempt" jsonschema:"Ledger-wide attempt evidence read in the same transaction as the aggregates, not proof of requested-range coverage"`
+	Limitations        []string   `json:"limitations"`
 }
 
 type CountBucket struct {
@@ -193,6 +224,7 @@ type DeliveryTrendComparison struct {
 
 type ShoppingInsights struct {
 	SchemaVersion               int                       `json:"schema_version"`
+	Evidence                    OrderReadEvidence         `json:"evidence"`
 	From                        string                    `json:"from,omitempty"`
 	To                          string                    `json:"to,omitempty"`
 	FirstOrderDate              string                    `json:"first_order_date,omitempty"`
@@ -209,17 +241,17 @@ type ShoppingInsights struct {
 	PeakPurchaseWeekday         CountBucket               `json:"peak_purchase_weekday"`
 	BusiestMonth                MonthlyOrderStats         `json:"busiest_month"`
 	HighestSpendMonth           MonthlyOrderStats         `json:"highest_spend_month"`
-	NightOrderRate              float64                   `json:"night_order_rate"`
-	LateEveningOrderRate        float64                   `json:"late_evening_order_rate"`
-	WeekendOrderRate            float64                   `json:"weekend_order_rate"`
-	NightFullyCanceledOrderRate float64                   `json:"night_fully_canceled_order_rate"`
-	OtherFullyCanceledOrderRate float64                   `json:"other_fully_canceled_order_rate"`
-	NightReturnedUnitRate       float64                   `json:"night_returned_unit_rate"`
-	OtherReturnedUnitRate       float64                   `json:"other_returned_unit_rate"`
-	DeliveredWithin24HoursRate  float64                   `json:"delivered_within_24_hours_rate"`
-	DeliveredWithin48HoursRate  float64                   `json:"delivered_within_48_hours_rate"`
+	NightOrderRate              *float64                  `json:"night_order_rate" jsonschema:"samples.night_orders / samples.timed_orders, rounded to six decimals; null when timed_orders is zero"`
+	LateEveningOrderRate        *float64                  `json:"late_evening_order_rate" jsonschema:"samples.late_evening_orders / samples.timed_orders, rounded to six decimals; null when timed_orders is zero"`
+	WeekendOrderRate            *float64                  `json:"weekend_order_rate" jsonschema:"samples.weekend_orders / samples.timed_orders using KST, rounded to six decimals; null when timed_orders is zero"`
+	NightFullyCanceledOrderRate *float64                  `json:"night_fully_canceled_order_rate" jsonschema:"Derived samples.night_fully_canceled_orders / samples.night_all_timed_orders for 00:00-05:59 KST, rounded to six decimals; null for zero denominator. Descriptive association, not a causal effect of purchase time"`
+	OtherFullyCanceledOrderRate *float64                  `json:"other_fully_canceled_order_rate" jsonschema:"Derived samples.other_fully_canceled_orders / samples.other_all_timed_orders for 06:00-23:59 KST, rounded to six decimals; null for zero denominator"`
+	NightReturnedUnitRate       *float64                  `json:"night_returned_unit_rate" jsonschema:"Derived samples.night_returned_units / samples.night_ordered_units for 00:00-05:59 KST, rounded to six decimals; null for zero denominator. Uses normalized ledger quantities, not independently verified upstream quantities"`
+	OtherReturnedUnitRate       *float64                  `json:"other_returned_unit_rate" jsonschema:"Derived samples.other_returned_units / samples.other_ordered_units for 06:00-23:59 KST, rounded to six decimals; null for zero denominator. Uses normalized ledger quantities, not independently verified upstream quantities"`
+	DeliveredWithin24HoursRate  *float64                  `json:"delivered_within_24_hours_rate" jsonschema:"samples.delivered_within_24_hours / samples.delivery_events, rounded to six decimals; null for zero usable nonnegative-duration delivery events"`
+	DeliveredWithin48HoursRate  *float64                  `json:"delivered_within_48_hours_rate" jsonschema:"samples.delivered_within_48_hours / samples.delivery_events, rounded to six decimals; null for zero usable nonnegative-duration delivery events"`
 	TopBrand                    CountBucket               `json:"top_brand"`
-	TopBrandShare               float64                   `json:"top_brand_share"`
+	TopBrandShare               *float64                  `json:"top_brand_share" jsonschema:"top_brand.count / samples.branded_retained_item_lines, rounded to six decimals; null when there are no retained branded item lines; not a share of all purchases"`
 	RepeatPurchases             RepeatPurchaseInsights    `json:"repeat_purchases"`
 	Basket                      BasketInsights            `json:"basket"`
 	PurchaseTiming              PurchaseTimingInsights    `json:"purchase_timing"`
@@ -234,9 +266,11 @@ type ShoppingInsights struct {
 }
 
 // ProductInsights contains private, local-only product names and exact dates.
-// It is intentionally separate from the shareable ShoppingInsights response.
+// ShoppingInsights also carries private snapshot evidence; neither raw response
+// is a public-sharing payload. Public recap output uses a separate field allowlist.
 type ProductInsights struct {
 	SchemaVersion              int                       `json:"schema_version"`
+	Evidence                   OrderReadEvidence         `json:"evidence"`
 	Visibility                 string                    `json:"visibility"`
 	From                       string                    `json:"from,omitempty"`
 	To                         string                    `json:"to,omitempty"`
@@ -463,6 +497,15 @@ type CategoryBucket struct {
 }
 
 type InsightSampleSizes struct {
+	WeekendOrders            int `json:"weekend_orders"`
+	DeliveredWithin24Hours   int `json:"delivered_within_24_hours"`
+	DeliveredWithin48Hours   int `json:"delivered_within_48_hours"`
+	NightAllTimedOrders      int `json:"night_all_timed_orders" jsonschema:"Timed orders in the cancellation cohort at 00:00-05:59 KST, including fully canceled orders; differs from retained night_orders"`
+	OtherAllTimedOrders      int `json:"other_all_timed_orders" jsonschema:"Timed orders in the cancellation cohort at 06:00-23:59 KST, including fully canceled orders"`
+	NightFullyCanceledOrders int `json:"night_fully_canceled_orders"`
+	OtherFullyCanceledOrders int `json:"other_fully_canceled_orders"`
+	NightReturnedUnits       int `json:"night_returned_units"`
+	OtherReturnedUnits       int `json:"other_returned_units"`
 	TimedOrders              int `json:"timed_orders"`
 	NightOrders              int `json:"night_orders"`
 	LateEveningOrders        int `json:"late_evening_orders"`
@@ -570,6 +613,7 @@ type ReorderCandidate struct {
 }
 
 type ReorderPriceComparison struct {
+	PriceProvenance         string   `json:"price_provenance,omitempty"`
 	Status                  string   `json:"status"`
 	LastPaidUnitAmountKRW   int64    `json:"last_paid_unit_amount_krw,omitempty"`
 	LastPaidAt              string   `json:"last_paid_at,omitempty"`
@@ -596,10 +640,25 @@ type PurgeResult struct {
 }
 
 type SyncRequest struct {
-	MaxPages int `json:"max_pages,omitempty"`
+	MaxPages    int  `json:"max_pages,omitempty" jsonschema:"Page budget: default 100, maximum 1000. Acquisition is also bounded to 5 minutes per attempt and 60 seconds per page, or the caller deadline if earlier. A stopped attempt does not prove complete coverage; inspect local sync status before resuming."`
+	RestartScan bool `json:"restart_scan,omitempty" jsonschema:"Explicitly begin a new scan from the source start instead of resuming. Preserve existing orders, old scans, attempts, and observations. Do not use as an automatic retry for a pagination loop or access failure; it does not verify account identity or complete coverage."`
 }
 
-const SyncResultSchemaVersion = 1
+var ErrSyncTimeBudget = errors.New("order sync time budget exhausted")
+var ErrSyncPageDeadline = errors.New("order sync page deadline exceeded")
+var ErrSyncInProgress = errors.New("another order sync is already running for this ledger")
+
+var ErrSyncCursorLoop = errors.New("order pagination cursor repeated")
+
+const SyncResultSchemaVersion = 2
+
+type SyncCoverageStatus string
+
+const (
+	SyncCoverageNotAssessed   SyncCoverageStatus = "not_assessed"
+	SyncCoverageUnverified    SyncCoverageStatus = "unverified_account_and_scan"
+	SyncCoverageUnknownLegacy SyncCoverageStatus = "unknown_legacy"
+)
 const SyncProvenanceObservedStructuredOrderDocument = "observed_source_native_structured_order_document"
 
 type SyncSource string
@@ -608,26 +667,55 @@ const (
 	SyncSourceDedicatedBrowser SyncSource = "dedicated_browser_profile"
 	SyncSourceCurrentBrowser   SyncSource = "current_browser_connection"
 	SyncSourceOrdinaryBrowser  SyncSource = "ordinary_browser_selected_tab"
+	SyncSourceAppleEvents      SyncSource = "apple_events_order_document"
+	SyncSourceAside            SyncSource = "aside_order_document"
+	SyncSourceCamofox          SyncSource = "camofox_order_document"
 	SyncSourceUnknownLegacy    SyncSource = "unknown_legacy"
 )
 
 func (s SyncSource) ValidForAcquisition() bool {
-	return s == SyncSourceDedicatedBrowser || s == SyncSourceCurrentBrowser || s == SyncSourceOrdinaryBrowser
+	return s == SyncSourceDedicatedBrowser || s == SyncSourceCurrentBrowser || s == SyncSourceOrdinaryBrowser || s == SyncSourceAppleEvents || s == SyncSourceAside || s == SyncSourceCamofox
 }
 
 type SyncResult struct {
-	SchemaVersion  int          `json:"schema_version"`
-	Source         SyncSource   `json:"source"`
-	Provenance     string       `json:"provenance"`
-	Complete       bool         `json:"complete"`
-	PagesProcessed int          `json:"pages_processed"`
-	OrdersSeen     int          `json:"orders_seen"`
-	ItemsSeen      int          `json:"items_seen"`
-	OrdersRemoved  int          `json:"orders_removed,omitempty"`
-	Next           *OrderCursor `json:"next,omitempty"`
+	SchemaVersion   int                `json:"schema_version"`
+	Source          SyncSource         `json:"source"`
+	Provenance      string             `json:"provenance"`
+	Complete        bool               `json:"complete" jsonschema:"Verified account and scan coverage, not merely an attempt ending; unverified acquisition cannot set this true"`
+	CursorExhausted bool               `json:"cursor_exhausted" jsonschema:"The last committed page in this attempt had no next cursor; this is not source-end or account-coverage proof"`
+	CoverageStatus  SyncCoverageStatus `json:"coverage_status" jsonschema:"Account and scan evidence assessment, separate from attempt state and cursor exhaustion"`
+	PagesProcessed  int                `json:"pages_processed"`
+	OrdersSeen      int                `json:"orders_seen"`
+	ItemsSeen       int                `json:"items_seen"`
+	OrdersRemoved   int                `json:"orders_removed,omitempty"`
+	Next            *OrderCursor       `json:"next,omitempty"`
 }
 
-const SyncStatusSchemaVersion = 1
+const SyncStatusSchemaVersion = 3
+
+type SyncScanState string
+
+const (
+	SyncScanActive          SyncScanState = "active"
+	SyncScanCursorExhausted SyncScanState = "cursor_exhausted"
+	SyncScanSuperseded      SyncScanState = "superseded"
+)
+
+// SyncScanEvidence groups committed acquisition evidence across resumptions.
+// Its order counts partition the current retained ledger, not a historical
+// snapshot or the complete set of orders available from the source.
+type SyncScanEvidence struct {
+	State                     SyncScanState `json:"state" jsonschema:"active, cursor_exhausted, or superseded: persisted scan state, not live-process status or verified coverage"`
+	StartedAt                 string        `json:"started_at"`
+	EndedAt                   string        `json:"ended_at,omitempty"`
+	SupersededAt              string        `json:"superseded_at,omitempty"`
+	StartsFromBeginning       bool          `json:"starts_from_beginning" jsonschema:"The first managed request started without a saved cursor; does not prove the source exposed all account history"`
+	Attempts                  int           `json:"attempts"`
+	PagesProcessed            int           `json:"pages_processed" jsonschema:"Committed pages across all attempts in this scan"`
+	RetainedOrdersObserved    int           `json:"retained_orders_observed" jsonschema:"Distinct orders still retained locally and observed in at least one committed page of this scan"`
+	RetainedOrdersNotObserved int           `json:"retained_orders_not_observed" jsonschema:"Current retained orders not observed in this scan; not evidence of source deletion or cancellation"`
+	Next                      *OrderCursor  `json:"next" jsonschema:"Saved scan cursor, not a source-end guarantee; an active scan without committed pages may also have null here"`
+}
 
 type SyncRunState string
 
@@ -639,18 +727,21 @@ const (
 )
 
 type SyncStatus struct {
-	SchemaVersion   int          `json:"schema_version"`
-	Visibility      string       `json:"visibility"`
-	State           SyncRunState `json:"state"`
-	Source          SyncSource   `json:"source,omitempty"`
-	Provenance      string       `json:"provenance,omitempty"`
-	StartedAt       string       `json:"started_at,omitempty"`
-	CompletedAt     string       `json:"completed_at,omitempty"`
-	PagesProcessed  int          `json:"pages_processed"`
-	OrdersSeen      int          `json:"orders_seen"`
-	HistoryComplete bool         `json:"history_complete"`
-	ErrorCode       string       `json:"error_code,omitempty"`
-	Limitations     []string     `json:"limitations"`
+	SchemaVersion   int                `json:"schema_version"`
+	Visibility      string             `json:"visibility"`
+	State           SyncRunState       `json:"state"`
+	Source          SyncSource         `json:"source,omitempty"`
+	Provenance      string             `json:"provenance,omitempty"`
+	StartedAt       string             `json:"started_at,omitempty"`
+	CompletedAt     string             `json:"completed_at,omitempty"`
+	PagesProcessed  int                `json:"pages_processed"`
+	OrdersSeen      int                `json:"orders_seen"`
+	HistoryComplete bool               `json:"history_complete" jsonschema:"Verified account and scan coverage; legacy completion flags cannot establish this"`
+	CursorExhausted *bool              `json:"cursor_exhausted" jsonschema:"Whether the last committed page had no next cursor; null when no such observation was recorded"`
+	CoverageStatus  SyncCoverageStatus `json:"coverage_status"`
+	Scan            *SyncScanEvidence  `json:"scan" jsonschema:"Cumulative scan containing the latest attempt, in the same local read snapshot; null when that attempt has no managed scan evidence"`
+	ErrorCode       string             `json:"error_code,omitempty"`
+	Limitations     []string           `json:"limitations"`
 }
 
 type OrderList struct {
