@@ -142,7 +142,8 @@ jobs:
         run: go run ./cmd/releasecheck --require-sbom ./dist
 
   windows-camofox-contracts:
-    name: Windows Camofox contracts
+    # This status context is required by the main branch ruleset.
+    name: Windows browser contracts
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
