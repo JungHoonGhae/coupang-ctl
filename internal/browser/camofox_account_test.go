@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/JungHoonGhae/coupang-ctl/internal/core"
@@ -30,11 +31,13 @@ const openTab=async url=>{
  return {evaluate:async expression=>vm.runInContext(expression,context),close:async()=>{active=false;closed++;}};
 };
 const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
-new AsyncFunction('openTab','console',process.argv[1])(openTab,{log:line=>result=line}).then(()=>{
+new AsyncFunction('openTab','console',require('node:fs').readFileSync(0,'utf8'))(openTab,{log:line=>result=line}).then(()=>{
  if(opened!==2||closed!==2||requests!==2||result.includes('synthetic-private'))throw Error('privacy or lifecycle failure');
  process.stdout.write(result.slice('COUPANGCTL_RESULT '.length));
 }).catch(()=>process.exitCode=1);`
-		return exec.CommandContext(ctx, node, "-e", harness, script).Output()
+		command := exec.CommandContext(ctx, node, "-e", harness)
+		command.Stdin = strings.NewReader(script)
+		return command.Output()
 	}}
 	got, err := c.Snapshot(context.Background(), core.AccountBenefitsRequest{MaxCashTransactionPages: 1})
 	if err != nil {

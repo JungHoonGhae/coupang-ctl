@@ -94,7 +94,13 @@ func TestLocalPageRendererCommitsOnlyCompleteSuccessfulImage(t *testing.T) {
 					profile := args[3]
 					workspace = filepath.Dir(profile)
 					for _, path := range []string{workspace, profile} {
-						if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o700 {
+						info, err := os.Stat(path)
+						if err != nil || !info.IsDir() {
+							t.Fatal("temporary renderer directory missing")
+						}
+						// Windows FileMode has no DACL information. Check only
+						// POSIX mode bits here; lifecycle checks run on all hosts.
+						if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
 							t.Fatal("temporary renderer workspace is not private")
 						}
 					}
@@ -102,7 +108,11 @@ func TestLocalPageRendererCommitsOnlyCompleteSuccessfulImage(t *testing.T) {
 					if err != nil || string(prefs) != localPagePreferences {
 						t.Fatal("missing isolated renderer preferences")
 					}
-					if info, err := os.Stat(filepath.Join(profile, "user.js")); err != nil || info.Mode().Perm() != 0o600 {
+					info, err := os.Stat(filepath.Join(profile, "user.js"))
+					if err != nil || !info.Mode().IsRegular() {
+						t.Fatal("renderer preferences file missing")
+					}
+					if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 						t.Fatal("renderer preferences are not private")
 					}
 					if mode == "output_race" {
@@ -128,7 +138,10 @@ func TestLocalPageRendererCommitsOnlyCompleteSuccessfulImage(t *testing.T) {
 					t.Fatal(err)
 				}
 				info, err := os.Stat(target)
-				if err != nil || info.Size() < 1 || info.Mode().Perm() != 0o600 {
+				if err != nil || !info.Mode().IsRegular() || info.Size() < 1 {
+					t.Fatal("renderer did not create a PNG")
+				}
+				if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 					t.Fatal("renderer did not create a private PNG")
 				}
 				// A second run must not even launch, regardless of existing pixels.

@@ -19,18 +19,19 @@ var ErrSearchFacetUnavailable = core.WithErrorCode("search_facet_unavailable", e
 func (a *documentBrowser) readSearchWithFacets(ctx context.Context, target, reader string, request core.ProductSearchRequest) (documentPageResult, core.ProductCoverage, error) {
 	ctx, cancel := context.WithTimeout(ctx, 55*time.Second)
 	defer cancel()
-	urlJSON, _ := json.Marshal(target)
-	selections, _ := json.Marshal(request.FacetSelections)
-	trail, _ := json.Marshal(request.CategoryTrail)
 	facetFunction := `(function(expected,selection,transition){` + searchFacetReader + `;return readSearchFacets(expected,selection,transition);})`
-	facetCode, _ := json.Marshal(facetFunction)
-	searchCode, _ := json.Marshal(`(function(expected){` + strings.Replace(reader, "export function", "function", 1) + `;return readSelectedSearchPage(expected);})`)
+	input, _ := json.Marshal(map[string]any{
+		"target": target, "selections": request.FacetSelections, "trail": request.CategoryTrail,
+		"facetCode":  facetFunction,
+		"searchCode": `(function(expected){` + strings.Replace(reader, "export function", "function", 1) + `;return readSelectedSearchPage(expected);})`,
+	})
 	// Locator indices are read from the current sidebar, never caller-supplied.
 	// Each click is checked before continuing; no repeated toggle on timeout.
-	script := `const p=await openTab(` + string(urlJSON) + `);try{
- const selections=` + string(selections) + `||[];let baseURL=` + string(urlJSON) + `,appliedCategoryID='';
- const navigation=(` + string(trail) + `||[]).map(label=>({name:'카테고리',label})).concat(selections);
- const facetCode=` + string(facetCode) + `, searchCode=` + string(searchCode) + `;
+	// Keep structured values separate from the static navigation program.
+	script := "const input = " + string(input) + ";\n" + `const p=await openTab(input.target);try{
+ const selections=input.selections||[];let baseURL=input.target,appliedCategoryID='';
+ const navigation=(input.trail||[]).map(label=>({name:'카테고리',label})).concat(selections);
+ const {facetCode,searchCode}=input;
  const facets=async(selection,transition=false)=>{const f=await p.evaluate('('+facetCode+')('+JSON.stringify(baseURL)+','+JSON.stringify(selection)+','+JSON.stringify(transition)+')');if(['access_denied','authentication_required'].includes(f.status))throw Error(f.status);return f;};
  await new Promise(r=>setTimeout(r,1800));
  for(const selection of navigation){

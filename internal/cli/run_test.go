@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -740,7 +741,11 @@ func TestOrdersRecapWritesPrivateStandaloneHTMLWithoutEchoingPath(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if !info.Mode().IsRegular() {
+		t.Fatal("recap output is not a regular file")
+	}
+	// Windows FileMode does not expose DACLs; 0600 is a POSIX assertion.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("recap permissions = %o, want 600", info.Mode().Perm())
 	}
 	html, err := os.ReadFile(outputPath)

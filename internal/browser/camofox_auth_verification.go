@@ -25,9 +25,9 @@ func (c *Camofox) Verify(ctx context.Context) error {
 		return err
 	}
 	expression, _ := json.Marshal("(" + authenticationDocumentPoll + ")('__coupangctl_auth')")
-	script := `const p=await openTab('https://mc.coupang.com/ssr/desktop/order/list');try{
+	script := "const expression = " + string(expression) + ";\n" + `const p=await openTab('https://mc.coupang.com/ssr/desktop/order/list');try{
 let r={status:'loading'};
-for(let i=0;i<30;i++){r=await p.evaluate(` + string(expression) + `);if(typeof r==='string')r=JSON.parse(r);if(r.status!=='loading')break;await new Promise(r=>setTimeout(r,500));}
+for(let i=0;i<30;i++){r=await p.evaluate(expression);if(typeof r==='string')r=JSON.parse(r);if(r.status!=='loading')break;await new Promise(r=>setTimeout(r,500));}
 console.log('COUPANGCTL_RESULT '+JSON.stringify(r));
 }finally{await p.close();}`
 	data, err := c.run(ctx, script, "orders", nil)

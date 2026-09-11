@@ -65,17 +65,19 @@ func (c *Camofox) Login(ctx context.Context, request core.LoginRequest) error {
 		activate = "true"
 		mode = "login_link"
 	}
-	expression, _ := json.Marshal("(" + poll + ")('__coupangctl_camofox_login'," + activate + ")")
-	linkExpression, _ := json.Marshal(qrLoginLinkExpression)
+	expressions, _ := json.Marshal(map[string]string{
+		"poll": "(" + poll + ")('__coupangctl_camofox_login'," + activate + ")",
+		"link": qrLoginLinkExpression,
+	})
 	// Login owns one page in the same isolated profile. A QR link is streamed
 	// only to the explicit presenter, never to normal command/MCP JSON.
-	script := `const p=await openTab('https://mc.coupang.com/ssr/desktop/order/list');try{
+	script := "const expressions = " + string(expressions) + ";\n" + `const p=await openTab('https://mc.coupang.com/ssr/desktop/order/list');try{
  let sent=false,r={status:'loading'};
  for(let i=0;i<360;i++){
-  r=await p.evaluate(` + string(expression) + `);if(typeof r==='string')r=JSON.parse(r);
+  r=await p.evaluate(expressions.poll);if(typeof r==='string')r=JSON.parse(r);
   if(['ok','access_denied','authentication_data_missing','qr_expired','unexpected_destination'].includes(r.status))break;
   if(r.status==='qr_ready'&&!sent){
-   let v=await p.evaluate(` + string(linkExpression) + `);if(typeof v==='string')v=JSON.parse(v);
+   let v=await p.evaluate(expressions.link);if(typeof v==='string')v=JSON.parse(v);
    if(v?.url&&v?.approvalCode){console.log('COUPANGCTL_QR '+JSON.stringify(v));sent=true;}
    else {v=await p.captureQR();if(v){console.log('COUPANGCTL_QR_IMAGE '+JSON.stringify(v));sent=true;}}
   }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -99,7 +100,11 @@ func TestProductReportInputAndExplicitFileOutput(t *testing.T) {
 		t.Fatal("explicit report file missing")
 	}
 	info, err := os.Stat(target)
-	if err != nil || info.Mode().Perm()&0077 != 0 {
+	if err != nil || !info.Mode().IsRegular() {
+		t.Fatal("report output is not a regular file")
+	}
+	// Windows FileMode does not expose DACLs; permission bits are POSIX-only.
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0 {
 		t.Fatal("report file must be private")
 	}
 	if err := runProductReport(context.Background(), []string{"--input", "-", "--output", target}, strings.NewReader(syntheticReportJSON), &out); err == nil {

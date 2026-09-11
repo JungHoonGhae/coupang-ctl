@@ -11,6 +11,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -208,7 +209,11 @@ func TestCamofoxSetupDoesNotSwitchTheProfileBehindAnExistingLedger(t *testing.T)
 		t.Fatal(err)
 	}
 	info, err := os.Stat(filepath.Join(dir, "camofox.json"))
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || !info.Mode().IsRegular() {
+		t.Fatal("configuration file missing")
+	}
+	// Windows FileMode does not expose DACLs; 0600 is a POSIX assertion.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatal("configuration not private")
 	}
 	cfg.UserID = "different-synthetic"

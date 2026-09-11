@@ -30,12 +30,15 @@ func (c *Camofox) Snapshot(ctx context.Context, request core.AccountBenefitsRequ
 		request.MaxCashTransactionPages = 50
 	}
 	reader := strings.Replace(accountPageReader, "export async function", "async function", 1)
-	membership, _ := json.Marshal("(" + reader + ")('membership'," + strconv.Itoa(request.MaxCashTransactionPages) + ")")
-	cash, _ := json.Marshal("(" + reader + ")('cash'," + strconv.Itoa(request.MaxCashTransactionPages) + ")")
-	script := `const read=async(url,expression)=>{const p=await openTab(url);try{let result;for(let i=0;i<30;i++){result=await p.evaluate(expression);if(result.status!=='loading')return result;await new Promise(r=>setTimeout(r,500));}return {status:'account_data_missing'};}finally{await p.close();}};
-const membership=await read('https://loyalty.coupang.com/loyalty/management/home',` + string(membership) + `);
+	expressions, _ := json.Marshal(map[string]string{
+		"membership": "(" + reader + ")('membership'," + strconv.Itoa(request.MaxCashTransactionPages) + ")",
+		"cash":       "(" + reader + ")('cash'," + strconv.Itoa(request.MaxCashTransactionPages) + ")",
+	})
+	// JSON is a complete value in a data prelude, never part of quoted JS text.
+	script := "const expressions = " + string(expressions) + ";\n" + `const read=async(url,expression)=>{const p=await openTab(url);try{let result;for(let i=0;i<30;i++){result=await p.evaluate(expression);if(result.status!=='loading')return result;await new Promise(r=>setTimeout(r,500));}return {status:'account_data_missing'};}finally{await p.close();}};
+const membership=await read('https://loyalty.coupang.com/loyalty/management/home',expressions.membership);
 if(membership.status!=='ok'){console.log('COUPANGCTL_RESULT '+JSON.stringify({status:membership.status}));}
-else {const cash=await read('https://cash.coupang.com/coupang-cash/home',` + string(cash) + `);
+else {const cash=await read('https://cash.coupang.com/coupang-cash/home',expressions.cash);
 if(cash.status!=='ok'){console.log('COUPANGCTL_RESULT '+JSON.stringify({status:cash.status}));}
 else console.log('COUPANGCTL_RESULT '+JSON.stringify({status:'ok',document:{membership:membership.data,cash_summary:cash.summary,cash_transaction_pages:cash.pages}}));}`
 	ctx, cancel := context.WithTimeout(ctx, 75*time.Second)

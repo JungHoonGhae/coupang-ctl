@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -20,8 +21,15 @@ func TestCamofoxCategoryCLIRequiresRuntimeButEmptyLedgerDoesNotStartIt(t *testin
 	if !errors.Is(err, browser.ErrCamofoxUnavailable) {
 		t.Fatal("category source read skipped configuration")
 	}
-	cfg := `{"schema_version":1,"node":"/synthetic-node","server":"/synthetic-server","engine_dir":"/synthetic-engine","user_id":"synthetic"}`
-	if err := os.WriteFile(filepath.Join(dir, "camofox.json"), []byte(cfg), 0600); err != nil {
+	cfg, err := json.Marshal(browser.CamofoxConfig{
+		SchemaVersion: 1, Node: filepath.Join(dir, "synthetic-node"),
+		Server: filepath.Join(dir, "synthetic-server"), EngineDir: filepath.Join(dir, "synthetic-engine"),
+		UserID: "synthetic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "camofox.json"), cfg, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := Run(context.Background(), []string{"orders", "categories", "--max-products", "1"}, &out, &stderr, "test"); err != nil {

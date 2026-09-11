@@ -28,8 +28,12 @@ const context=vm.createContext({URL,location:new URL(url),document,window:{},Abo
 let closed=false,result;
 const openTab=async target=>{if(target!==url)throw Error('wrong target');return {evaluate:async expression=>vm.runInContext(expression,context),close:async()=>{closed=true}}};
 const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
-new AsyncFunction('openTab','console',process.argv[1])(openTab,{log:line=>{result=line}}).then(()=>{if(!closed||!result)throw Error('page leaked');process.stdout.write(result.slice('COUPANGCTL_RESULT '.length));}).catch(()=>process.exitCode=1);`
-		return exec.CommandContext(ctx, node, "-e", harness, script).Output()
+new AsyncFunction('openTab','console',require('node:fs').readFileSync(0,'utf8'))(openTab,{log:line=>{result=line}}).then(()=>{if(!closed||!result)throw Error('page leaked');process.stdout.write(result.slice('COUPANGCTL_RESULT '.length));}).catch(()=>process.exitCode=1);`
+		// The bundled reader exceeds Windows' command-line limit. Keep the
+		// harness small and deliver the unchanged generated program over stdin.
+		command := exec.CommandContext(ctx, node, "-e", harness)
+		command.Stdin = strings.NewReader(script)
+		return command.Output()
 	}}
 	req := core.ProductInspectRequest{ProductID: "101", ItemID: "201", VendorItemID: "301", DocumentReadLimit: 1}
 	doc, err := c.FetchProductInspection(context.Background(), req)

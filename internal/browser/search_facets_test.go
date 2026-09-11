@@ -17,12 +17,13 @@ func TestQueryCategoryTrailNavigationProgram(t *testing.T) {
 	if err != nil {
 		t.Fatal("node is required for browser program tests")
 	}
-	for _, mode := range []string{"ok", "missing_child", "access_denied", "lost_filter"} {
+	for _, mode := range []string{"ok", "quoted_data", "missing_child", "access_denied", "lost_filter"} {
 		t.Run(mode, func(t *testing.T) {
 			a := &documentBrowser{run: func(ctx context.Context, script string) ([]byte, error) {
 				harness := `import assert from 'node:assert/strict';
 let script='';for await(const b of process.stdin)script+=b;
 const mode=process.argv[1],clicks=[];let category='',memory=false,closed=0;
+const memoryLabel=mode==='quoted_data'?String.fromCharCode(39,34,92,10,0x2028,0x2029)+';globalThis.syntheticInjected=true;//':'32 GB';
 const root='https://www.coupang.com/np/search?q=synthetic';
 const p={
  evaluate:async expression=>{
@@ -31,7 +32,7 @@ const p={
    if(mode==='access_denied'&&category==='Child')return {status:'access_denied'};
    const options=[{label:'Parent',selected:category==='Parent'}];
    if(category&&mode!=='missing_child')options.push({label:'Child',selected:category==='Child'});
-   const facets=[{name:'카테고리',options},{name:'Memory',options:[{label:'32 GB',selected:memory}]}];
+   const facets=[{name:'카테고리',options},{name:'Memory',options:[{label:memoryLabel,selected:memory}]}];
    if(!selection)return {status:'ok',facets};
    const option=facets.find(f=>f.name===selection.name)?.options.find(o=>o.label===selection.label);
    if(!option)return {status:'filter_unavailable',facets};
@@ -47,15 +48,19 @@ let output;const originalTimeout=globalThis.setTimeout;globalThis.setTimeout=f=>
 const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
 await new AsyncFunction('openTab','console',script)(async url=>{assert.equal(url,root);return p;},{log:value=>{assert.equal(output,undefined);output=value;}});
 assert.equal(closed,1);assert.deepEqual(clicks,mode==='missing_child'?[0,2]:[0,2,1]);
+assert.equal(globalThis.syntheticInjected,undefined,'facet text executed as code');
 process.stdout.write(output.slice('COUPANGCTL_RESULT '.length));`
 				cmd := exec.CommandContext(ctx, node, "--input-type=module", "-e", harness, mode)
 				cmd.Stdin = strings.NewReader(script)
 				return cmd.Output()
 			}}
 			r := core.ProductSearchRequest{Query: "synthetic", CategoryTrail: []string{"Parent"}, FacetSelections: []core.ProductFacetSelection{{Name: "Memory", Label: "32 GB"}, {Name: "카테고리", Label: "Child"}}, DocumentReadLimit: 4}
+			if mode == "quoted_data" {
+				r.FacetSelections[0].Label = "'\"\\\n\u2028\u2029;globalThis.syntheticInjected=true;//"
+			}
 			_, coverage, err := a.readSearchWithFacets(context.Background(), "https://www.coupang.com/np/search?q=synthetic", searchPageReader, r)
 			switch mode {
-			case "ok":
+			case "ok", "quoted_data":
 				if err != nil || len(coverage.Facets) != 2 || coverage.Facets[0].Options[0].Selected || !coverage.Facets[0].Options[1].Selected {
 					t.Fatalf("final active scope invalid: %v", err)
 				}

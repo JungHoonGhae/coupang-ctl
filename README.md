@@ -178,7 +178,8 @@ go run ./cmd/coupangctl mcp
 프로필 잠금으로 막습니다. 각 조회는 자체 서버를 시작하고 종료하며, 강제 종료나
 저장 완료 여부를 확인할 수 없는 종료는 성공으로 반환하지 않습니다.
 설정은 상태 디렉터리(`COUPANGCTL_STATE_DIR` 또는 OS 기본 경로)의 `camofox.json`에
-권한 0600으로 저장됩니다. 이전 `default_browser`/`default_search` 필드는 읽기
+저장되며 POSIX에서는 `0600` 권한을 적용합니다. Windows 파일 접근은 상속된 ACL에
+의존하며, 소유자만 접근하도록 ACL을 설정하거나 검증하지 않습니다. 이전 `default_browser`/`default_search` 필드는 읽기
 호환성만 유지하며 더 이상 브라우저를 선택하지 않습니다. `--camofox`는 생략 가능합니다.
 기본 조회 오류는 다른 브라우저로 자동 대체하지 않습니다.
 
@@ -241,7 +242,7 @@ coupangctl orders recap-image --output ./shopping-recap.png --confirm-public-saf
 `orders recap-image`는 먼저 1080×1350 공유 카드에 들어갈 실제 값과
 provenance, 표본 수, 제외 필드를 JSON으로 미리 보여주며 파일을 만들지
 않습니다. 그 내용을 확인한 뒤 `--output`과
-`--confirm-public-safe-image`를 함께 줄 때만 새 `0600` PNG를 씁니다.
+`--confirm-public-safe-image`를 함께 줄 때만 새 PNG를 씁니다(POSIX 권한 `0600`).
 PNG에는 상품명·금액·정확한 날짜·결제수단을 넣는 옵션 자체가 없습니다.
 PNG 렌더링도 설치된 Camoufox 엔진을 headless로 실행합니다. 별도 임시
 프로필에서 내장 폰트·이미지만 사용하고, 종료 후 임시 프로필을 지웁니다.
@@ -552,7 +553,7 @@ watchlist에는 이미 가격을 관찰한 정확한 ID만 등록할 수 있습�
 
 `watch-schedule`은 현재 운영체제에서 macOS `launchd`, Linux `systemd`,
 Windows Task Scheduler, 그 밖의 환경은 cron 계획을 생성합니다. 계획만 JSON으로
-검토할 수도 있고, 다음처럼 새 설정 파일을 `0600`으로 쓸 수도 있습니다.
+검토할 수도 있고, 다음처럼 새 설정 파일을 쓸 수도 있습니다(POSIX 권한 `0600`).
 
 ```bash
 coupangctl products watch-schedule \
@@ -605,7 +606,7 @@ coupangctl receipts vendor --source-ref HASH
 coupangctl receipts download --kind card --history-index 0 --output ./receipt.pdf
 ```
 
-`summary`의 전체 건수·금액은 영수증 화면의 관찰값이고, 결제수단 행은 관찰된 카드별 합계를 안전한 표시명으로 묶은 계산값입니다. `overview`는 최대 20년을 비중첩 달력연도 구간으로 나눠 현금·카드를 각각 합산하고 결제수단 순위를 제공합니다. 두 영수증 원천을 임의로 더해 총지출이라고 부르지는 않습니다. `vendor`는 `orders list`가 반환한 SHA-256 `source_ref`로 한 주문을 찾고, 판매자별 결제수단·상품·취소 결제 구성요소를 `private_local`로 읽습니다. 원주문 ID는 브라우저 adapter 밖으로 나오지 않습니다. 취소 구성 필드는 관찰된 원본 의미를 보존하며 확정 환불액으로 합산하지 않습니다. 카드 식별자와 카드번호는 typed response 전에 버리고, 할부 개월 필드가 확인되지 않은 동안 할부 통계는 `unavailable`로 둡니다. `download`는 이미 완료된 이력의 파일만 새 `0600` 파일로 저장하며 기존 파일을 덮어쓰지 않습니다. 다운로드 URL은 출력하거나 로그에 남기지 않습니다.
+`summary`의 전체 건수·금액은 영수증 화면의 관찰값이고, 결제수단 행은 관찰된 카드별 합계를 안전한 표시명으로 묶은 계산값입니다. `overview`는 최대 20년을 비중첩 달력연도 구간으로 나눠 현금·카드를 각각 합산하고 결제수단 순위를 제공합니다. 두 영수증 원천을 임의로 더해 총지출이라고 부르지는 않습니다. `vendor`는 `orders list`가 반환한 SHA-256 `source_ref`로 한 주문을 찾고, 판매자별 결제수단·상품·취소 결제 구성요소를 `private_local`로 읽습니다. 원주문 ID는 브라우저 adapter 밖으로 나오지 않습니다. 취소 구성 필드는 관찰된 원본 의미를 보존하며 확정 환불액으로 합산하지 않습니다. 카드 식별자와 카드번호는 typed response 전에 버리고, 할부 개월 필드가 확인되지 않은 동안 할부 통계는 `unavailable`로 둡니다. `download`는 이미 완료된 이력의 파일만 새 파일로 저장하며(POSIX 권한 `0600`) 기존 파일을 덮어쓰지 않습니다. 다운로드 URL은 출력하거나 로그에 남기지 않습니다.
 
 영수증 생성 요청은 외부 상태를 바꾸는 POST 작업이므로 구현하지 않았습니다. 현재 응답 계약은 [`RECEIPTS.md`](RECEIPTS.md)에 정리되어 있습니다.
 
@@ -706,11 +707,16 @@ QR 링크는 모바일 앱 환경에 따라 열리지 않을 수 있으며 이 �
 
 테스트 격리는 `COUPANGCTL_STATE_DIR`에 절대경로를 지정합니다. 런타임 경로는 `camofox setup`으로 등록합니다. `COUPANGCTL_BROWSER_PATH`로 다른 브라우저를 선택하지 않습니다.
 
+이 문서의 파일 권한 `0600`과 디렉터리 권한 `0700`은 POSIX 모드입니다.
+Windows에서는 상위 경로에서 상속된 ACL이 접근을 결정합니다. 소유자 전용 DACL의
+설정·검증은 구현하지 않았으므로 다른 로컬 사용자의 접근 차단을 보장하지 않습니다.
+Windows 합성 테스트 통과는 이 보호나 실제 Camofox 실행 검증을 뜻하지 않습니다.
+
 | 데이터 | 처리 원칙 |
 | --- | --- |
 | 쿠키·세션 | 전용 Camofox 상태 디렉터리에 비공개로 유지. 런타임의 세션 저장은 허용하되 로그·CLI/MCP 출력·다른 앱으로 내보내지 않음 |
 | OTP·비밀번호·QR 링크 | 저장·로그·구조화 출력 금지 |
-| 카드·영수증 | 카드 식별자·번호·다운로드 URL은 버리고, 다운로드 파일은 새 `0600` 경로에만 저장 |
+| 카드·영수증 | 카드 식별자·번호·다운로드 URL은 버리고, 다운로드 파일은 새 경로에만 저장(POSIX 권한 `0600`) |
 | 가격 관찰 | 공개 상품명·옵션 ID·관찰가·시각을 로컬 DB에만 저장하고 별도 확인 명령으로 삭제 |
 | 주문 원본 응답 | 저장·fixture·문서 포함 금지 |
 | 정규화 주문 DB | 내 컴퓨터에 저장, 내보내기는 명시적 명령으로만 수행 |
