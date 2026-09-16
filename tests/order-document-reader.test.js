@@ -3,6 +3,7 @@ import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {webcrypto} from 'node:crypto';
+import {setTimeout as delay} from 'node:timers/promises';
 
 const shared=readFileSync(new URL('../internal/browser/order_page_reader.js',import.meta.url),'utf8').replace('export async function','async function');
 const auth=readFileSync(new URL('../internal/browser/authentication_document_poll.js',import.meta.url),'utf8');
@@ -115,9 +116,17 @@ test('a login redirect during an order request aborts it and cannot expose a sta
 test('protected order reference hashing tolerates unavailable page-realm typed-array access',async()=>{
  const domain={orderList:[{orderId:'synthetic-order',orderDate:'2026-01-01',totalPrice:1000,items:[]}],hasNext:false};
  const expected=harness({domain}),actual=harness({domain,nonIterableBytes:true});
- expected.poll();actual.poll();
- for(let i=0;i<20;i++){await flush();if(expected.poll().status!=='loading'&&actual.poll().status!=='loading')break;}
- assert.equal(actual.poll().status,'ok');
- assert.deepEqual(actual.poll(),expected.poll());
- assert.match(actual.poll().page.orders[0].source_ref,/^[a-f0-9]{64}$/);
+ // WebCrypto completes on a worker thread. Event-loop turn counts do not
+ // bound that work, especially after the asynchronous authentication stage.
+ const deadline=Date.now()+5000;
+ let expectedResult,actualResult;
+ do {
+  expectedResult=expected.poll();actualResult=actual.poll();
+  if(expectedResult.status!=='loading'&&actualResult.status!=='loading')break;
+  await delay(10);
+ } while(Date.now()<deadline);
+ assert.equal(expectedResult.status,'ok');
+ assert.equal(actualResult.status,'ok');
+ assert.deepEqual(actualResult,expectedResult);
+ assert.match(actualResult.page.orders[0].source_ref,/^[a-f0-9]{64}$/);
 });
