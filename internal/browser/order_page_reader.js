@@ -1,6 +1,5 @@
-// This function is passed directly to chrome.scripting.executeScript. Keep all
-// executable dependencies inside its body so Chrome can serialize it without
-// importing code into the selected page.
+// Embedded in the Camofox order document reader. Keep dependencies local so
+// only normalized evidence crosses the browser adapter's interface.
 export async function readSelectedOrderPage(cursor, options = {}) {
 	const MAX_DOCUMENT_BYTES = 8 << 20;
 	const MAX_ORDERS = 5;
@@ -20,7 +19,7 @@ export async function readSelectedOrderPage(cursor, options = {}) {
 			location.origin !== "https://mc.coupang.com" ||
 			location.pathname !== "/ssr/desktop/order/list"
 		) {
-			return { status: "ordinary_browser_unavailable" };
+			return { status: "structured_data_missing" };
 		}
 
 		let documentText;
@@ -47,11 +46,12 @@ export async function readSelectedOrderPage(cursor, options = {}) {
 			const response = await fetch(`/ssr/api/myorders/model?${query}`, {
 				method: "GET",
 				credentials: "include",
+				redirect: "error",
 				signal: options.signal,
 				headers: { accept: "application/json" },
 			});
 			if (response.status === 401) return { status: "authentication_required" };
-			if (response.status === 403) return { status: "access_denied" };
+			if ([403, 429].includes(response.status)) return { status: "access_denied" };
 			if (!response.ok) return { status: "structured_data_missing" };
 			documentText = await response.text();
 		}
