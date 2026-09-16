@@ -3,9 +3,11 @@ package browser
 import (
 	"context"
 	"encoding/json"
-	"github.com/JungHoonGhae/coupang-ctl/internal/core"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/JungHoonGhae/coupang-ctl/internal/core"
 )
 
 // documentBrowser is the shared typed document reader. Its transport owns the
@@ -19,8 +21,14 @@ func (a *documentBrowser) read(ctx context.Context, target, expression string) (
 	defer cancel()
 	u, _ := json.Marshal(target)
 	e, _ := json.Marshal(expression)
+	polls := 30
+	if target == orderListURL {
+		// The same tab verifies authentication before parsing orders. Allow
+		// both bounded 10-second readers to finish inside the operation deadline.
+		polls = 60
+	}
 	// No bringToFront, window manipulation, cookie API, or arbitrary user JS.
-	script := `const p=await openTab(` + string(u) + `);try{let r;for(let i=0;i<30;i++){r=await p.evaluate(` + string(e) + `);if(typeof r==='string')r=JSON.parse(r);if(r.status!=='loading')break;await new Promise(r=>setTimeout(r,500));}console.log('COUPANGCTL_RESULT '+JSON.stringify(r));}finally{await p.close();}`
+	script := `const p=await openTab(` + string(u) + `);try{let r;for(let i=0;i<` + strconv.Itoa(polls) + `;i++){r=await p.evaluate(` + string(e) + `);if(typeof r==='string')r=JSON.parse(r);if(r.status!=='loading')break;await new Promise(r=>setTimeout(r,500));}console.log('COUPANGCTL_RESULT '+JSON.stringify(r));}finally{await p.close();}`
 	data, err := a.run(ctx, script)
 	if err != nil {
 		return documentPageResult{}, err
@@ -29,11 +37,16 @@ func (a *documentBrowser) read(ctx context.Context, target, expression string) (
 	if json.Unmarshal(data, &result) != nil {
 		return result, ErrDocumentProtocol
 	}
+	if target == orderListURL && result.Status == "loading" {
+		return result, core.ErrAuthenticationStatusUnavailable
+	}
 	switch result.Status {
 	case "ok":
 		return result, nil
 	case "authentication_required":
 		return result, core.ErrAuthenticationRequired
+	case "authentication_data_missing":
+		return result, core.ErrAuthenticationStatusUnavailable
 	case "access_denied":
 		return result, core.ErrBrowserAccessDenied
 	case "order_data_missing":
@@ -81,6 +94,7 @@ func (a *documentBrowser) FetchProductSearch(ctx context.Context, request core.P
 
 func orderDocumentExpression(cursor *core.OrderCursor) (string, error) {
 	poll := strings.Replace(orderDocumentPoll, "/* SHARED_READER */", strings.Replace(orderPageReader, "export async function", "async function", 1), 1)
+	poll = strings.Replace(poll, "/* AUTH_READER */", authenticationDocumentPoll, 1)
 	c, _ := json.Marshal(cursor)
 	return "(" + poll + ")(" + string(c) + ",'__coupangctl_orders')", nil
 }
