@@ -1,0 +1,20 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "Asia/Seoul",
+  "schedule": ["* 9-11 1 * *"],
+  "prConcurrentLimit": 3,
+  "postUpdateOptions": ["gomodTidy"],
+  "packageRules": [
+    {
+      "description": "정기 업데이트는 마이너·패치만, 생태계별 PR 하나로 월 1회. 보안 업데이트는 영향받지 않는다.",
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    { "matchUpdateTypes": ["minor"], "minimumReleaseAge": "14 days" },
+    { "matchUpdateTypes": ["patch"], "minimumReleaseAge": "7 days" },
+    { "matchManagers": ["gomod"], "groupName": "go dependencies" },
+    { "matchManagers": ["npm"], "groupName": "probe dependencies" },
+    { "matchManagers": ["github-actions"], "groupName": "workflow actions", "minimumReleaseAge": "7 days" }
+  ]
+}
